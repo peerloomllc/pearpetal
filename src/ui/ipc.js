@@ -52,7 +52,7 @@ export function haptic (kind = 'light') {
 // a browser preview. index.html?seed lands on a populated log.
 const rid = (n = 22) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('')
 const MOCK_SELF = 'ab'.repeat(32)
-const mock = { base: null, days: new Map(), periods: new Map(), devices: new Map(), deviceLabel: 'This device', shares: new Map(), partners: new Map() }
+const mock = { base: null, days: new Map(), periods: new Map(), devices: new Map(), deviceLabel: 'This device', shares: new Map(), partners: new Map(), prefs: null }
 const mockProjection = () => {
   const starts = [...mock.periods.keys(), ...[...mock.days.values()].filter((d) => ['light', 'medium', 'heavy'].includes(d.flow)).map((d) => d.date)].sort()
   if (!starts.length) return { known: false, phase: 'follicular' }
@@ -97,6 +97,14 @@ const mockMethods = {
     mock.days.set(date, next)
     return { ok: true, date }
   },
+  'cycle:prediction': async () => {
+    const pr = mockProjection()
+    if (!pr.known) return { known: false, phase: null, confidence: 'none' }
+    const today = new Date().toISOString().slice(0, 10)
+    return { known: true, phase: pr.phase, dayOfCycle: pr.dayOfCycle, cycleLen: 28, nextPeriodStart: pr.nextPeriodStart, daysUntilNextPeriod: Math.round((new Date(pr.nextPeriodStart) - new Date(today)) / 86400000), ovulationEst: pr.ovulationEst, ovulationSource: 'calendar', fertileStart: pr.fertileStart, fertileEnd: pr.fertileEnd, confidence: 'medium' }
+  },
+  'prefs:get': async () => ({ avgCycleLength: mock.prefs?.avgCycleLength ?? null, avgPeriodLength: mock.prefs?.avgPeriodLength ?? null, lutealLength: mock.prefs?.lutealLength ?? null, goal: mock.prefs?.goal || 'track' }),
+  'prefs:set': async (patch) => { mock.prefs = { ...(mock.prefs || {}), ...patch }; return { ok: true } },
   'day:get': async ({ date }) => { const r = mock.days.get(date); return r && !r.deleted ? r : null },
   'day:getAll': async () => [...mock.days.values()].filter((d) => !d.deleted).sort((a, b) => b.date.localeCompare(a.date)),
   'day:delete': async ({ date }) => { const r = mock.days.get(date); if (!r) throw new Error('day not found'); r.deleted = true; return { ok: true } },

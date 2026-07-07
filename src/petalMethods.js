@@ -122,6 +122,10 @@ function normDate (s) {
 // --- projection -------------------------------------------------------------
 // Read the PRIVATE base's day/period log and derive the shared-base projection
 // (phase + predicted dates) via the pure prediction module.
+async function getPrefs (ctx) {
+  return (await ctx.localDb.get('prefs'))?.value || {}
+}
+
 async function computeProjection (ctx) {
   const base = viewFor(ctx, await privateGroupId(ctx))
   await base.update()
@@ -129,7 +133,8 @@ async function computeProjection (ctx) {
   for await (const { value } of base.view.createReadStream(DAY_RANGE)) if (value && !value.deleted) dayRows.push(value)
   const periodRows = []
   for await (const { value } of base.view.createReadStream(PERIOD_RANGE)) if (value && !value.deleted) periodRows.push(value)
-  return { proj: projectionFromRows(dayRows, periodRows), dayRows }
+  const prefs = await getPrefs(ctx)
+  return { proj: projectionFromRows(dayRows, periodRows, { prefs }), dayRows }
 }
 
 // Write the scope-appropriate projection into ONE shared-out base. Scope gates
@@ -177,6 +182,33 @@ const methods = {
   'cycle:status': async (_args, ctx) => {
     const m = await privateMembership(ctx)
     return { hasBase: !!m, groupId: m?.groupId ?? null, pubkey: pubkeyHex(ctx) }
+  },
+
+  // The owner's own on-device projection (phase + predicted dates). Computed
+  // from the private log, never written to any base. Returns { known:false }
+  // when there is not enough history yet (the UI shows a "computing" hint).
+  'cycle:prediction': async (_args, ctx) => {
+    if (!(await privateMembership(ctx))) return { known: false, phase: null, confidence: 'none' }
+    try { const { proj } = await computeProjection(ctx); return proj } catch { return { known: false, phase: null, confidence: 'none' } }
+  },
+
+  // --- prefs (device-local, feed prediction) ------------------------------
+  'prefs:get': async (_args, ctx) => {
+    const p = await getPrefs(ctx)
+    return { avgCycleLength: p.avgCycleLength ?? null, avgPeriodLength: p.avgPeriodLength ?? null, lutealLength: p.lutealLength ?? null, goal: p.goal || 'track' }
+  },
+  'prefs:set': async (args = {}, ctx) => {
+    const cur = await getPrefs(ctx)
+    const next = { ...cur }
+    const num = (v, lo, hi) => (v === null ? null : (Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : undefined))
+    if ('avgCycleLength' in args) { const v = num(args.avgCycleLength, 21, 45); if (v !== undefined) next.avgCycleLength = v }
+    if ('avgPeriodLength' in args) { const v = num(args.avgPeriodLength, 2, 10); if (v !== undefined) next.avgPeriodLength = v }
+    if ('lutealLength' in args) { const v = num(args.lutealLength, 9, 18); if (v !== undefined) next.lutealLength = v }
+    if ('goal' in args && ['track', 'conceive', 'avoid'].includes(args.goal)) next.goal = args.goal
+    next.updatedAt = Date.now()
+    await ctx.localDb.put('prefs', next)
+    await refreshShares(ctx).catch(() => {}) // prefs change the projection partners see
+    return { ok: true }
   },
 
   // Start tracking: create the private base (idempotent - returns the existing

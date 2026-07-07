@@ -34,16 +34,22 @@ Build order and slice status. Newest work at the top of each section.
     (join by code, see the scoped projection), viewer-only onboarding path.
   - Basic projection in `src/prediction.js` (pure, unit-tested).
 
+- **Slice 3 - local prediction refinement + owner prediction** (2026-07-06)
+  - `src/prediction.js`: median cycle length (robust to irregulars), BBT-confirmed
+    ovulation with calendar fallback, confidence rating, prefs support.
+  - Device-local `prefs` (avg cycle/period/luteal length, goal), clamped.
+  - `cycle:prediction` method + owner UI: a cycle-summary card (phase, cycle day,
+    next period countdown, fertile window, ovulation) and a settings screen.
+    "Learning your cycle" state before enough history. Never written to any base.
+  - 28 unit tests + smoke coverage.
+
 ## Next slices
 
-- **Slice 3 - local prediction.** Refine `src/prediction.js` (BBT, variable
-  luteal, irregular cycles), add `prefs` (avg cycle/period/luteal), "computing..."
-  state on a freshly linked device. Predictions stay off the private-base wire.
 - **Slice 4 - JSON export / import.** Plain local file download + import
   (recovery + migration). No encryption wrapper, no cloud.
-- **Slice 5 - petal-dial UI.** The signature interactive dial driven by
-  `phase:current` (menstrual = furled ... fertile = full bloom). Replace the
-  plain slice-1 log UI with the designed experience.
+- **Slice 5 - petal-dial UI.** The signature interactive dial driven by the phase
+  + prediction (menstrual = furled ... fertile = full bloom). Replaces the plain
+  summary card / log UI with the designed experience.
 
 ## Deferred / later
 
