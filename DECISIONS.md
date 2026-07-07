@@ -2,6 +2,49 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-07 - iOS cross-platform bring-up + native-addon-mismatch fix
+Tier: T2 (build/dependency + a shared @peerloom/core touch; no wire change)
+Context: first time PearPetal's iOS worklet engine actually ran. Engine `init()`
+threw `AddonError: ADDON_NOT_FOUND` (rocksdb-native, then bare-fs) so no method
+worked; masked because the RN shell's `callRaw('init')` never rejected on an error
+response, so the UI loaded over a dead engine. Root cause: `@peerloom/core` is a
+`file:`-symlinked dep whose OWN nested `node_modules` (from core's standalone
+install) carries a slightly different native-addon version set than the app's
+top-level (rocksdb-native 3.17.0 vs 3.17.2, bare-fs 4.7.2 vs 4.7.3, ...). bare-pack
+resolves core's requires INTO that nested tree and bundles those versions, while the
+iOS build links the app's TOP-LEVEL frameworks; iOS matches addon frameworks by
+EXACT version, so it can't find them. Android's `--linked` bundling tolerated it,
+which is why it was never caught (prior iOS tests only reached "app launches").
+Likely SUITE-WIDE (PearList / PearCircle would hit it once their iOS engines run).
+Choices:
+- Fix by PINNING core's mismatched native addons to the app's top-level versions via
+  `overrides` in `@peerloom/core`'s package.json (`rocksdb-native` 3.17.2, `bare-fs`
+  4.7.3). So whether bare-pack bundles core's nested copy or the app's, the framework
+  VERSION matches what iOS links. Core keeps its node_modules (its `npm test` and the
+  app's Node-run unit tests both still resolve @peerloom/core -> sodium-universal etc.).
+  (An earlier attempt moved `peerloom-core/node_modules` aside; rejected because it
+  breaks Node-run test resolution for both core AND the app - only bare-pack's
+  symlink-logical resolution tolerates it.)
+- Added `npm install` on the Mac to `ios-dev-install.sh` so the Mac's LINKED frameworks
+  match the dev-host-built bundle's versions (the Mac's rsynced core has no node_modules,
+  so it resolves to top-level; the install pins top-level to the lockfile).
+- Surface init failures instead of swallowing them: `app/index.tsx` now shows an
+  "Engine failed to start" page (and writes `Documents/init-error.txt`) on init
+  error; `@peerloom/core` `engine.js` dispatch includes `err.stack` in error
+  responses. Kept (genuine improvements over a silently-dead UI).
+- iOS build/install workflow: build + archive on the Mac mini, then install from the
+  Linux dev box via `ideviceinstaller` over USB (devicectl install fails
+  "Authorization required" over the wireless CoreDevice link). See
+  `scripts/ios-dev-install.sh`.
+Consequences: Android<->iOS cross-platform partner sync VERIFIED on hardware (iPhone
+SE iOS 26.4.2 partner <- TCL Android owner, full scope). Verify green (tests + 3
+bundles); bundle references the aligned addon versions. TRADE-OFF: the pins must be
+kept in lockstep with each app's top-level versions until a proper fix. DURABILITY
+FOLLOW-UP (TODO dev-infra): a workspace/hoist setup or dropping core's holepunch
+devDeps so versions can't drift. Also surfaced: iOS never prompts for Local Network,
+so the LAN peer path is blocked until manually re-entered - the iOS Local Network
+prompt module (port from PearList) is now a confirmed v1 release blocker.
+
 ## 2026-07-07 - JSON export / import (slice 4)
 Tier: T1 (device-local backup/migration; no wire change)
 Context: implement the recovery escape hatch resolved at approval (open-Q1): a
