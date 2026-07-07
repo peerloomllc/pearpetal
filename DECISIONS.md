@@ -2,6 +2,35 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-06 - Petal-dial UI (slice 5)
+Tier: T1 (presentation; no wire or data change)
+Context: build the signature visual the whole product/name rests on (DECISIONS
+2026-07-06 naming entry): an interactive petal dial that furls and blooms across
+the cycle.
+Choices:
+- The flower's petals RE-GEOMETRY with cycle position (petal path length/width
+  recompute), not just scale - furled at menstruation, full bloom at ovulation,
+  closing toward the next period. Bloom is a curve peaking at the predicted
+  ovulation day, so the dial literally encodes the phase.
+- Driven entirely by the existing on-device projection (`cycle:prediction`):
+  dayOfCycle + cycleLen + predicted ovulation position. No new data, no wire
+  change - the slice-3 prediction is the single source. `phase:current`'s four
+  values map to the four bloom states as the naming decision intended.
+- A ring around the flower is the cycle calendar: a red menstrual arc, a rose
+  fertile arc, day ticks, and a lilac "today" marker.
+- Design guardrail honored (DECISIONS naming entry): botanical GEOMETRY, muted
+  app palette, bloom-in on mount, reduced-motion respected - deliberately NOT the
+  pink-cursive period-app cliche. Pure SVG, no deps (`src/ui/PetalDial.jsx`).
+- Not-known state shows a furled bud + "Learning your cycle", so the dial is the
+  hero from first launch.
+Alternatives: scale-only bloom (rejected - reads as a small flower, not a bud);
+a separate decorative graphic unrelated to the data (rejected - the dial must be
+truthful, driven by the real projection).
+Consequences: the dial replaces the plain slice-3 summary header as the main-
+screen hero; stats + settings sit below it. An interactive standalone preview was
+built to design/verify the visuals. Verify: `npm run verify` green (28 tests +
+bundles); the dial is pure presentation over already-tested prediction.
+
 ## 2026-07-06 - Local prediction refinement + owner-facing prediction (slice 3)
 Tier: T1 (app logic; no wire change - prediction is computed, never stored)
 Context: slice-2 shipped a basic calendar projection, and predictions were only
