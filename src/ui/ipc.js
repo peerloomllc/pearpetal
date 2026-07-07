@@ -52,7 +52,17 @@ export function haptic (kind = 'light') {
 // a browser preview. index.html?seed lands on a populated log.
 const rid = (n = 22) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('')
 const MOCK_SELF = 'ab'.repeat(32)
-const mock = { base: null, days: new Map(), periods: new Map(), devices: new Map(), deviceLabel: 'This device' }
+const mock = { base: null, days: new Map(), periods: new Map(), devices: new Map(), deviceLabel: 'This device', shares: new Map(), partners: new Map() }
+const mockProjection = () => {
+  const starts = [...mock.periods.keys(), ...[...mock.days.values()].filter((d) => ['light', 'medium', 'heavy'].includes(d.flow)).map((d) => d.date)].sort()
+  if (!starts.length) return { known: false, phase: 'follicular' }
+  const last = starts[starts.length - 1]
+  const next = new Date(new Date(last + 'T00:00:00Z').getTime() + 28 * 86400000).toISOString().slice(0, 10)
+  const ov = new Date(new Date(next + 'T00:00:00Z').getTime() - 14 * 86400000).toISOString().slice(0, 10)
+  const fs = new Date(new Date(ov + 'T00:00:00Z').getTime() - 5 * 86400000).toISOString().slice(0, 10)
+  const fe = new Date(new Date(ov + 'T00:00:00Z').getTime() + 1 * 86400000).toISOString().slice(0, 10)
+  return { known: true, phase: 'follicular', dayOfCycle: 6, nextPeriodStart: next, ovulationEst: ov, fertileStart: fs, fertileEnd: fe }
+}
 
 function ensureSelfDevice () { mock.devices.set(MOCK_SELF, { pubkey: MOCK_SELF, label: mock.deviceLabel, self: true }) }
 
@@ -92,6 +102,33 @@ const mockMethods = {
   'day:delete': async ({ date }) => { const r = mock.days.get(date); if (!r) throw new Error('day not found'); r.deleted = true; return { ok: true } },
   'period:set': async ({ start, end }) => { mock.periods.set(start, { start, end: end || null, deleted: false }); return { ok: true } },
   'period:getAll': async () => [...mock.periods.values()].filter((p) => !p.deleted).sort((a, b) => b.start.localeCompare(a.start)),
+  'share:create': async ({ scope }) => {
+    if (!['phase', 'fertility', 'full'].includes(scope)) throw new Error('bad scope')
+    const groupId = rid(); const inviteKey = 'mock-share-' + scope + '-' + rid(8)
+    mock.shares.set(groupId, { groupId, scope, inviteKey, createdAt: Date.now() })
+    return { groupId, inviteKey, scope }
+  },
+  'share:list': async () => [...mock.shares.values()].sort((a, b) => a.createdAt - b.createdAt),
+  'share:revoke': async ({ groupId }) => { mock.shares.delete(groupId); return { ok: true } },
+  'partner:join': async ({ inviteKey }) => {
+    if (!inviteKey) throw new Error('inviteKey required')
+    const m = /mock-share-(phase|fertility|full)/.exec(inviteKey)
+    const scope = m ? m[1] : 'phase'
+    const groupId = rid()
+    mock.partners.set(groupId, { groupId, scope, ownerPubkey: 'cd'.repeat(32), joinedAt: Date.now() })
+    return { groupId }
+  },
+  'partner:list': async () => [...mock.partners.values()].sort((a, b) => a.joinedAt - b.joinedAt),
+  'partner:view': async ({ groupId }) => {
+    const p = mock.partners.get(groupId); if (!p) throw new Error('not found')
+    const proj = mockProjection()
+    const phase = { phase: proj.phase, dayOfCycle: proj.dayOfCycle || 6 }
+    let predict = null
+    if (proj.known) { predict = { nextPeriodStart: proj.nextPeriodStart }; if (p.scope !== 'phase') { predict.fertileStart = proj.fertileStart; predict.fertileEnd = proj.fertileEnd; predict.ovulationEst = proj.ovulationEst } }
+    const summary = p.scope === 'full' ? [...mock.days.values()].filter((d) => !d.deleted).slice(0, 8).map((d) => ({ date: d.date, flow: !!d.flow, symptomTags: (d.symptoms || []).filter((s) => ['cramps', 'headache', 'fatigue', 'bloating'].includes(s)) })) : []
+    return { scope: p.scope, ownerPubkey: p.ownerPubkey, phase, predict, summary }
+  },
+  'partner:leave': async ({ groupId }) => { mock.partners.delete(groupId); return { ok: true } },
   'shell:haptic': async () => ({ ok: true }),
   'shell:share': async ({ text }) => { try { if (navigator.share) await navigator.share({ text }); else alert('Share:\n\n' + text) } catch {} return { ok: true } },
   'shell:openUrl': async ({ url }) => { try { window.open(url, '_blank', 'noopener') } catch {} return { ok: true } },

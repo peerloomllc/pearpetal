@@ -2,6 +2,48 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-06 - Partner shared base (slice 2)
+Tier: T3 (new base kind, sharing/consent surface)
+Context: implement the per-partner SHARED base from the proposal - a separate
+Autobase carrying an owner-written, consent-scoped projection the partner only
+reads.
+Choices:
+- Owner-write-only is enforced in apply by SIGNATURE, not by ACL: `share:meta`
+  records the owner pubkey (first-writer claims it, must name itself), and every
+  other shared row (`phase:current`, `predict:current`, `summary:{date}`) is
+  accepted only if signed by that owner. A partner-signed row is dropped. This is
+  what makes the partner read-only (`rowSharedDecision` in `src/petalWire.js`).
+- The partner IS admitted as an Autobase writer (the engine's normal pairing) so
+  their identity is bound; apply just rejects their writes. Accepted per proposal.
+- Scope gates at the WRITER: the owner writes only the fields a scope permits
+  (`phase` -> phase + next-period date; `fertility` -> + fertile window; `full` ->
+  + redacted per-day summary with a fixed symptom whitelist, never notes/BBT/
+  intimacy). The partner structurally cannot receive more than was written.
+- The share invite grants ONLY the shared base; it never carries the private base
+  or its key. Distinct base, distinct encryption key.
+- `refreshShares` recomputes + rewrites the projection after any private-log
+  change, so partners stay current.
+KNOWN LIMITATIONS (v1, noted honestly, deferred):
+- Because the partner is a real writer, they could append an `addWriter` op to
+  admit a third party to the SHARED base (the engine processes addWriter from any
+  writer). That third party would see only the already-consented projection, not
+  the private log, so the leak is bounded - but it is a real gap. Closing it needs
+  apply-level addWriter gating in `@peerloom/core` (a core change), out of slice
+  scope. Tracked in TODO.
+- Prediction on the shared base is a DELIBERATE, CONSENTED exception to the
+  open-Q2 rule "predictions never cross the wire": that rule governs the PRIVATE
+  base (no prediction replication among your own devices). Sharing predicted dates
+  with a partner is the whole point of the fertility scope. Documented so the two
+  are not read as contradictory.
+- The projection algorithm (`src/prediction.js`) is a basic calendar estimate;
+  the real prediction slice refines it.
+Consequences: a device now holds several bases (private / shared-out / shared-in),
+tagged by `kind` in `groups:joined`; `privateMembership` filters to the private
+one. Verify: 24 unit tests (incl. owner-write-only + prediction) + a one-device
+owner-side smoke test proving scope gating and the redaction boundary. Real
+cross-device partner replication rides the same pairing as device linking and is
+still to be exercised on hardware.
+
 ## 2026-07-06 - Private base is date-keyed, not per-writer (slice 1)
 Tier: T3 (wire schema; amends the approved proposal before any peer ships)
 Context: building slice 1 (scaffold + private base + device linking) surfaced that
