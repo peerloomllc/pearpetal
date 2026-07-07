@@ -63,6 +63,32 @@ function Chip ({ active, onClick, children, color }) {
 }
 function flowColor (k) { return colors.flow[k] || colors.track }
 
+// --- invite links -----------------------------------------------------------
+// Wrap the engine's base64 invite blob as a universal link matching the rest of
+// the suite. The blob rides in the URL #fragment so it never reaches
+// peerloomllc.com's server (it is the secret that grants access). Two kinds:
+// device linking (/petal/link) and partner share (/petal/join).
+const INVITE_BASE = 'https://peerloomllc.com/petal'
+const linkUrl = (key) => (key ? `${INVITE_BASE}/link#${key}` : '')
+const shareUrl = (key) => (key ? `${INVITE_BASE}/join#${key}` : '')
+// Accept a pasted / scanned / deep-linked invite in any shape: a full https/pear
+// URL (blob in the #fragment, an ?i= query, or after the /link|/join path) or a
+// bare blob (backwards compatible). Returns just the invite blob.
+function parseInvite (text) {
+  const s = String(text || '').trim()
+  if (/^(https?:|pear:)/i.test(s)) {
+    const h = s.indexOf('#'); if (h !== -1) return s.slice(h + 1).trim()
+    const m = s.match(/[?&]i=([^&#]+)/); if (m) return decodeURIComponent(m[1]).trim()
+    const j = s.search(/\/(link|join)(?![a-z])/i); if (j !== -1) return s.slice(j).replace(/^\/(link|join)/i, '').replace(/^[/?#]+/, '').trim()
+    return ''
+  }
+  return s
+}
+// Does this invite carry the device-link kind (vs a partner share)? Only a URL
+// says which; a bare blob is ambiguous, so paste flows that already know the mode
+// pass it through and this is used only for deep links.
+const isLinkInvite = (text) => /(peerloomllc\.com\/petal|pearpetal)\/link(?![a-z])/i.test(String(text || ''))
+
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady }) {
   const [mode, setMode] = useState(null) // null | 'link' | 'partner'
@@ -75,11 +101,11 @@ function Onboarding ({ onReady, onViewerReady }) {
   }
   const link = async () => {
     setErr('')
-    try { await call('link:join', { inviteKey: code.trim() }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
+    try { await call('link:join', { inviteKey: parseInvite(code) }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
   }
   const joinPartner = async () => {
     setErr('')
-    try { await call('partner:join', { inviteKey: code.trim() }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
+    try { await call('partner:join', { inviteKey: parseInvite(code) }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
   }
   const scan = async () => {
     try { const r = await call('shell:scanQr'); if (r?.code) setCode(r.code) } catch {}
@@ -177,7 +203,7 @@ function Sharing ({ onClose, onOpenPartner }) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ color: colors.text.primary, fontWeight: 500, textTransform: 'capitalize' }}>{s.scope}</span>
                 <div style={{ display: 'flex', gap: spacing.sm }}>
-                  <Btn kind='ghost' onClick={() => copy(s.inviteKey)} style={{ padding: '6px 10px', fontSize: 13 }}>Copy code</Btn>
+                  <Btn kind='ghost' onClick={() => copy(shareUrl(s.inviteKey))} style={{ padding: '6px 10px', fontSize: 13 }}>Copy link</Btn>
                   <Btn kind='ghost' onClick={() => revoke(s.groupId)} style={{ padding: '6px 10px', fontSize: 13, color: colors.error }}>Revoke</Btn>
                 </div>
               </div>
@@ -366,8 +392,9 @@ function Devices ({ onClose }) {
     try { const r = await call('link:invite'); setInvite(r.inviteKey) } catch {}
   }, [])
   useSynced(load)
-  const share = () => call('shell:share', { title: 'Link a device to PearPetal', text: invite }).catch(() => {})
-  const copy = async () => { try { await navigator.clipboard.writeText(invite); haptic('success') } catch { share() } }
+  const inviteLink = linkUrl(invite)
+  const share = () => call('shell:share', { title: 'Link a device to PearPetal', text: inviteLink }).catch(() => {})
+  const copy = async () => { try { await navigator.clipboard.writeText(inviteLink); haptic('success') } catch { share() } }
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
@@ -384,10 +411,10 @@ function Devices ({ onClose }) {
         ))}
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ fontSize: 14, color: colors.text.secondary }}>Link another of your devices: open PearPetal on it, tap "Link another device", and paste this code.</div>
-        <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.text.secondary, wordBreak: 'break-all', maxHeight: 96, overflow: 'auto' }}>{invite || '...'}</div>
+        <div style={{ fontSize: 14, color: colors.text.secondary }}>Link another of your devices: open this link on it, or paste it into "Link another device".</div>
+        <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.text.secondary, wordBreak: 'break-all', maxHeight: 96, overflow: 'auto' }}>{inviteLink || '...'}</div>
         <div style={{ display: 'flex', gap: spacing.sm }}>
-          <Btn onClick={copy} style={{ flex: 1 }}>Copy code</Btn>
+          <Btn onClick={copy} style={{ flex: 1 }}>Copy link</Btn>
           <Btn kind='ghost' onClick={share}>Share</Btn>
         </div>
       </div>
@@ -556,6 +583,7 @@ export default function App () {
   const [days, setDays] = useState([])
   const [pred, setPred] = useState(null)
   const [flower, setFlower] = useState('rose')
+  const [notice, setNotice] = useState('')
 
   const refresh = useCallback(async () => {
     const [d, pr] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null)])
@@ -576,19 +604,30 @@ export default function App () {
   useEffect(() => { boot() }, [boot])
   useEffect(() => on('group:updated', () => { if (mode === 'owner') refresh() }), [mode, refresh])
 
-  if (mode === null) return <div style={{ height: '100%' }} />
-  if (mode === 'onboard') return <Onboarding onReady={boot} onViewerReady={boot} />
+  // Invite deep link: the shell forwards the opened URL (https://peerloomllc.com/
+  // petal/link|join#<blob> or pear://pearpetal/link|join?...). Route by path -
+  // /link adds THIS device to a cycle, /join opens a partner's shared cycle - then
+  // re-boot into the right mode. Errors (e.g. already tracking) surface as a notice.
+  useEffect(() => on('deeplink:invite', async ({ url }) => {
+    const key = parseInvite(url)
+    if (!key) { setNotice('That invite link looks empty or malformed.'); return }
+    try {
+      if (isLinkInvite(url)) await call('link:join', { inviteKey: key })
+      else await call('partner:join', { inviteKey: key })
+      haptic('success'); await boot()
+    } catch (e) { setNotice(e?.message || 'Could not open that invite.') }
+  }), [boot])
+  useEffect(() => { if (!notice) return undefined; const t = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(t) }, [notice])
 
-  if (partnerGroup) return <PartnerView groupId={partnerGroup} onClose={() => setPartnerGroup(null)} onLeft={() => { setPartnerGroup(null); boot() }} />
-
-  if (mode === 'viewer') return <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); boot() }} />
-
-  // owner
-  if (screen === 'devices') return <Devices onClose={() => setScreen('main')} />
-  if (screen === 'share') return <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
-  if (screen === 'settings') return <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} />
-
-  return (
+  let content
+  if (mode === null) content = <div style={{ height: '100%' }} />
+  else if (mode === 'onboard') content = <Onboarding onReady={boot} onViewerReady={boot} />
+  else if (partnerGroup) content = <PartnerView groupId={partnerGroup} onClose={() => setPartnerGroup(null)} onLeft={() => { setPartnerGroup(null); boot() }} />
+  else if (mode === 'viewer') content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); boot() }} />
+  else if (screen === 'devices') content = <Devices onClose={() => setScreen('main')} />
+  else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
+  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} />
+  else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: `calc(${spacing.xl}px + var(--pear-safe-top))`, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
@@ -604,5 +643,16 @@ export default function App () {
         <RecentDays days={days} onPick={setDate} />
       </div>
     </div>
+  )
+
+  return (
+    <>
+      {content}
+      {notice && (
+        <div onClick={() => setNotice('')} style={{ position: 'fixed', left: 12, right: 12, bottom: 'calc(16px + var(--pear-safe-bottom))', zIndex: 50, background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, color: colors.text.primary, fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
+          {notice}
+        </div>
+      )}
+    </>
   )
 }

@@ -99,9 +99,14 @@ because it demos the finished app).
    `ios/` regenerated. Verify green, autolinking confirmed. See DECISIONS 2026-07-07.
    REMAINING: install on the iPhone (`scripts/ios-dev-install.sh`) and confirm the LN prompt
    appears + partner sync (iPhone <- Android owner) takes the LAN path.
-2. **Invite/share code as a universal-link URL** (`https://peerloomllc.com/join/<payload>`)
-   matching the other apps, instead of the raw base64 blob. Applies to both device linking
-   and partner share codes; foundation for web invite handling + QR (do before #3).
+2. **Invite/share code as a universal-link URL** - CODE DONE 2026-07-07 (branch
+   feature/invite-urls, stacked on feature/realtime-ui-sync). Invites now render/copy as
+   `https://peerloomllc.com/petal/link#<blob>` (device) and `.../petal/join#<blob>` (partner),
+   blob in the #fragment (never hits the server). `parseInvite()` accepts URL or bare blob
+   (back-compat); deep links route by path (/link vs /join); added Android intent filters for
+   /join. Verify green, round-trip + routing checked. See DECISIONS 2026-07-07. REMAINING:
+   on-device check (copy a link on one phone, open/paste on another) + iOS universal-link
+   website association (apple-app-site-association + associatedDomains) is website-side, separate.
 3. **Native QR scan + QR render** for link/share codes (currently paste/copy only; the
    "Scan" button is a stub - `shell:scanQr` returns null). Builds on the URL format in #2.
 4. **Safe-area top inset** (visual bug): screen titles ("PearPetal", "Partner's cycle") render

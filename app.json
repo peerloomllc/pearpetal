@@ -23,6 +23,11 @@
               "scheme": "pear",
               "host": "pearpetal",
               "pathPrefix": "/link"
+            },
+            {
+              "scheme": "pear",
+              "host": "pearpetal",
+              "pathPrefix": "/join"
             }
           ],
           "category": [
@@ -38,6 +43,11 @@
               "scheme": "https",
               "host": "peerloomllc.com",
               "pathPrefix": "/petal/link"
+            },
+            {
+              "scheme": "https",
+              "host": "peerloomllc.com",
+              "pathPrefix": "/petal/join"
             }
           ],
           "category": [
