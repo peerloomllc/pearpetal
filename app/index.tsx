@@ -21,6 +21,7 @@ import * as DocumentPicker from 'expo-document-picker'
 // --- worklet + IPC (module-scoped so it survives remounts) -----------------
 let _worklet: any = null
 let _workletStarted = false
+let _initError: string | null = null
 let _webViewRef: { current: any } | null = null
 const _pending = new Map<number, (msg: any) => void>()
 let _nextId = 1
@@ -39,8 +40,8 @@ function emitEvent (event: string, data?: any) {
   _webViewRef?.current?.injectJavaScript(`window.__pearEvent(${JSON.stringify(event)}, ${JSON.stringify(data ?? null)}); true;`)
 }
 
-async function startWorklet () {
-  if (_workletStarted) return
+async function startWorklet (): Promise<string | null> {
+  if (_workletStarted) return _initError
   _workletStarted = true
   const asset = Asset.fromModule(
     Platform.OS === 'ios' ? require('../assets/bare-ios.bundle') : require('../assets/bare-universal.bundle')
@@ -69,9 +70,27 @@ async function startWorklet () {
 
   // Corestore lives under the app's document directory (file:// stripped).
   const dataDir = FileSystem.documentDirectory!.replace(/^file:\/\//, '').replace(/\/$/, '')
-  await callRaw('init', { dataDir })
+  const initRes = await callRaw('init', { dataDir })
+  // DIAGNOSTIC (iOS engine-init bug 2026-07-07): callRaw never rejects, so an init
+  // failure is otherwise swallowed. Persist it so it can be pulled off-device.
+  if (initRes?.error) {
+    _initError = `dataDir=${dataDir}\n${String(initRes.error)}`
+    try {
+      await FileSystem.writeAsStringAsync(
+        FileSystem.documentDirectory! + 'init-error.txt',
+        `platform=${Platform.OS}\n${_initError}\n`
+      )
+    } catch {}
+  }
+  return _initError
 }
 export async function ensureBackendStarted () { await startWorklet() }
+
+// Full-screen init-failure page (so a broken engine is visible, not a UI that
+// silently no-ops every method). DIAGNOSTIC for the iOS engine-init bug.
+function errorHtml (err: string) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" /></head><body style="margin:0;background:#140f11;color:#ff9db0;font:13px/1.5 ui-monospace,monospace;padding:24px;-webkit-text-size-adjust:100%"><h2 style="color:#f2789f">Engine failed to start</h2><pre style="white-space:pre-wrap;word-break:break-word">${err.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c])}</pre></body></html>`
+}
 
 // --- UI html ---------------------------------------------------------------
 function buildHtml (jsBundle: string) {
@@ -113,9 +132,10 @@ export default function Shell () {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      await startWorklet()
-      if (!cancelled) setHtml(await loadUiHtml())
-    })().catch((e) => console.warn('shell boot failed', e?.message ?? String(e)))
+      const initErr = await startWorklet()
+      if (cancelled) return
+      setHtml(initErr ? errorHtml(initErr) : await loadUiHtml())
+    })().catch((e) => { if (!cancelled) setHtml(errorHtml('shell boot failed: ' + (e?.message ?? String(e)))) })
     return () => { cancelled = true }
   }, [])
 
