@@ -28,6 +28,19 @@ function todayIso () {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+// Re-run a loader whenever synced data changes. Every base view update - a local
+// edit OR a replicated-then-applied remote change from another of your devices or a
+// partner - emits group:updated. This loads once on mount and again on each such
+// event, so any screen showing synced data refreshes in real time (no manual
+// reload, no leave-and-return). `load` must be stable (useCallback) so the
+// subscription is registered once and torn down on unmount.
+function useSynced (load) {
+  useEffect(() => {
+    load()
+    return on('group:updated', load)
+  }, [load])
+}
+
 // --- small styled primitives ------------------------------------------------
 const card = { background: colors.surface.card, borderRadius: radius.xl, padding: spacing.lg, border: `1px solid ${colors.border}` }
 function Btn ({ children, onClick, kind = 'primary', style }) {
@@ -120,11 +133,11 @@ function Sharing ({ onClose, onOpenPartner }) {
   const [shares, setShares] = useState([])
   const [partners, setPartners] = useState([])
   const [err, setErr] = useState('')
-  const load = async () => {
+  const load = useCallback(async () => {
     setShares(await call('share:list').catch(() => []))
     setPartners(await call('partner:list').catch(() => []))
-  }
-  useEffect(() => { load() }, [])
+  }, [])
+  useSynced(load)
   const create = async () => {
     setErr('')
     try { await call('share:create', { scope }); haptic('success'); load() } catch (e) { setErr(e.message) }
@@ -195,6 +208,18 @@ function PartnerView ({ groupId, onClose, onLeft }) {
   const load = async () => { try { setData(await call('partner:view', { groupId })) } catch (e) { setErr(e.message) } }
   useEffect(() => { load() }, [groupId])
   useEffect(() => on('group:updated', (d) => { if (d?.groupId === groupId) load() }), [groupId])
+  // The owner's projection may still be replicating when this view first opens:
+  // partner:view returns nulls until share:meta/phase apply, and the group:updated
+  // that would refresh us can fire in the gap before this view mounts (it is then
+  // consumed by the owner-mode listener without being buffered). Without this, the
+  // view sits blank until the user leaves and re-enters. Poll until the projection
+  // lands, then stop and rely on the live group:updated subscription above.
+  const synced = !!(data && (data.ownerPubkey || data.phase || data.predict))
+  useEffect(() => {
+    if (synced) return undefined
+    const t = setInterval(load, 2000)
+    return () => clearInterval(t)
+  }, [groupId, synced])
   const leave = async () => { try { await call('partner:leave', { groupId }); onLeft() } catch (e) { setErr(e.message) } }
 
   const phase = data?.phase
@@ -261,6 +286,15 @@ function DayEditor ({ date, setDate, onSaved }) {
     setNotes(r?.notes || '')
   }, [date])
   useEffect(() => { load() }, [load])
+  // Live-refresh the open day when another of your devices edits it. Reload flow +
+  // symptoms always, but only adopt the remote note when the notes field is not
+  // focused, so a sync never yanks text you are mid-typing (it saves on blur, LWW).
+  useEffect(() => on('group:updated', async () => {
+    const r = await call('day:get', { date }).catch(() => null)
+    setRow(r || { date, flow: null, symptoms: [] })
+    const typingNote = typeof document !== 'undefined' && document.activeElement && document.activeElement.tagName === 'TEXTAREA'
+    if (!typingNote) setNotes(r?.notes || '')
+  }), [date])
 
   if (!row) return null
   const setFlow = async (k) => {
@@ -327,11 +361,11 @@ function RecentDays ({ days, onPick }) {
 function Devices ({ onClose }) {
   const [devices, setDevices] = useState([])
   const [invite, setInvite] = useState('')
-  const load = async () => {
+  const load = useCallback(async () => {
     setDevices(await call('device:getAll').catch(() => []))
     try { const r = await call('link:invite'); setInvite(r.inviteKey) } catch {}
-  }
-  useEffect(() => { load() }, [])
+  }, [])
+  useSynced(load)
   const share = () => call('shell:share', { title: 'Link a device to PearPetal', text: invite }).catch(() => {})
   const copy = async () => { try { await navigator.clipboard.writeText(invite); haptic('success') } catch { share() } }
 
@@ -364,8 +398,8 @@ function Devices ({ onClose }) {
 // --- viewer-only home (a device that only watches partners, no own cycle) ---
 function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   const [partners, setPartners] = useState([])
-  const load = async () => setPartners(await call('partner:list').catch(() => []))
-  useEffect(() => { load() }, [])
+  const load = useCallback(async () => setPartners(await call('partner:list').catch(() => [])), [])
+  useSynced(load)
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: `calc(${spacing.xl}px + var(--pear-safe-top))`, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
