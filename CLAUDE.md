@@ -37,8 +37,11 @@ summary, settings, devices, sharing, partner view).
   never written to any base.
 - Slice 5: the signature petal dial (`src/ui/PetalDial.jsx`) - a flower that
   furls/blooms across the cycle, driven by the prediction; the main-screen hero.
+- Slice 6: flower picker (`src/ui/flowers.js`) - five real species as parametric
+  petal profiles, chosen in cycle-settings, stored device-local (`prefs.flower`).
 Wire protocol v1 in `proposals/2026-07-06-wire-protocol.md` (T3, amended for
-date-keyed day rows). Next: JSON export/import (slice 4). See `TODO.md`.
+date-keyed day rows). Next: JSON export/import (slice 4, the last core slice).
+See `TODO.md`.
 
 ## Canonical verify
 

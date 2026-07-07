@@ -6,16 +6,13 @@
 // Pure geometry, no deps. Bloom-in animates on mount (respects reduced motion).
 
 import { useEffect, useRef, useState } from 'react'
-import { colors, radius } from './theme.js'
+import { colors } from './theme.js'
+import { buildFlower } from './flowers.js'
 
-const CX = 160, CY = 160, R = 132, N = 8, PERIOD_LEN = 5
-const CLOSED = [122, 16, 36], OPEN = [236, 139, 163], INNER = [242, 176, 193]
+const CX = 160, CY = 160, R = 132, PERIOD_LEN = 5
 
 const rad = (deg) => (deg * Math.PI) / 180
 const polar = (r, deg) => [CX + r * Math.cos(rad(deg)), CY + r * Math.sin(rad(deg))]
-const lerp = (a, b, t) => a + (b - a) * t
-const mix = (c1, c2, t) => `rgb(${Math.round(lerp(c1[0], c2[0], t))},${Math.round(lerp(c1[1], c2[1], t))},${Math.round(lerp(c1[2], c2[2], t))})`
-const petalPath = (len, wid) => `M0 0 C ${wid} ${-len * 0.34}, ${wid} ${-len * 0.72}, 0 ${-len} C ${-wid} ${-len * 0.72}, ${-wid} ${-len * 0.34}, 0 0 Z`
 function isoDiff (a, b) { const p = (s) => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d) }; return Math.round((p(b) - p(a)) / 86400000) }
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n))
 
@@ -31,7 +28,7 @@ function arcPath (r, degA, degB) {
   return `M${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`
 }
 
-export default function PetalDial ({ pred, today, onTap }) {
+export default function PetalDial ({ pred, today, flower = 'rose', onTap }) {
   const known = !!pred?.known
   const L = known ? (pred.cycleLen || 28) : 28
   const dayOfCycle = known ? (pred.dayOfCycle || 1) : 1
@@ -62,9 +59,7 @@ export default function PetalDial ({ pred, today, onTap }) {
   }, [target])
 
   const b = bloom
-  const petalCol = mix(CLOSED, OPEN, b)
-  const innerCol = mix(CLOSED, INNER, Math.min(1, b * 1.1))
-  const spin = b * 10
+  const fl = buildFlower(flower, b)
   const glow = Math.max(0, (b - 0.55) / 0.45) * 0.9
   const [px, py] = polar(R, dayDeg(dayOfCycle))
   const ticks = Array.from({ length: L }, (_, i) => i + 1)
@@ -90,18 +85,28 @@ export default function PetalDial ({ pred, today, onTap }) {
           })}
         </g>
         <g transform={`translate(${CX},${CY})`}>
-          {Array.from({ length: N }, (_, i) => (
-            <path key={'o' + i} d={petalPath(26 + 64 * b, 8 + 27 * b)} fill={petalCol} transform={`rotate(${(i * 360) / N + spin})`} />
+          {fl.petals.map((p, i) => (
+            <path key={i} d={p.d} fill={p.fill} opacity={p.opacity} transform={p.transform} />
           ))}
-          {Array.from({ length: N }, (_, i) => (
-            <path key={'i' + i} d={petalPath(17 + 40 * b, 6 + 18 * b)} fill={innerCol} opacity={(0.35 + 0.65 * b).toFixed(2)} transform={`rotate(${(i * 360) / N + 180 / N - spin})`} />
-          ))}
-          <circle cx={0} cy={0} r={(19 - 9 * b).toFixed(1)} fill={mix([90, 12, 28], [201, 56, 79], b)} />
-          <circle cx={0} cy={-2} r={(7 - 4 * b).toFixed(1)} fill='rgba(255,255,255,0.25)' />
+          <circle cx={0} cy={0} r={fl.center.r} fill={fl.center.fill} />
+          <circle cx={0} cy={-2} r={fl.centerHi.r} fill='rgba(255,255,255,0.25)' />
         </g>
         {known && <circle cx={px} cy={py} r={7} fill={colors.surface.base} stroke={colors.accent} strokeWidth={2.5} />}
       </svg>
     </button>
+  )
+}
+
+// A small static thumbnail of a species at a fixed bloom, for the flower picker.
+export function FlowerThumb ({ flower, size = 56, bloom = 0.85 }) {
+  const fl = buildFlower(flower, bloom, 0.62)
+  return (
+    <svg viewBox='0 0 100 100' width={size} height={size} aria-hidden='true'>
+      <g transform='translate(50,50)'>
+        {fl.petals.map((p, i) => <path key={i} d={p.d} fill={p.fill} opacity={p.opacity} transform={p.transform} />)}
+        <circle cx={0} cy={0} r={fl.center.r} fill={fl.center.fill} />
+      </g>
+    </svg>
   )
 }
 

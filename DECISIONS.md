@@ -2,6 +2,32 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-07 - Flower picker: real species for the dial (slice 6)
+Tier: T1 (device-local display pref; no wire/data change)
+Context: the slice-5 dial was a generic parametric rosette, not a real flower. Add
+a choice of real species as a setting.
+Choices:
+- Each species is a parametric petal PROFILE plugged into the same furl-and-bloom
+  engine (`src/ui/flowers.js`): a shape function (round / broad / pointed /
+  heart-notched), one or more radial layers (count + size + offset), and a
+  signature hue. Not images - so every flower animates identically across the
+  cycle and stays crisp at any size.
+- COLOR still follows the phase (crimson closed -> the species' rose open), tinted
+  per species. This is the deliberate call from the earlier discussion (option 1):
+  vary SHAPE, keep the phase color-encoding, and curate species in the warm
+  pink-red family so their natural hues are compatible. Rejected: letting each
+  flower wear fully natural colors (would drop the phase-as-color signal).
+- v1 set: rose, cherry blossom (sakura), lotus, poppy, dahlia. Chosen for
+  distinct silhouettes AND cycle/femininity symbolism.
+- Stored as device-local `prefs.flower` (default rose), validated against the
+  species set on both sides. Never crosses the wire. Backend keeps a duplicated
+  key set in `petalMethods.js` in sync with `flowers.js` (noted in code).
+Consequences: `flowers.js` is CommonJS so it is both unit-testable under node and
+importable by the ESM UI via esbuild interop. Picker lives in cycle-settings with
+live thumbnails (`FlowerThumb`). Verify: `npm run verify` green (32 tests, incl.
+per-species petal validity + bloom-growth + fallback). Interactive preview updated
+with a species selector.
+
 ## 2026-07-06 - Petal-dial UI (slice 5)
 Tier: T1 (presentation; no wire or data change)
 Context: build the signature visual the whole product/name rests on (DECISIONS

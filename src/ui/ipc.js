@@ -103,7 +103,7 @@ const mockMethods = {
     const today = new Date().toISOString().slice(0, 10)
     return { known: true, phase: pr.phase, dayOfCycle: pr.dayOfCycle, cycleLen: 28, nextPeriodStart: pr.nextPeriodStart, daysUntilNextPeriod: Math.round((new Date(pr.nextPeriodStart) - new Date(today)) / 86400000), ovulationEst: pr.ovulationEst, ovulationSource: 'calendar', fertileStart: pr.fertileStart, fertileEnd: pr.fertileEnd, confidence: 'medium' }
   },
-  'prefs:get': async () => ({ avgCycleLength: mock.prefs?.avgCycleLength ?? null, avgPeriodLength: mock.prefs?.avgPeriodLength ?? null, lutealLength: mock.prefs?.lutealLength ?? null, goal: mock.prefs?.goal || 'track' }),
+  'prefs:get': async () => ({ avgCycleLength: mock.prefs?.avgCycleLength ?? null, avgPeriodLength: mock.prefs?.avgPeriodLength ?? null, lutealLength: mock.prefs?.lutealLength ?? null, goal: mock.prefs?.goal || 'track', flower: mock.prefs?.flower || 'rose' }),
   'prefs:set': async (patch) => { mock.prefs = { ...(mock.prefs || {}), ...patch }; return { ok: true } },
   'day:get': async ({ date }) => { const r = mock.days.get(date); return r && !r.deleted ? r : null },
   'day:getAll': async () => [...mock.days.values()].filter((d) => !d.deleted).sort((a, b) => b.date.localeCompare(a.date)),

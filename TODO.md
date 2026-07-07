@@ -50,6 +50,12 @@ Build order and slice status. Newest work at the top of each section.
     mount, reduced-motion respected. Now the main-screen hero.
   - Interactive standalone preview built to design/verify the visuals.
 
+- **Slice 6 - flower picker** (2026-07-07)
+  - `src/ui/flowers.js`: five real species (rose, cherry blossom, lotus, poppy,
+    dahlia) as parametric petal profiles into the same bloom engine; shape varies,
+    phase color-gradient preserved (tinted per species). Device-local
+    `prefs.flower`, picker in cycle-settings with live thumbnails.
+
 ## Next slices
 
 - **Slice 4 - JSON export / import.** Plain local file download + import
