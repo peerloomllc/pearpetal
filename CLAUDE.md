@@ -23,14 +23,18 @@ sync) rather than copy-forked.
 
 ## Status
 
-Slice 1 scaffolded (2026-07-06): the three-layer app is stood up on
-`@peerloom/core`, with the PRIVATE base (own-device cycle log) and own-device
-linking working. Backend: `src/petalWire.js` (apply rules), `src/petalMethods.js`
-(cycle / device / day / period methods), `src/bare.js` (worklet). UI: `src/ui/`
-(onboarding, day log, devices). Wire protocol v1 in
-`proposals/2026-07-06-wire-protocol.md` (T3, amended for date-keyed day rows).
-Next slices: partner SHARED base (consent-scoped projection), local prediction,
-JSON export/import, the petal-dial UI. See `TODO.md`.
+Slices 1-2 built (2026-07-06) on `@peerloom/core`. Backend: `src/petalWire.js`
+(apply rules for both base kinds), `src/petalMethods.js` (cycle / device / day /
+period / share / partner methods), `src/prediction.js` (pure projection),
+`src/bare.js` (worklet). UI: `src/ui/` (onboarding, day log, devices, sharing,
+partner view).
+- Slice 1: PRIVATE base (own-device cycle log) + own-device linking.
+- Slice 2: per-partner SHARED base - owner-written, consent-scoped (phase /
+  fertility / full) projection; partner read-only (owner-signature enforced);
+  share invite withholds the private base key.
+Wire protocol v1 in `proposals/2026-07-06-wire-protocol.md` (T3, amended for
+date-keyed day rows). Next: local prediction, JSON export/import, the petal-dial
+UI. See `TODO.md`.
 
 ## Canonical verify
 

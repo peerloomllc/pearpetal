@@ -49,8 +49,8 @@ function Chip ({ active, onClick, children, color }) {
 function flowColor (k) { return colors.flow[k] || colors.track }
 
 // --- onboarding -------------------------------------------------------------
-function Onboarding ({ onReady }) {
-  const [mode, setMode] = useState(null) // null | 'link'
+function Onboarding ({ onReady, onViewerReady }) {
+  const [mode, setMode] = useState(null) // null | 'link' | 'partner'
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
 
@@ -62,9 +62,14 @@ function Onboarding ({ onReady }) {
     setErr('')
     try { await call('link:join', { inviteKey: code.trim() }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
   }
+  const joinPartner = async () => {
+    setErr('')
+    try { await call('partner:join', { inviteKey: code.trim() }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
+  }
   const scan = async () => {
     try { const r = await call('shell:scanQr'); if (r?.code) setCode(r.code) } catch {}
   }
+  const back = () => { setMode(null); setErr(''); setCode('') }
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100%', justifyContent: 'center' }}>
@@ -72,25 +77,172 @@ function Onboarding ({ onReady }) {
         <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
         <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>Private cycle tracking. No account, no server. Your data stays on your devices.</div>
       </div>
-      {mode !== 'link' && (
+      {mode === null && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
           <Btn onClick={start}>Start tracking</Btn>
           <Btn kind='ghost' onClick={() => { setMode('link'); setErr('') }}>Link another device</Btn>
+          <Btn kind='ghost' onClick={() => { setMode('partner'); setErr('') }}>View a partner's cycle</Btn>
         </div>
       )}
-      {mode === 'link' && (
+      {(mode === 'link' || mode === 'partner') && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-          <div style={{ color: colors.text.secondary, fontSize: 14 }}>On your other device, open Devices and copy its link code. Paste it here.</div>
-          <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder='Paste link code' rows={3}
+          <div style={{ color: colors.text.secondary, fontSize: 14 }}>
+            {mode === 'link'
+              ? 'On your other device, open Devices and copy its link code. Paste it here.'
+              : "Paste the share code your partner gave you. You'll see only what they chose to share."}
+          </div>
+          <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder='Paste code' rows={3}
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
           <div style={{ display: 'flex', gap: spacing.sm }}>
-            <Btn onClick={link} style={{ flex: 1 }}>Link this device</Btn>
+            <Btn onClick={mode === 'link' ? link : joinPartner} style={{ flex: 1 }}>{mode === 'link' ? 'Link this device' : 'View their cycle'}</Btn>
             <Btn kind='ghost' onClick={scan}>Scan</Btn>
           </div>
-          <Btn kind='ghost' onClick={() => { setMode(null); setErr('') }}>Back</Btn>
+          <Btn kind='ghost' onClick={back}>Back</Btn>
         </div>
       )}
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
+    </div>
+  )
+}
+
+// --- sharing (owner side) + partner view ------------------------------------
+const SCOPE_OPTS = [
+  { key: 'phase', label: 'Phase only', desc: 'Current phase + next period date' },
+  { key: 'fertility', label: 'Fertility', desc: 'Adds the fertile window + ovulation estimate' },
+  { key: 'full', label: 'Full', desc: 'Adds a redacted day summary (coarse symptoms, never notes)' },
+]
+const PHASE_LABEL = { menstrual: 'Menstrual', follicular: 'Follicular', fertile: 'Fertile', luteal: 'Luteal' }
+
+function Sharing ({ onClose, onOpenPartner }) {
+  const [scope, setScope] = useState('phase')
+  const [shares, setShares] = useState([])
+  const [partners, setPartners] = useState([])
+  const [err, setErr] = useState('')
+  const load = async () => {
+    setShares(await call('share:list').catch(() => []))
+    setPartners(await call('partner:list').catch(() => []))
+  }
+  useEffect(() => { load() }, [])
+  const create = async () => {
+    setErr('')
+    try { await call('share:create', { scope }); haptic('success'); load() } catch (e) { setErr(e.message) }
+  }
+  const revoke = async (groupId) => { try { await call('share:revoke', { groupId }); haptic('warn'); load() } catch (e) { setErr(e.message) } }
+  const copy = async (code) => { try { await navigator.clipboard.writeText(code); haptic('success') } catch { call('shell:share', { text: code }).catch(() => {}) } }
+
+  return (
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 20, fontWeight: 600 }}>Sharing</div>
+        <Btn kind='ghost' onClick={onClose}>Done</Btn>
+      </div>
+
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+        <div style={{ fontSize: 15, fontWeight: 500 }}>Share with a partner</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+          {SCOPE_OPTS.map((o) => (
+            <button key={o.key} onClick={() => setScope(o.key)} style={{
+              textAlign: 'left', borderRadius: radius.lg, padding: spacing.md, border: `1px solid ${scope === o.key ? colors.primary : colors.border}`,
+              background: scope === o.key ? 'rgba(232,133,155,0.08)' : 'transparent',
+            }}>
+              <div style={{ color: colors.text.primary, fontWeight: 500, fontSize: 14 }}>{o.label}</div>
+              <div style={{ color: colors.text.muted, fontSize: 12, marginTop: 2 }}>{o.desc}</div>
+            </button>
+          ))}
+        </div>
+        <Btn onClick={create}>Create a share link</Btn>
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>Your full log and notes never leave your devices. Revoking stops future updates but cannot unsend what a partner already received.</div>
+      </div>
+
+      {shares.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+          <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>People you share with</div>
+          {shares.map((s) => (
+            <div key={s.groupId} style={{ ...card, padding: spacing.md, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ color: colors.text.primary, fontWeight: 500, textTransform: 'capitalize' }}>{s.scope}</span>
+                <div style={{ display: 'flex', gap: spacing.sm }}>
+                  <Btn kind='ghost' onClick={() => copy(s.inviteKey)} style={{ padding: '6px 10px', fontSize: 13 }}>Copy code</Btn>
+                  <Btn kind='ghost' onClick={() => revoke(s.groupId)} style={{ padding: '6px 10px', fontSize: 13, color: colors.error }}>Revoke</Btn>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {partners.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+          <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Shared with you</div>
+          {partners.map((p) => (
+            <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: colors.text.primary, fontWeight: 500 }}>A partner's cycle</span>
+              <span style={{ color: colors.text.muted, fontSize: 12 }}>{p.scope || '...'} ›</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
+    </div>
+  )
+}
+
+function PartnerView ({ groupId, onClose, onLeft }) {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  const load = async () => { try { setData(await call('partner:view', { groupId })) } catch (e) { setErr(e.message) } }
+  useEffect(() => { load() }, [groupId])
+  useEffect(() => on('group:updated', (d) => { if (d?.groupId === groupId) load() }), [groupId])
+  const leave = async () => { try { await call('partner:leave', { groupId }); onLeft() } catch (e) { setErr(e.message) } }
+
+  const phase = data?.phase
+  const predict = data?.predict
+  return (
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 20, fontWeight: 600 }}>Partner's cycle</div>
+        <Btn kind='ghost' onClick={onClose}>Back</Btn>
+      </div>
+      {!data && !err && <div style={{ color: colors.text.muted, textAlign: 'center', padding: spacing.lg }}>Waiting for their device to sync...</div>}
+      {data && (
+        <>
+          <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+            <div style={{ fontSize: 13, color: colors.text.muted }}>Current phase</div>
+            <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>{phase ? (PHASE_LABEL[phase.phase] || phase.phase) : 'Not shared yet'}</div>
+            {phase?.dayOfCycle != null && <div style={{ color: colors.text.secondary, fontSize: 14 }}>Day {phase.dayOfCycle} of cycle</div>}
+          </div>
+          {predict && (
+            <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+              {predict.nextPeriodStart && <Row label='Next period' value={predict.nextPeriodStart} />}
+              {predict.fertileStart && <Row label='Fertile window' value={`${predict.fertileStart} - ${predict.fertileEnd}`} />}
+              {predict.ovulationEst && <Row label='Ovulation (est.)' value={predict.ovulationEst} />}
+            </div>
+          )}
+          {data.scope === 'full' && (data.summary || []).length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+              <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Recent days</div>
+              {data.summary.map((s) => (
+                <div key={s.date} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.md }}>
+                  <span style={{ width: 12, height: 12, borderRadius: radius.full, background: s.flow ? colors.flow.medium : colors.track, flexShrink: 0 }} />
+                  <span style={{ color: colors.text.primary, fontWeight: 500, width: 104 }}>{s.date}</span>
+                  <span style={{ color: colors.text.secondary, fontSize: 13, flex: 1 }}>{(s.symptomTags || []).join(' · ') || '-'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ color: colors.text.muted, fontSize: 12, textAlign: 'center' }}>They chose to share {data.scope || 'this'}. You cannot see their full log.</div>
+          <Btn kind='ghost' onClick={leave} style={{ color: colors.error }}>Stop viewing</Btn>
+        </>
+      )}
+      {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
+    </div>
+  )
+}
+function Row ({ label, value }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span style={{ color: colors.text.secondary, fontSize: 14 }}>{label}</span>
+      <span style={{ color: colors.text.primary, fontWeight: 500 }}>{value}</span>
     </div>
   )
 }
@@ -207,34 +359,65 @@ function Devices ({ onClose }) {
   )
 }
 
+// --- viewer-only home (a device that only watches partners, no own cycle) ---
+function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
+  const [partners, setPartners] = useState([])
+  const load = async () => setPartners(await call('partner:list').catch(() => []))
+  useEffect(() => { load() }, [])
+  return (
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: `calc(${spacing.xl}px + var(--pear-safe-top))`, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+      <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
+      <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Shared with you</div>
+      {partners.map((p) => (
+        <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: colors.text.primary, fontWeight: 500 }}>A partner's cycle</span>
+          <span style={{ color: colors.text.muted, fontSize: 12 }}>{p.scope || '...'} ›</span>
+        </button>
+      ))}
+      <Btn kind='ghost' onClick={onBecomeOwner}>Start tracking my own cycle</Btn>
+    </div>
+  )
+}
+
 // --- root -------------------------------------------------------------------
 export default function App () {
-  const [ready, setReady] = useState(null) // null (loading) | false (onboard) | true
+  const [mode, setMode] = useState(null) // null (loading) | 'onboard' | 'owner' | 'viewer'
+  const [screen, setScreen] = useState('main') // 'main' | 'devices' | 'share'
+  const [partnerGroup, setPartnerGroup] = useState(null)
   const [date, setDate] = useState(todayIso())
   const [days, setDays] = useState([])
-  const [showDevices, setShowDevices] = useState(false)
 
   const refresh = useCallback(async () => { setDays(await call('day:getAll').catch(() => [])) }, [])
 
   const boot = useCallback(async () => {
     const s = await call('cycle:status').catch(() => ({ hasBase: false }))
-    setReady(!!s.hasBase)
-    if (s.hasBase) { await call('device:publish').catch(() => {}); refresh() }
+    if (s.hasBase) { setMode('owner'); await call('device:publish').catch(() => {}); refresh(); return }
+    const partners = await call('partner:list').catch(() => [])
+    setMode(partners.length ? 'viewer' : 'onboard')
   }, [refresh])
 
   useEffect(() => { boot() }, [boot])
-  // Re-fetch when the worklet signals the view changed (a peer device synced).
-  useEffect(() => on('group:updated', () => { if (ready) refresh() }), [ready, refresh])
+  useEffect(() => on('group:updated', () => { if (mode === 'owner') refresh() }), [mode, refresh])
 
-  if (ready === null) return <div style={{ height: '100%' }} />
-  if (!ready) return <Onboarding onReady={boot} />
-  if (showDevices) return <Devices onClose={() => setShowDevices(false)} />
+  if (mode === null) return <div style={{ height: '100%' }} />
+  if (mode === 'onboard') return <Onboarding onReady={boot} onViewerReady={boot} />
+
+  if (partnerGroup) return <PartnerView groupId={partnerGroup} onClose={() => setPartnerGroup(null)} onLeft={() => { setPartnerGroup(null); boot() }} />
+
+  if (mode === 'viewer') return <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); boot() }} />
+
+  // owner
+  if (screen === 'devices') return <Devices onClose={() => setScreen('main')} />
+  if (screen === 'share') return <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: `calc(${spacing.xl}px + var(--pear-safe-top))`, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
-        <Btn kind='ghost' onClick={() => setShowDevices(true)}>Devices</Btn>
+        <div style={{ display: 'flex', gap: spacing.sm }}>
+          <Btn kind='ghost' onClick={() => setScreen('share')}>Share</Btn>
+          <Btn kind='ghost' onClick={() => setScreen('devices')}>Devices</Btn>
+        </div>
       </div>
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
       <div>

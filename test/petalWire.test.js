@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const b4a = require('b4a')
 const { generateKeypair } = require('@peerloom/core/identity')
 const { signValue } = require('@peerloom/core/records')
-const { rowApplyDecision, applyPetalOp, deviceKey, dayKey, periodKey } = require('../src/petalWire')
+const { rowApplyDecision, rowSharedDecision, applyPetalOp, deviceKey, dayKey, periodKey, phaseKey, predictKey } = require('../src/petalWire')
 
 const KP = generateKeypair()
 const PUB = b4a.toString(KP.publicKey, 'hex')
@@ -107,4 +107,48 @@ test('applyPetalOp ignores non-put ops and out-of-namespace keys', async () => {
   await applyPetalOp({ type: 'del', key: dayKey('20260706') }, { view })
   await applyPetalOp({ type: 'put', key: 'junk:1', value: dayRow() }, { view })
   assert.equal(view._map.size, 0)
+})
+
+// --- shared base: owner-write-only projection (partner is read-only) ---------
+
+const OWNER = generateKeypair()
+const OWNERPUB = b4a.toString(OWNER.publicKey, 'hex')
+const PARTNER = generateKeypair()
+const PARTNERPUB = b4a.toString(PARTNER.publicKey, 'hex')
+
+const shareMeta = (kp = OWNER, pub = OWNERPUB, owner = OWNERPUB, extra = {}) =>
+  signValue({ pubkey: pub, updatedAt: 1000, ownerPubkey: owner, scope: 'phase', ...extra }, kp.secretKey)
+const phaseRow = (kp, pub, extra = {}) => signValue({ pubkey: pub, updatedAt: 2000, phase: 'fertile', dayOfCycle: 12, ...extra }, kp.secretKey)
+
+test('share:meta claim: accepted only when the claimant names itself owner', () => {
+  assert.equal(rowSharedDecision('share:meta', shareMeta(), null), 'accept')
+  // Claimant names someone else as owner -> reject (cannot claim on another's behalf).
+  assert.equal(rowSharedDecision('share:meta', shareMeta(OWNER, OWNERPUB, PARTNERPUB), null), 'reject')
+})
+
+test('share:meta update: only the established owner may change it', () => {
+  const existing = shareMeta()
+  assert.equal(rowSharedDecision('share:meta', shareMeta(OWNER, OWNERPUB, OWNERPUB, { updatedAt: 3000, scope: 'full' }), existing), 'accept')
+  // A partner-signed meta update is rejected.
+  assert.equal(rowSharedDecision('share:meta', shareMeta(PARTNER, PARTNERPUB, PARTNERPUB, { updatedAt: 3000 }), existing), 'reject')
+})
+
+test('phase:current accepted from the owner, rejected from the partner', () => {
+  assert.equal(rowSharedDecision(phaseKey(), phaseRow(OWNER, OWNERPUB), null, OWNERPUB), 'accept')
+  // Same key, validly self-signed by the partner, but not the owner -> reject.
+  assert.equal(rowSharedDecision(phaseKey(), phaseRow(PARTNER, PARTNERPUB), null, OWNERPUB), 'reject')
+})
+
+test('shared projection row rejected when no owner is established yet', () => {
+  assert.equal(rowSharedDecision(predictKey(), signValue({ pubkey: OWNERPUB, updatedAt: 2000, nextPeriodStart: '2026-08-01' }, OWNER.secretKey), null, null), 'reject')
+})
+
+test('applyPetalOp end to end: owner projection lands, partner forgery dropped', async () => {
+  const view = mockView()
+  await applyPetalOp({ type: 'put', key: 'share:meta', value: shareMeta() }, { view })
+  await applyPetalOp({ type: 'put', key: phaseKey(), value: phaseRow(OWNER, OWNERPUB) }, { view })
+  assert.equal(view._map.get(phaseKey()).phase, 'fertile')
+  // A partner tries to overwrite the phase with a validly self-signed row.
+  await applyPetalOp({ type: 'put', key: phaseKey(), value: phaseRow(PARTNER, PARTNERPUB, { phase: 'menstrual', updatedAt: 9000 }) }, { view })
+  assert.equal(view._map.get(phaseKey()).phase, 'fertile') // unchanged - forgery rejected
 })

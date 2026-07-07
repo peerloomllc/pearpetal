@@ -20,15 +20,25 @@ Build order and slice status. Newest work at the top of each section.
   - Verify green: 13 wire unit tests + one-device method smoke test + all three
     bundles build.
 
+- **Slice 2 - partner SHARED base** (2026-07-06)
+  - Separate Autobase per partner link, own encryption key. Owner-write-only
+    projection enforced by signature (`share:meta` owner claim + owner-signed
+    `phase:current` / `predict:current` / `summary:`). Partner is an Autobase
+    writer whose rows apply rejects -> read-only.
+  - Consent scopes (phase / fertility / full) gate what the owner writes, so the
+    partner structurally never receives more. `full` summaries carry only a fixed
+    symptom whitelist, never notes/BBT.
+  - Share invite grants only the shared base (withholds the private base key).
+  - `refreshShares` keeps projections current after each private-log change.
+  - UI: Sharing screen (create/scope/list/revoke + copy code), partner viewer
+    (join by code, see the scoped projection), viewer-only onboarding path.
+  - Basic projection in `src/prediction.js` (pure, unit-tested).
+
 ## Next slices
 
-- **Slice 2 - partner SHARED base.** Separate Autobase per partner link, its own
-  encryption key, owner-write-only projection (`phase:current`, `predict:current`,
-  `summary:` gated by scope). Partner read-only. Share invite withholds the
-  private base key. Consent scope levels (phase / fertility / full).
-- **Slice 3 - local prediction.** On-device cycle-length + fertile-window
-  estimate from the period history, never written to any base. "computing..."
-  state on a freshly linked device.
+- **Slice 3 - local prediction.** Refine `src/prediction.js` (BBT, variable
+  luteal, irregular cycles), add `prefs` (avg cycle/period/luteal), "computing..."
+  state on a freshly linked device. Predictions stay off the private-base wire.
 - **Slice 4 - JSON export / import.** Plain local file download + import
   (recovery + migration). No encryption wrapper, no cloud.
 - **Slice 5 - petal-dial UI.** The signature interactive dial driven by
@@ -37,7 +47,11 @@ Build order and slice status. Newest work at the top of each section.
 
 ## Deferred / later
 
-- Native QR scan + QR render for `link:invite` (slice 1 uses paste/copy).
+- **Shared-base addWriter gating** (security): a partner is an Autobase writer, so
+  they could `addWriter` a third party to the SHARED base (bounded leak: only the
+  consented projection, not the private log). Needs apply-level addWriter gating
+  in `@peerloom/core`. Flagged in DECISIONS 2026-07-06 slice 2.
+- Native QR scan + QR render for `link:invite` / share codes (slices use paste/copy).
 - iOS Local Network prompt module (faster first-connect; port from PearList).
 - Background sync, notifications (only if a use case needs them; a personal
   tracker may not).
