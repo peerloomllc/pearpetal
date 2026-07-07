@@ -34,10 +34,14 @@ session lives in memory + (should land in) DECISIONS.md.
 Everything here ships in v1. Rough build order below (the onboarding demo is last
 because it demos the finished app).
 
-1. **iOS Local Network prompt module** (port `pearlist/modules/local-network`). CONFIRMED
-   REQUIRED 2026-07-07: without it iOS never prompts for Local Network, so partner sync's
-   LAN path is blocked (works only after a manual re-entry / slow DHT fallback). A Bonjour
-   probe at boot forces the prompt; also fixes slow first-connect (~3.4s vs 112-147s).
+1. **iOS Local Network prompt module** - CODE DONE 2026-07-07 (branch
+   `feature/ios-local-network`), pending on-hardware confirmation. Ported
+   `pearlist/modules/local-network` -> `pearpetal/modules/local-network` (service
+   `_pearpetallan._tcp`); boot-time `requestLocalNetworkPermission()` in `app/index.tsx`;
+   `app.json` iOS `infoPlist` gains `NSLocalNetworkUsageDescription` + `NSBonjourServices`;
+   `ios/` regenerated. Verify green, autolinking confirmed. See DECISIONS 2026-07-07.
+   REMAINING: install on the iPhone (`scripts/ios-dev-install.sh`) and confirm the LN prompt
+   appears + partner sync (iPhone <- Android owner) takes the LAN path.
 2. **Invite/share code as a universal-link URL** (`https://peerloomllc.com/join/<payload>`)
    matching the other apps, instead of the raw base64 blob. Applies to both device linking
    and partner share codes; foundation for web invite handling + QR (do before #3).

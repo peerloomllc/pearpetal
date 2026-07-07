@@ -4,8 +4,10 @@ node_modules/
 dist/
 build/
 .expo/
-android/
-ios/
+# Anchored to root: the generated native projects only. Must NOT match
+# modules/local-network/ios/ (the iOS source of our Expo local module).
+/android/
+/ios/
 # Generated bundles (produced by build:bare / build:ui)
 assets/*.bundle
 assets/index.html

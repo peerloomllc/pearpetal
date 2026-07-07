@@ -2,6 +2,35 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-07 - iOS Local Network prompt module (release blocker #1)
+Tier: T1 (device-local permission trigger; no wire / IPC / topic change)
+Context: on the 2026-07-07 cross-platform hardware verify, iOS never prompted for
+Local Network (no toggle under Settings > PearPetal > Local Network), so same-WiFi
+partner + own-device sync could not take the direct LAN path - it only completed
+after a manual view re-entry that fell back to the slow DHT relay. iOS only surfaces
+the LN prompt the first time an app actually touches the LAN, and modern Hyperswarm
+(hyperdht, DHT + UDP holepunch, no Bonjour) never attempts a direct same-subnet
+connect on first launch, so the prompt never fires. This is the exact issue PearList
+already solved (see pearlist/modules/local-network, PR #21).
+Choice: port PearList's iOS-only Expo local module verbatim, renamed for PearPetal
+(`modules/local-network`, service type `_pearpetallan._tcp`, queue
+`com.pearpetal.localnetwork`, advertised name "PearPetal"). On boot,
+`app/index.tsx` calls `requestLocalNetworkPermission()` fire-and-forget (no-op off
+iOS via `requireOptionalNativeModule`); the Swift module advertises + browses a
+throwaway Bonjour service via the Network framework, which makes iOS evaluate LAN
+access and show the prompt, then tears the probe down after ~8s. `app.json` gains
+`ios.infoPlist.NSLocalNetworkUsageDescription` + `NSBonjourServices`
+(`_hyperswarm._udp`, `_pearpetallan._tcp`); `ios/` regenerated via `expo prebuild`
+so Info.plist carries them (ios/ is gitignored, source of truth is app.json).
+Alternatives: none seriously - this is the proven suite pattern. Bonjour/mDNS as an
+actual discovery transport was out of scope (the probe is throwaway).
+Consequences: on PearList this also cut cold first-connect from ~112-147s to ~3.4s
+(the same-WiFi holepunch was blocked on the pending LN permission), so expect the
+same speedup here. Autolinking confirmed (`expo-modules-autolinking resolve
+--platform apple` lists pod `LocalNetwork` -> `LocalNetworkModule`). Still needs
+on-hardware confirmation (iPhone shows + user grants the prompt; partner sync takes
+the LAN path). LIKELY SUITE-WIDE precedent: PearCircle will want the same module.
+
 ## 2026-07-07 - iOS cross-platform bring-up + native-addon-mismatch fix
 Tier: T2 (build/dependency + a shared @peerloom/core touch; no wire change)
 Context: first time PearPetal's iOS worklet engine actually ran. Engine `init()`
