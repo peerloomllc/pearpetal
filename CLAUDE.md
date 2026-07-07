@@ -23,18 +23,20 @@ sync) rather than copy-forked.
 
 ## Status
 
-Slices 1-2 built (2026-07-06) on `@peerloom/core`. Backend: `src/petalWire.js`
+Slices 1-3 built (2026-07-06) on `@peerloom/core`. Backend: `src/petalWire.js`
 (apply rules for both base kinds), `src/petalMethods.js` (cycle / device / day /
-period / share / partner methods), `src/prediction.js` (pure projection),
-`src/bare.js` (worklet). UI: `src/ui/` (onboarding, day log, devices, sharing,
-partner view).
+period / share / partner / prefs / prediction methods), `src/prediction.js` (pure
+projection), `src/bare.js` (worklet). UI: `src/ui/` (onboarding, day log, cycle
+summary, settings, devices, sharing, partner view).
 - Slice 1: PRIVATE base (own-device cycle log) + own-device linking.
 - Slice 2: per-partner SHARED base - owner-written, consent-scoped (phase /
   fertility / full) projection; partner read-only (owner-signature enforced);
   share invite withholds the private base key.
+- Slice 3: refined on-device prediction (median cycle length, BBT-confirmed
+  ovulation, confidence, prefs) surfaced in the owner UI via `cycle:prediction`;
+  never written to any base.
 Wire protocol v1 in `proposals/2026-07-06-wire-protocol.md` (T3, amended for
-date-keyed day rows). Next: local prediction, JSON export/import, the petal-dial
-UI. See `TODO.md`.
+date-keyed day rows). Next: JSON export/import, the petal-dial UI. See `TODO.md`.
 
 ## Canonical verify
 

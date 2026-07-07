@@ -2,6 +2,36 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-06 - Local prediction refinement + owner-facing prediction (slice 3)
+Tier: T1 (app logic; no wire change - prediction is computed, never stored)
+Context: slice-2 shipped a basic calendar projection, and predictions were only
+visible to a partner (the owner never saw their own). Refine the algorithm and
+surface it to the owner.
+Choices:
+- Cycle length = MEDIAN of the last up-to-6 usable gaps (robust to the odd
+  irregular cycle), not the mean. Falls back to a user pref, then 28.
+- Ovulation = BBT-confirmed when a sustained thermal shift is detected this cycle
+  (day before the first sustained rise of >=0.2C over a 6-day baseline), else the
+  calendar estimate (next period - luteal length). `ovulationSource` says which.
+- `confidence` (none/low/medium/high): high when BBT-confirmed OR >=3 tight
+  cycles; medium with some history; low on a single start with defaults.
+- Device-local `prefs` (avgCycleLength / avgPeriodLength / lutealLength / goal),
+  clamped to sane bounds, feed prediction before enough history exists. Changing
+  prefs refreshes any partner projections.
+- New `cycle:prediction` method computes the projection on demand from the
+  private log and returns it to the owner's UI. It is NEVER written to the
+  private base - consistent with open-Q2 (predictions never cross the private
+  wire; a freshly linked device recomputes and shows "Learning your cycle" until
+  it has data).
+Alternatives: mean cycle length (rejected - one long/irregular cycle skews it);
+writing predictions to the private base for instant cross-device display
+(rejected again per open-Q2 - recompute on device instead).
+Consequences: `src/prediction.js` is the single pure source of the projection,
+used by both the owner UI (`cycle:prediction`) and the partner projection
+(`refreshShares`). Not medical/contraception grade - the UI states this. Verify:
+28 unit tests (median, BBT override, luteal/cycle prefs, confidence, irregular
+handling) + smoke test for cycle:prediction + prefs persistence/clamping.
+
 ## 2026-07-06 - Partner shared base (slice 2)
 Tier: T3 (new base kind, sharing/consent surface)
 Context: implement the per-partner SHARED base from the proposal - a separate

@@ -379,6 +379,85 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   )
 }
 
+// --- cycle summary (owner's own prediction) ---------------------------------
+const PHASE_COLOR = { menstrual: '#c8384f', follicular: '#c9a0d8', fertile: '#e8859b', luteal: '#8f8288' }
+function fmtDate (iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }) } catch { return iso } }
+
+function CycleSummary ({ pred, onSettings }) {
+  if (!pred) return null
+  if (!pred.known) {
+    return (
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        <div style={{ fontSize: 15, fontWeight: 500 }}>Learning your cycle</div>
+        <div style={{ color: colors.text.secondary, fontSize: 14 }}>Log a period start or two and PearPetal will predict your next period, fertile window, and phase. Everything is computed on this device.</div>
+        <button onClick={onSettings} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: colors.primary, fontSize: 13, padding: 0 }}>Set your average cycle length ›</button>
+      </div>
+    )
+  }
+  const days = pred.daysUntilNextPeriod
+  const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+          <span style={{ width: 14, height: 14, borderRadius: radius.full, background: PHASE_COLOR[pred.phase] || colors.track }} />
+          <span style={{ fontSize: 20, fontWeight: 600, color: colors.text.primary }}>{PHASE_LABEL[pred.phase] || pred.phase}</span>
+        </div>
+        <button onClick={onSettings} style={{ background: 'none', border: 'none', color: colors.text.muted, fontSize: 13, padding: 0 }}>Settings</button>
+      </div>
+      <div style={{ color: colors.text.secondary, fontSize: 14 }}>Day {pred.dayOfCycle} of your cycle</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+        <Row label='Next period' value={`${fmtDate(pred.nextPeriodStart)} · ${nextLabel}`} />
+        <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} />
+        <Row label={pred.ovulationSource === 'bbt' ? 'Ovulation (from BBT)' : 'Ovulation (est.)'} value={fmtDate(pred.ovulationEst)} />
+      </div>
+      <div style={{ color: colors.text.muted, fontSize: 11 }}>
+        {pred.confidence === 'high' ? 'Based on your recent cycles.' : pred.confidence === 'medium' ? 'Estimate improves as you log more cycles.' : 'Early estimate - log a few cycles to sharpen it.'} Not medical advice.
+      </div>
+    </div>
+  )
+}
+
+function CycleSettings ({ onClose, onSaved }) {
+  const [prefs, setPrefs] = useState(null)
+  useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
+  if (!prefs) return null
+  const save = async (patch) => { const next = { ...prefs, ...patch }; setPrefs(next); await call('prefs:set', patch).catch(() => {}); onSaved && onSaved() }
+  const Stepper = ({ label, value, def, min, max, field }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <span style={{ color: colors.text.secondary, fontSize: 14 }}>{label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+        <Btn kind='ghost' style={{ padding: '4px 12px' }} onClick={() => save({ [field]: Math.max(min, (value ?? def) - 1) })}>-</Btn>
+        <span style={{ width: 28, textAlign: 'center', color: colors.text.primary, fontWeight: 500 }}>{value ?? def}</span>
+        <Btn kind='ghost' style={{ padding: '4px 12px' }} onClick={() => save({ [field]: Math.min(max, (value ?? def) + 1) })}>+</Btn>
+      </div>
+    </div>
+  )
+  return (
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 20, fontWeight: 600 }}>Cycle settings</div>
+        <Btn kind='ghost' onClick={onClose}>Done</Btn>
+      </div>
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
+        <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
+        <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />
+        <Stepper label='Luteal phase length' value={prefs.lutealLength} def={14} min={9} max={18} field='lutealLength' />
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
+      </div>
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        <div style={{ color: colors.text.secondary, fontSize: 14 }}>What are you tracking for?</div>
+        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+          {[['track', 'General'], ['conceive', 'Trying to conceive'], ['avoid', 'Avoiding pregnancy']].map(([k, l]) => (
+            <Chip key={k} active={(prefs.goal || 'track') === k} onClick={() => save({ goal: k })}>{l}</Chip>
+          ))}
+        </div>
+        <div style={{ color: colors.text.muted, fontSize: 11 }}>PearPetal is not contraception. Do not rely on it to avoid pregnancy.</div>
+      </div>
+    </div>
+  )
+}
+
 // --- root -------------------------------------------------------------------
 export default function App () {
   const [mode, setMode] = useState(null) // null (loading) | 'onboard' | 'owner' | 'viewer'
@@ -386,8 +465,12 @@ export default function App () {
   const [partnerGroup, setPartnerGroup] = useState(null)
   const [date, setDate] = useState(todayIso())
   const [days, setDays] = useState([])
+  const [pred, setPred] = useState(null)
 
-  const refresh = useCallback(async () => { setDays(await call('day:getAll').catch(() => [])) }, [])
+  const refresh = useCallback(async () => {
+    const [d, pr] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null)])
+    setDays(d); setPred(pr)
+  }, [])
 
   const boot = useCallback(async () => {
     const s = await call('cycle:status').catch(() => ({ hasBase: false }))
@@ -409,6 +492,7 @@ export default function App () {
   // owner
   if (screen === 'devices') return <Devices onClose={() => setScreen('main')} />
   if (screen === 'share') return <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
+  if (screen === 'settings') return <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} />
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: `calc(${spacing.xl}px + var(--pear-safe-top))`, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
@@ -419,6 +503,7 @@ export default function App () {
           <Btn kind='ghost' onClick={() => setScreen('devices')}>Devices</Btn>
         </div>
       </div>
+      <CycleSummary pred={pred} onSettings={() => setScreen('settings')} />
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
       <div>
         <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>

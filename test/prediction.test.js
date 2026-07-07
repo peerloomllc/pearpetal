@@ -1,52 +1,77 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { projectionFromRows, addDays, diffDays } = require('../src/prediction')
+const { projectionFromRows, cycleStarts, median, addDays, diffDays } = require('../src/prediction')
 
-const day = (date, flow) => ({ date, flow })
+const day = (date, flow, bbt) => (bbt === undefined ? { date, flow } : { date, flow, bbt })
+const at = (today) => ({ today })
 
 test('no history: not known, defaults to follicular', () => {
-  const p = projectionFromRows([], [], '2026-07-06')
+  const p = projectionFromRows([], [], at('2026-07-06'))
   assert.equal(p.known, false)
   assert.equal(p.phase, 'follicular')
   assert.equal(p.dayOfCycle, null)
+  assert.equal(p.confidence, 'none')
 })
 
 test('infers a period start from a bleeding run and predicts the next period', () => {
-  // A 3-day bleed starting 2026-07-01; today is day 6 of the cycle.
   const days = [day('2026-07-01', 'medium'), day('2026-07-02', 'medium'), day('2026-07-03', 'light')]
-  const p = projectionFromRows(days, [], '2026-07-06')
+  const p = projectionFromRows(days, [], at('2026-07-06'))
   assert.equal(p.known, true)
   assert.equal(p.dayOfCycle, 6)
-  // With one start and no gap history, cycle length defaults to 28.
-  assert.equal(p.nextPeriodStart, addDays('2026-07-01', 28))
-  // Ovulation ~14 days before the next period; fertile window brackets it.
+  assert.equal(p.nextPeriodStart, addDays('2026-07-01', 28)) // one start -> default 28
   assert.equal(p.ovulationEst, addDays(p.nextPeriodStart, -14))
   assert.equal(diffDays(p.fertileStart, p.ovulationEst), 5)
   assert.equal(diffDays(p.ovulationEst, p.fertileEnd), 1)
+  assert.equal(p.confidence, 'low') // single start, defaults used
 })
 
-test('averages the observed cycle length from multiple starts', () => {
-  // Starts 26 days apart -> predicted length 26, not the 28 default.
-  const days = [day('2026-05-10', 'heavy'), day('2026-06-05', 'heavy'), day('2026-07-01', 'heavy')]
-  const p = projectionFromRows(days, [], '2026-07-02')
-  assert.equal(p.cycleLen, 26)
-  assert.equal(p.nextPeriodStart, addDays('2026-07-01', 26))
-})
-
-test('flow today reads as the menstrual phase', () => {
-  const days = [day('2026-07-06', 'medium')]
-  const p = projectionFromRows(days, [], '2026-07-06')
-  assert.equal(p.phase, 'menstrual')
-})
-
-test('explicit period rows count as cycle starts', () => {
-  const p = projectionFromRows([], [{ start: '2026-06-01' }, { start: '2026-06-29' }], '2026-07-02')
-  assert.equal(p.known, true)
+test('uses the MEDIAN of recent cycle lengths (robust to one irregular cycle)', () => {
+  // Gaps 28, 28, 40 -> median 28, not the mean the 40-day gap would drag up.
+  const starts = [{ start: '2026-01-01' }, { start: '2026-01-29' }, { start: '2026-02-26' }, { start: '2026-04-07' }]
+  const p = projectionFromRows([], starts, at('2026-04-10'))
   assert.equal(p.cycleLen, 28)
 })
 
+test('honors a user cycle-length pref when there is no gap history', () => {
+  const p = projectionFromRows([day('2026-07-01', 'heavy')], [], { today: '2026-07-03', prefs: { avgCycleLength: 31 } })
+  assert.equal(p.cycleLen, 31)
+  assert.equal(p.nextPeriodStart, addDays('2026-07-01', 31))
+})
+
+test('a user luteal-length pref moves the ovulation estimate', () => {
+  const p = projectionFromRows([day('2026-07-01', 'medium')], [], { today: '2026-07-03', prefs: { lutealLength: 12 } })
+  assert.equal(p.ovulationEst, addDays(p.nextPeriodStart, -12))
+})
+
+test('BBT sustained rise overrides the calendar ovulation estimate', () => {
+  const days = [day('2026-07-01', 'medium')]
+  for (const d of ['2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11', '2026-07-12']) days.push(day(d, null, 36.4))
+  days.push(day('2026-07-13', null, 36.75), day('2026-07-14', null, 36.72), day('2026-07-15', null, 36.7))
+  const p = projectionFromRows(days, [], at('2026-07-16'))
+  assert.equal(p.ovulationSource, 'bbt')
+  assert.equal(p.ovulationEst, '2026-07-12') // day before the first sustained shift
+  assert.equal(p.confidence, 'high')
+})
+
+test('flow today reads as the menstrual phase', () => {
+  const p = projectionFromRows([day('2026-07-06', 'medium')], [], at('2026-07-06'))
+  assert.equal(p.phase, 'menstrual')
+})
+
+test('regular history without BBT still reads high confidence', () => {
+  const starts = [{ start: '2026-04-01' }, { start: '2026-04-29' }, { start: '2026-05-27' }, { start: '2026-06-24' }]
+  const p = projectionFromRows([], starts, at('2026-06-30'))
+  assert.equal(p.confidence, 'high') // >=3 tight cycles
+})
+
 test('spotting alone does not start a period', () => {
-  const p = projectionFromRows([day('2026-07-06', 'spotting')], [], '2026-07-06')
-  // Spotting is a flow day (so "known" via... no start): no bleeding run -> unknown.
+  const p = projectionFromRows([day('2026-07-06', 'spotting')], [], at('2026-07-06'))
   assert.equal(p.known, false)
+})
+
+test('helpers: median and cycleStarts', () => {
+  assert.equal(median([28, 30, 26]), 28)
+  assert.equal(median([28, 30]), 29)
+  const starts = cycleStarts([{ date: '2026-07-01', flow: 'medium' }, { date: '2026-07-02', flow: 'light' }], [{ start: '2026-06-01' }])
+  assert.deepEqual(starts, ['2026-06-01', '2026-07-01'])
 })
