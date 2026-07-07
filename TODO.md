@@ -56,12 +56,24 @@ Build order and slice status. Newest work at the top of each section.
     phase color-gradient preserved (tinted per species). Device-local
     `prefs.flower`, picker in cycle-settings with live thumbnails.
 
-## Next slices
+- **Slice 4 - JSON export / import** (2026-07-07)
+  - `export:data` / `import:data`: plain JSON of the user's data only (days +
+    periods + prefs, no secrets, no internal fields). Import creates a private
+    base if none (recovery); imported entries win on a date collision.
+  - Shell-mediated on device (write + share sheet / document picker), Blob
+    download + file input in the browser preview. No encryption wrapper, no cloud.
+  - Two-engine smoke proves export -> fresh-device import reconstructs the log,
+    prediction, and prefs.
 
-- **Slice 4 - JSON export / import.** Plain local file download + import
-  (recovery + migration). No encryption wrapper, no cloud. (The last core slice.)
-- Optional polish: petal dial in the partner view too; ring day-scrub to log a
-  past day by tapping its tick; QR for invites; the iOS local-network module.
+All core slices (1-6) are done. Remaining is polish + the release track below.
+
+## Polish / later
+
+- Petal dial in the partner view too; ring day-scrub to log a past day by tapping
+  its tick; QR render + native camera scan for invites; the iOS local-network
+  module (faster first-connect, port from PearList).
+- On-device two-device verification of real sync (private-base linking + partner
+  sharing) on the Pixel / TCL / iPhone rig - not yet exercised on hardware.
 
 ## Deferred / later
 

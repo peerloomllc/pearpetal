@@ -215,6 +215,87 @@ const methods = {
     return { ok: true }
   },
 
+  // --- export / import (device-local backup + migration) ------------------
+  // Return the full cycle log as a plain JSON object. The shell writes this to a
+  // local file the user saves themselves. No secrets (no identity/keys), no
+  // internal fields - just the data the user entered. Never uploaded anywhere.
+  'export:data': async (_args, ctx) => {
+    const days = []; const periods = []
+    const m = await privateMembership(ctx)
+    if (m) {
+      const base = viewFor(ctx, m.groupId)
+      await base.update()
+      for await (const { value: v } of base.view.createReadStream(DAY_RANGE)) {
+        if (!v || v.deleted) continue
+        const d = { date: v.date }
+        if (v.flow !== undefined) d.flow = v.flow
+        if (Array.isArray(v.symptoms) && v.symptoms.length) d.symptoms = v.symptoms
+        if (Array.isArray(v.mood) && v.mood.length) d.mood = v.mood
+        if (v.notes) d.notes = v.notes
+        if (typeof v.bbt === 'number') d.bbt = v.bbt
+        days.push(d)
+      }
+      for await (const { value: v } of base.view.createReadStream(PERIOD_RANGE)) {
+        if (!v || v.deleted) continue
+        periods.push({ start: v.start, end: v.end ?? null })
+      }
+    }
+    const p = await getPrefs(ctx)
+    const prefs = {}
+    for (const k of ['avgCycleLength', 'avgPeriodLength', 'lutealLength', 'goal', 'flower']) if (p[k] != null) prefs[k] = p[k]
+    return { app: 'pearpetal', version: 1, exportedAt: Date.now(), days, periods, prefs }
+  },
+
+  // Import a previously exported JSON object into this device's private base
+  // (creating one if this device has none - the recovery case). Entries are
+  // re-signed by this device; on a date collision the imported entry wins
+  // (fresh timestamp). Returns how many rows were written.
+  'import:data': async ({ data }, ctx) => {
+    if (!data || data.app !== 'pearpetal' || !Array.isArray(data.days)) throw new Error('not a PearPetal export')
+    let m = await privateMembership(ctx)
+    if (!m) {
+      const r = await ctx.createGroup({ name: 'PearPetal' })
+      await tagKind(ctx, r.groupId, 'private')
+      await publishDevice(ctx, r.groupId)
+      m = { groupId: r.groupId }
+    }
+    const groupId = m.groupId
+    let dCount = 0; let pCount = 0
+    for (const d of data.days) {
+      const nd = normDate(d && d.date)
+      if (!nd) continue
+      const val = { date: nd.iso, createdBy: pubkeyHex(ctx), createdAt: Date.now(), deleted: false }
+      if (d.flow === null || FLOW_VALUES.has(d.flow)) val.flow = d.flow ?? null
+      if (Array.isArray(d.symptoms)) val.symptoms = d.symptoms.slice(0, 32).map((s) => String(s).slice(0, 40))
+      if (Array.isArray(d.mood)) val.mood = d.mood.slice(0, 16).map((s) => String(s).slice(0, 40))
+      if (typeof d.notes === 'string') val.notes = d.notes.slice(0, 2000)
+      if (typeof d.bbt === 'number') val.bbt = d.bbt
+      await putRow(ctx, groupId, dayKey(nd.key), val)
+      dCount++
+    }
+    for (const pr of (data.periods || [])) {
+      const ns = normDate(pr && pr.start)
+      if (!ns) continue
+      const end = pr.end && normDate(pr.end) ? normDate(pr.end).iso : null
+      await putRow(ctx, groupId, periodKey(ns.key), { start: ns.iso, end, createdBy: pubkeyHex(ctx), createdAt: Date.now(), deleted: false })
+      pCount++
+    }
+    if (data.prefs && typeof data.prefs === 'object') {
+      const cur = await getPrefs(ctx); const next = { ...cur }
+      const num = (v, lo, hi) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : undefined)
+      const a = data.prefs
+      if (num(a.avgCycleLength, 21, 45) !== undefined) next.avgCycleLength = num(a.avgCycleLength, 21, 45)
+      if (num(a.avgPeriodLength, 2, 10) !== undefined) next.avgPeriodLength = num(a.avgPeriodLength, 2, 10)
+      if (num(a.lutealLength, 9, 18) !== undefined) next.lutealLength = num(a.lutealLength, 9, 18)
+      if (['track', 'conceive', 'avoid'].includes(a.goal)) next.goal = a.goal
+      if (FLOWERS.has(a.flower)) next.flower = a.flower
+      next.updatedAt = Date.now()
+      await ctx.localDb.put('prefs', next)
+    }
+    await refreshShares(ctx).catch(() => {})
+    return { ok: true, days: dCount, periods: pCount }
+  },
+
   // Start tracking: create the private base (idempotent - returns the existing
   // one if this device already has a cycle). Own devices later link into it.
   'cycle:create': async (_args, ctx) => {

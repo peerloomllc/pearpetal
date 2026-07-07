@@ -15,6 +15,8 @@ import { Asset } from 'expo-asset'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as Linking from 'expo-linking'
 import * as Haptics from 'expo-haptics'
+import * as Sharing from 'expo-sharing'
+import * as DocumentPicker from 'expo-document-picker'
 
 // --- worklet + IPC (module-scoped so it survives remounts) -----------------
 let _worklet: any = null
@@ -169,6 +171,21 @@ export default function Shell () {
         case 'shell:scanQr': {
           // Native camera QR scan is a later slice; the UI falls back to paste.
           return reply(id, { code: null })
+        }
+        case 'shell:export': {
+          // Write the JSON to a file and open the share sheet so the user saves it
+          // wherever they want (Files, Drive, etc). Nothing is uploaded by us.
+          const name = (args?.filename && String(args.filename)) || 'pearpetal-backup.json'
+          const path = FileSystem.cacheDirectory + name
+          await FileSystem.writeAsStringAsync(path, String(args?.json ?? ''), { encoding: FileSystem.EncodingType.UTF8 })
+          if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(path, { mimeType: 'application/json', dialogTitle: 'Save your PearPetal backup' })
+          return reply(id, { ok: true })
+        }
+        case 'shell:import': {
+          const res = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true })
+          if (res.canceled || !res.assets?.[0]?.uri) return reply(id, { json: null })
+          const json = await FileSystem.readAsStringAsync(res.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 })
+          return reply(id, { json })
         }
         case 'shell:navState': {
           canBackRef.current = !!args?.canBack
