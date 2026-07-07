@@ -145,15 +145,25 @@ Legacy custom scheme accepted for both: `pear://pearpetal/link?...`,
 
 | Key | Value |
 |-----|-------|
-| `owner` | `{ pubkey, createdAt, v: 1 }` (singleton; identifies the person) |
-| `device:{pubkey}` | `{ pubkey, label, addedAt, v: 1 }` (linked own devices) |
-| `day:{pubkey}:{yyyymmdd}` | `{ date, flow?: 'spotting'|'light'|'medium'|'heavy', symptoms?: string[], bbt?: number, mood?: string[], intimacy?: { protected?: boolean }, notes?: string, deleted?: boolean, updatedAt, v: 1, sig }` (one row per calendar day per writer; edits are LWW on `updatedAt`) |
-| `period:{pubkey}:{yyyymmddStart}` | `{ start, end?, updatedAt, deleted?: boolean, v: 1, sig }` (explicit period span; optional, else derived locally from `flow` days) |
+| `device:{pubkey}` | `{ pubkey, label, updatedAt, v: 1, sig }` (linked own devices; per-writer keyed) |
+| `day:{yyyymmdd}` | `{ date, flow?: 'spotting'|'light'|'medium'|'heavy'|null, symptoms?: string[], bbt?: number, mood?: string[], intimacy?: { protected?: boolean }, notes?: string, createdBy, createdAt, updatedAt, pubkey, deleted?: boolean, v: 1, sig }` (one row per calendar day, shared across your own devices, edits LWW on `updatedAt`) |
+| `period:{yyyymmddStart}` | `{ start, end?, createdBy, createdAt, updatedAt, pubkey, deleted?: boolean, v: 1, sig }` (explicit period span; optional, else derived locally from `flow` days) |
 
-`yyyymmdd` / `yyyymmddStart` are fixed-width so lexicographic prefix scans return
-date order (substrate key convention). The `{pubkey}` segment must equal the
-value's author (per-writer keyspace); in practice all cycle rows are owner-device
-authored.
+`yyyymmdd` / `yyyymmddStart` are fixed-width so lexicographic scans return date
+order (substrate key convention).
+
+**Amendment 2026-07-06 (implementation, slice 1): `day:` / `period:` are keyed by
+DATE, not by author.** The original spec keyed them `day:{pubkey}:{yyyymmdd}`
+(per-writer keyspace, the PearCircle multi-person pattern). Building it showed that
+is wrong for the private base: every device on it is the SAME person, so you want
+ONE canonical entry per day, editable from any of your devices, not a divergent
+row per device. So `day:`/`period:` are now shared date-keyed rows resolved
+last-writer-wins across your own devices (the author pubkey is still recorded in
+the value and proven by the signature). Only `device:{pubkey}` stays per-writer
+keyed (a device may write only its own roster row, so none can spoof another). The
+`owner` singleton is dropped for slice 1 (the device roster suffices; admission is
+physical, device-to-device). v1 remains the floor; no shipped peers exist. See
+`DECISIONS.md` 2026-07-06 "Private base is date-keyed".
 
 **Replicated on a SHARED base (partner link), owner-written only:**
 

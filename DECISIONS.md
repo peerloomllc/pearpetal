@@ -2,6 +2,28 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-06 - Private base is date-keyed, not per-writer (slice 1)
+Tier: T3 (wire schema; amends the approved proposal before any peer ships)
+Context: building slice 1 (scaffold + private base + device linking) surfaced that
+the approved spec's `day:{pubkey}:{yyyymmdd}` per-writer keyspace is wrong for the
+private base. That keyspace is the PearCircle multi-PERSON pattern (writers must
+not overwrite each other). On the private base every device is the SAME person, so
+per-writer keying produces a separate divergent row per device for the same day,
+which the UI would have to merge - the opposite of what you want.
+Choice: key `day:` and `period:` by DATE (`day:{yyyymmdd}`), shared across the
+owner's own devices, resolved last-writer-wins (deterministic sig tie-break). The
+author pubkey is still in the value and proven by the signature. `device:{pubkey}`
+stays per-writer keyed (a device may write only its own roster row). Dropped the
+`owner` singleton for slice 1 (roster suffices; admission is physical/device-to-
+device). Implemented in `src/petalWire.js`; proposal §4 amended to match.
+Alternatives: keep per-writer + merge divergent per-device rows in the UI
+(rejected - complexity with no benefit when it is all one person); CRDT text merge
+for notes (rejected - overkill for v1, LWW is fine for a personal log).
+Consequences: partner SHARED base (later slice) keeps owner-write-only semantics
+independently; this change is private-base only. v1 is still the floor (no peers
+shipped). Unit tests in `test/petalWire.test.js` cover the shared-LWW + per-writer
+device rules; a one-device method smoke test exercises the full write/read path.
+
 ## 2026-07-06 - Wire protocol v1 approved + open questions resolved
 Tier: T3
 Context: `proposals/2026-07-06-wire-protocol.md` reached approval (Tim committed it

@@ -23,11 +23,19 @@ sync) rather than copy-forked.
 
 ## Status
 
-Pre-scaffold. Wire protocol v1 locked 2026-07-06: see
-`proposals/2026-07-06-wire-protocol.md` (T3) and `reviews/2026-07-06-wire-protocol.md`.
-No implementation yet. Slated as the append-only-log extraction vehicle, built
-after PearList lands `@peerloom/core` and before PearCare (see
-`/home/tim/peerloomllc/APP-IDEAS.md`).
+Slice 1 scaffolded (2026-07-06): the three-layer app is stood up on
+`@peerloom/core`, with the PRIVATE base (own-device cycle log) and own-device
+linking working. Backend: `src/petalWire.js` (apply rules), `src/petalMethods.js`
+(cycle / device / day / period methods), `src/bare.js` (worklet). UI: `src/ui/`
+(onboarding, day log, devices). Wire protocol v1 in
+`proposals/2026-07-06-wire-protocol.md` (T3, amended for date-keyed day rows).
+Next slices: partner SHARED base (consent-scoped projection), local prediction,
+JSON export/import, the petal-dial UI. See `TODO.md`.
+
+## Canonical verify
+
+`npm run verify` -> `node --test test/*.test.js && build:bare && build:bare:ios && build:ui`.
+Do not merge red. See Constitution §5.
 
 ## The one thing to get right
 
