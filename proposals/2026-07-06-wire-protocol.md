@@ -290,12 +290,15 @@ branches; the two-base/two-key layer would be a hard fork.
 
 All resolved 2026-07-06 at approval; recorded in `DECISIONS.md`.
 
-1. ~~**Own-device recovery when zero devices remain.**~~ Resolved: optional
-   user-held **encrypted export**, passphrase-wrapped, generated on demand, never
-   automatic and never uploaded anywhere. No cloud, no seeder, ever. With ≥2
-   linked devices the log is self-backing; the export is the escape hatch for the
-   all-devices-lost case. A lost single device with a linked second device is not
-   data loss.
+1. ~~**Own-device recovery when zero devices remain.**~~ Resolved: plain
+   **JSON export / import**. The app writes the full log to a JSON file saved
+   locally to the device (Downloads / Files), and can import it back. On demand,
+   never automatic, never uploaded anywhere. No cloud, no seeder, no encryption
+   wrapper — the file is the user's to store and protect (same model as a manual
+   local backup). With ≥2 linked devices the log is self-backing; the export is
+   the escape hatch for the all-devices-lost case and doubles as a manual
+   migration path. A lost single device with a linked second device is not data
+   loss.
 2. ~~**Predictions written to the private base?**~~ Resolved: **no**. Predictions
    are recomputed on-device from the replicated log and are never written to any
    base, so prediction data never crosses the wire. A freshly linked device shows

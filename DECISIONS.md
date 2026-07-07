@@ -7,9 +7,11 @@ Tier: T3
 Context: `proposals/2026-07-06-wire-protocol.md` reached approval (Tim committed it
 into the new `pearpetal` repo). Its six open questions needed v1 answers.
 Choice (all v1):
-  1. Recovery: optional user-held encrypted export, passphrase-wrapped, on-demand,
-     never automatic, never uploaded. No cloud/seeder ever. ≥2 linked devices are
-     the primary backup.
+  1. Recovery: plain JSON export/import - the full log written to a local JSON
+     file on the device (Downloads/Files), importable back. On-demand, never
+     automatic, never uploaded, no encryption wrapper (the user owns and protects
+     the file, like a manual backup). No cloud/seeder ever. ≥2 linked devices are
+     the primary backup; the export doubles as manual migration.
   2. Predictions: never written to any base; recomputed on-device from the log so
      prediction data never crosses the wire. New device shows a brief "computing…".
   3. `full`-scope symptom whitelist (fixed, coarse, non-clinical): cramps,
@@ -25,7 +27,7 @@ Alternatives: cloud/seeder backup (rejected - breaks the no-server pitch);
 replicating predictions for instant display on new devices (rejected - puts
 derived sensitive data on the wire for a cosmetic gain); open-ended symptom
 projection (rejected - unauditable redaction boundary).
-Consequences: implementation must provide the encrypted-export path, an on-device
+Consequences: implementation must provide the JSON export/import path, an on-device
 recompute with a "computing…" state, and enforce the symptom whitelist in the
 projection writer (with an apply-branch test asserting off-list tags never appear
 in `summary:`). App remains pre-scaffold; these lock v1 before code starts.
