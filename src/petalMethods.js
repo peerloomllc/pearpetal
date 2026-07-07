@@ -25,6 +25,9 @@ const SCOPES = new Set(['phase', 'fertility', 'full'])
 // off-list tag are never projected.
 const SUMMARY_TAGS = new Set(['cramps', 'headache', 'fatigue', 'bloating', 'tender-breasts', 'nausea', 'backache', 'acne', 'mood-low', 'mood-irritable', 'energy-high', 'libido-high'])
 const SUMMARY_WINDOW_DAYS = 21 // how many recent days a `full` share projects
+// Petal-dial species (device-local display pref; must stay in sync with
+// src/ui/flowers.js). Never crosses the wire.
+const FLOWERS = new Set(['rose', 'sakura', 'lotus', 'poppy', 'dahlia'])
 
 function pubkeyHex (ctx) { return b4a.toString(ctx.identity.publicKey, 'hex') }
 
@@ -195,7 +198,7 @@ const methods = {
   // --- prefs (device-local, feed prediction) ------------------------------
   'prefs:get': async (_args, ctx) => {
     const p = await getPrefs(ctx)
-    return { avgCycleLength: p.avgCycleLength ?? null, avgPeriodLength: p.avgPeriodLength ?? null, lutealLength: p.lutealLength ?? null, goal: p.goal || 'track' }
+    return { avgCycleLength: p.avgCycleLength ?? null, avgPeriodLength: p.avgPeriodLength ?? null, lutealLength: p.lutealLength ?? null, goal: p.goal || 'track', flower: p.flower || 'rose' }
   },
   'prefs:set': async (args = {}, ctx) => {
     const cur = await getPrefs(ctx)
@@ -205,6 +208,7 @@ const methods = {
     if ('avgPeriodLength' in args) { const v = num(args.avgPeriodLength, 2, 10); if (v !== undefined) next.avgPeriodLength = v }
     if ('lutealLength' in args) { const v = num(args.lutealLength, 9, 18); if (v !== undefined) next.lutealLength = v }
     if ('goal' in args && ['track', 'conceive', 'avoid'].includes(args.goal)) next.goal = args.goal
+    if ('flower' in args && FLOWERS.has(args.flower)) next.flower = args.flower
     next.updatedAt = Date.now()
     await ctx.localDb.put('prefs', next)
     await refreshShares(ctx).catch(() => {}) // prefs change the projection partners see

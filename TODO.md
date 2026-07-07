@@ -43,13 +43,25 @@ Build order and slice status. Newest work at the top of each section.
     "Learning your cycle" state before enough history. Never written to any base.
   - 28 unit tests + smoke coverage.
 
+- **Slice 5 - petal-dial UI** (2026-07-06)
+  - `src/ui/PetalDial.jsx`: the signature flower whose petals furl/bloom with
+    cycle position (peak bloom at ovulation), driven by `cycle:prediction`. Ring
+    calendar with menstrual + fertile arcs, day ticks, today marker. Bloom-in on
+    mount, reduced-motion respected. Now the main-screen hero.
+  - Interactive standalone preview built to design/verify the visuals.
+
+- **Slice 6 - flower picker** (2026-07-07)
+  - `src/ui/flowers.js`: five real species (rose, cherry blossom, lotus, poppy,
+    dahlia) as parametric petal profiles into the same bloom engine; shape varies,
+    phase color-gradient preserved (tinted per species). Device-local
+    `prefs.flower`, picker in cycle-settings with live thumbnails.
+
 ## Next slices
 
 - **Slice 4 - JSON export / import.** Plain local file download + import
-  (recovery + migration). No encryption wrapper, no cloud.
-- **Slice 5 - petal-dial UI.** The signature interactive dial driven by the phase
-  + prediction (menstrual = furled ... fertile = full bloom). Replaces the plain
-  summary card / log UI with the designed experience.
+  (recovery + migration). No encryption wrapper, no cloud. (The last core slice.)
+- Optional polish: petal dial in the partner view too; ring day-scrub to log a
+  past day by tapping its tick; QR for invites; the iOS local-network module.
 
 ## Deferred / later
 

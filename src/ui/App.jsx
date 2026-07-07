@@ -11,6 +11,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { call, on, haptic } from './ipc.js'
 import { colors, spacing, radius } from './theme.js'
+import PetalDial, { FlowerThumb } from './PetalDial.jsx'
+import { FLOWER_KEYS, flowerLabel } from './flowers.js'
 
 const FLOWS = [
   { key: 'spotting', label: 'Spotting' },
@@ -383,46 +385,48 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
 const PHASE_COLOR = { menstrual: '#c8384f', follicular: '#c9a0d8', fertile: '#e8859b', luteal: '#8f8288' }
 function fmtDate (iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }) } catch { return iso } }
 
-function CycleSummary ({ pred, onSettings }) {
+function CycleSummary ({ pred, today, flower, onSettings, onTapDial }) {
   if (!pred) return null
-  if (!pred.known) {
-    return (
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-        <div style={{ fontSize: 15, fontWeight: 500 }}>Learning your cycle</div>
-        <div style={{ color: colors.text.secondary, fontSize: 14 }}>Log a period start or two and PearPetal will predict your next period, fertile window, and phase. Everything is computed on this device.</div>
-        <button onClick={onSettings} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: colors.primary, fontSize: 13, padding: 0 }}>Set your average cycle length ›</button>
-      </div>
-    )
-  }
   const days = pred.daysUntilNextPeriod
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
-    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
-          <span style={{ width: 14, height: 14, borderRadius: radius.full, background: PHASE_COLOR[pred.phase] || colors.track }} />
-          <span style={{ fontSize: 20, fontWeight: 600, color: colors.text.primary }}>{PHASE_LABEL[pred.phase] || pred.phase}</span>
-        </div>
-        <button onClick={onSettings} style={{ background: 'none', border: 'none', color: colors.text.muted, fontSize: 13, padding: 0 }}>Settings</button>
-      </div>
-      <div style={{ color: colors.text.secondary, fontSize: 14 }}>Day {pred.dayOfCycle} of your cycle</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
-        <Row label='Next period' value={`${fmtDate(pred.nextPeriodStart)} · ${nextLabel}`} />
-        <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} />
-        <Row label={pred.ovulationSource === 'bbt' ? 'Ovulation (from BBT)' : 'Ovulation (est.)'} value={fmtDate(pred.ovulationEst)} />
-      </div>
-      <div style={{ color: colors.text.muted, fontSize: 11 }}>
-        {pred.confidence === 'high' ? 'Based on your recent cycles.' : pred.confidence === 'medium' ? 'Estimate improves as you log more cycles.' : 'Early estimate - log a few cycles to sharpen it.'} Not medical advice.
-      </div>
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
+      <PetalDial pred={pred} today={today} flower={flower} onTap={onTapDial} />
+      {!pred.known ? (
+        <>
+          <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Learning your cycle</div>
+          <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Log a period start or two and the flower will track your phase, next period, and fertile window. Everything is computed on this device.</div>
+          <button onClick={onSettings} style={{ alignSelf: 'center', background: 'none', border: 'none', color: colors.primary, fontSize: 13, padding: 0 }}>Set your average cycle length ›</button>
+        </>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: spacing.sm, marginTop: `-${spacing.sm}px` }}>
+            <span style={{ fontSize: 26, fontWeight: 600, color: PHASE_COLOR[pred.phase] || colors.text.primary }}>{PHASE_LABEL[pred.phase] || pred.phase}</span>
+            <span style={{ color: colors.text.muted, fontSize: 14 }}>· day {pred.dayOfCycle}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+            <Row label='Next period' value={`${fmtDate(pred.nextPeriodStart)} · ${nextLabel}`} />
+            <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} />
+            <Row label={pred.ovulationSource === 'bbt' ? 'Ovulation (from BBT)' : 'Ovulation (est.)'} value={fmtDate(pred.ovulationEst)} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ color: colors.text.muted, fontSize: 11 }}>
+              {pred.confidence === 'high' ? 'Based on your recent cycles.' : pred.confidence === 'medium' ? 'Sharpens as you log more cycles.' : 'Early estimate. Not medical advice.'}
+            </span>
+            <button onClick={onSettings} style={{ background: 'none', border: 'none', color: colors.text.muted, fontSize: 13, padding: 0 }}>Settings</button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
-function CycleSettings ({ onClose, onSaved }) {
+function CycleSettings ({ onClose, onSaved, onFlower }) {
   const [prefs, setPrefs] = useState(null)
   useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
   if (!prefs) return null
   const save = async (patch) => { const next = { ...prefs, ...patch }; setPrefs(next); await call('prefs:set', patch).catch(() => {}); onSaved && onSaved() }
+  const pickFlower = (key) => { save({ flower: key }); onFlower && onFlower(key); haptic('light') }
   const Stepper = ({ label, value, def, min, max, field }) => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span style={{ color: colors.text.secondary, fontSize: 14 }}>{label}</span>
@@ -438,6 +442,24 @@ function CycleSettings ({ onClose, onSaved }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 20, fontWeight: 600 }}>Cycle settings</div>
         <Btn kind='ghost' onClick={onClose}>Done</Btn>
+      </div>
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+        <div style={{ color: colors.text.secondary, fontSize: 14 }}>Your flower</div>
+        <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', paddingBottom: spacing.xs }}>
+          {FLOWER_KEYS.map((key) => {
+            const active = (prefs.flower || 'rose') === key
+            return (
+              <button key={key} onClick={() => pickFlower(key)} aria-pressed={active} style={{
+                flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                background: active ? 'rgba(232,133,155,0.10)' : 'transparent',
+                border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.md}px`,
+              }}>
+                <FlowerThumb flower={key} size={52} />
+                <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{flowerLabel(key)}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
         <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
@@ -466,6 +488,7 @@ export default function App () {
   const [date, setDate] = useState(todayIso())
   const [days, setDays] = useState([])
   const [pred, setPred] = useState(null)
+  const [flower, setFlower] = useState('rose')
 
   const refresh = useCallback(async () => {
     const [d, pr] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null)])
@@ -474,7 +497,11 @@ export default function App () {
 
   const boot = useCallback(async () => {
     const s = await call('cycle:status').catch(() => ({ hasBase: false }))
-    if (s.hasBase) { setMode('owner'); await call('device:publish').catch(() => {}); refresh(); return }
+    if (s.hasBase) {
+      setMode('owner')
+      call('prefs:get').then((p) => setFlower(p.flower || 'rose')).catch(() => {})
+      await call('device:publish').catch(() => {}); refresh(); return
+    }
     const partners = await call('partner:list').catch(() => [])
     setMode(partners.length ? 'viewer' : 'onboard')
   }, [refresh])
@@ -492,7 +519,7 @@ export default function App () {
   // owner
   if (screen === 'devices') return <Devices onClose={() => setScreen('main')} />
   if (screen === 'share') return <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
-  if (screen === 'settings') return <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} />
+  if (screen === 'settings') return <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} />
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: `calc(${spacing.xl}px + var(--pear-safe-top))`, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
@@ -503,7 +530,7 @@ export default function App () {
           <Btn kind='ghost' onClick={() => setScreen('devices')}>Devices</Btn>
         </div>
       </div>
-      <CycleSummary pred={pred} onSettings={() => setScreen('settings')} />
+      <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onTapDial={() => setDate(todayIso())} />
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
       <div>
         <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>
