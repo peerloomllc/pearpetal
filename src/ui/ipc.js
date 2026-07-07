@@ -110,6 +110,21 @@ const mockMethods = {
   'day:delete': async ({ date }) => { const r = mock.days.get(date); if (!r) throw new Error('day not found'); r.deleted = true; return { ok: true } },
   'period:set': async ({ start, end }) => { mock.periods.set(start, { start, end: end || null, deleted: false }); return { ok: true } },
   'period:getAll': async () => [...mock.periods.values()].filter((p) => !p.deleted).sort((a, b) => b.start.localeCompare(a.start)),
+  'export:data': async () => {
+    const days = [...mock.days.values()].filter((d) => !d.deleted).map((d) => { const o = { date: d.date }; if (d.flow !== undefined) o.flow = d.flow; if (d.symptoms && d.symptoms.length) o.symptoms = d.symptoms; if (d.mood && d.mood.length) o.mood = d.mood; if (d.notes) o.notes = d.notes; if (typeof d.bbt === 'number') o.bbt = d.bbt; return o })
+    const periods = [...mock.periods.values()].filter((p) => !p.deleted).map((p) => ({ start: p.start, end: p.end ?? null }))
+    const p = mock.prefs || {}; const prefs = {};['avgCycleLength', 'avgPeriodLength', 'lutealLength', 'goal', 'flower'].forEach((k) => { if (p[k] != null) prefs[k] = p[k] })
+    return { app: 'pearpetal', version: 1, exportedAt: Date.now(), days, periods, prefs }
+  },
+  'import:data': async ({ data }) => {
+    if (!data || data.app !== 'pearpetal' || !Array.isArray(data.days)) throw new Error('not a PearPetal export')
+    if (!mock.base) { mock.base = { groupId: rid(), inviteKey: 'mock-' + rid(8) }; ensureSelfDevice() }
+    let dc = 0; let pc = 0
+    for (const d of data.days) { if (!/^\d{4}-\d{2}-\d{2}$/.test((d && d.date) || '')) continue; mock.days.set(d.date, { ...d, deleted: false, pubkey: MOCK_SELF, updatedAt: Date.now() }); dc++ }
+    for (const p of (data.periods || [])) { if (!p || !p.start) continue; mock.periods.set(p.start, { start: p.start, end: p.end || null, deleted: false }); pc++ }
+    if (data.prefs) mock.prefs = { ...(mock.prefs || {}), ...data.prefs }
+    return { ok: true, days: dc, periods: pc }
+  },
   'share:create': async ({ scope }) => {
     if (!['phase', 'fertility', 'full'].includes(scope)) throw new Error('bad scope')
     const groupId = rid(); const inviteKey = 'mock-share-' + scope + '-' + rid(8)

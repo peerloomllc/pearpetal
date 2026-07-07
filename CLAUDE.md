@@ -39,9 +39,12 @@ summary, settings, devices, sharing, partner view).
   furls/blooms across the cycle, driven by the prediction; the main-screen hero.
 - Slice 6: flower picker (`src/ui/flowers.js`) - five real species as parametric
   petal profiles, chosen in cycle-settings, stored device-local (`prefs.flower`).
-Wire protocol v1 in `proposals/2026-07-06-wire-protocol.md` (T3, amended for
-date-keyed day rows). Next: JSON export/import (slice 4, the last core slice).
-See `TODO.md`.
+- Slice 4: JSON export/import (`export:data` / `import:data`) - plain-file backup
+  + recovery/migration, shell-mediated (share sheet / document picker) with a
+  browser fallback. No encryption wrapper, no cloud.
+All core slices (1-6) done. Wire protocol v1 in
+`proposals/2026-07-06-wire-protocol.md` (T3, amended for date-keyed day rows).
+Remaining is polish + real two-device hardware verification. See `TODO.md`.
 
 ## Canonical verify
 

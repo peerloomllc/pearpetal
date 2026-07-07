@@ -423,10 +423,34 @@ function CycleSummary ({ pred, today, flower, onSettings, onTapDial }) {
 
 function CycleSettings ({ onClose, onSaved, onFlower }) {
   const [prefs, setPrefs] = useState(null)
+  const [dataMsg, setDataMsg] = useState('')
   useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
   if (!prefs) return null
   const save = async (patch) => { const next = { ...prefs, ...patch }; setPrefs(next); await call('prefs:set', patch).catch(() => {}); onSaved && onSaved() }
   const pickFlower = (key) => { save({ flower: key }); onFlower && onFlower(key); haptic('light') }
+
+  const inShell = typeof window !== 'undefined' && !!window.ReactNativeWebView
+  const doExport = async () => {
+    try {
+      const data = await call('export:data')
+      const json = JSON.stringify(data, null, 2)
+      if (inShell) { await call('shell:export', { filename: 'pearpetal-backup.json', json }); setDataMsg('Backup ready to save.') } else {
+        const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
+        const a = document.createElement('a'); a.href = url; a.download = 'pearpetal-backup.json'; a.click(); URL.revokeObjectURL(url)
+        setDataMsg(`Exported ${data.days.length} days.`)
+      }
+      haptic('success')
+    } catch (e) { setDataMsg(e.message) }
+  }
+  const applyImport = async (json) => {
+    try { const r = await call('import:data', { data: JSON.parse(json) }); setDataMsg(`Imported ${r.days} days and ${r.periods} periods.`); haptic('success'); onSaved && onSaved() } catch (e) { setDataMsg('Import failed. ' + e.message) }
+  }
+  const doImport = async () => {
+    if (inShell) { try { const r = await call('shell:import'); if (r && r.json) applyImport(r.json) } catch (e) { setDataMsg(e.message) } return }
+    const input = document.createElement('input'); input.type = 'file'; input.accept = 'application/json,.json'
+    input.onchange = () => { const f = input.files && input.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => applyImport(String(rd.result)); rd.readAsText(f) }
+    input.click()
+  }
   const Stepper = ({ label, value, def, min, max, field }) => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span style={{ color: colors.text.secondary, fontSize: 14 }}>{label}</span>
@@ -475,6 +499,15 @@ function CycleSettings ({ onClose, onSaved, onFlower }) {
           ))}
         </div>
         <div style={{ color: colors.text.muted, fontSize: 11 }}>PearPetal is not contraception. Do not rely on it to avoid pregnancy.</div>
+      </div>
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+        <div style={{ color: colors.text.secondary, fontSize: 14 }}>Your data</div>
+        <div style={{ display: 'flex', gap: spacing.sm }}>
+          <Btn onClick={doExport} style={{ flex: 1 }}>Export backup</Btn>
+          <Btn kind='ghost' onClick={doImport} style={{ flex: 1 }}>Import</Btn>
+        </div>
+        <div style={{ color: colors.text.muted, fontSize: 11 }}>Export saves a plain file to your device. It is not encrypted and never leaves your device on its own, so keep it somewhere private. Import merges a backup into your log.</div>
+        {dataMsg && <div style={{ color: colors.success, fontSize: 13 }}>{dataMsg}</div>}
       </div>
     </div>
   )

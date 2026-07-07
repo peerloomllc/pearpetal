@@ -2,6 +2,32 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-07 - JSON export / import (slice 4)
+Tier: T1 (device-local backup/migration; no wire change)
+Context: implement the recovery escape hatch resolved at approval (open-Q1): a
+plain JSON export/import, no encryption wrapper, no cloud.
+Choices:
+- `export:data` returns a plain JSON object of the user's data only: day entries
+  + period spans + prefs. NO identity/secret keys and NO internal fields (sig,
+  pubkey, updatedAt, createdBy) - just what the user entered. So the file is
+  portable and carries no device secret.
+- `import:data` writes the entries into this device's private base, CREATING one
+  if the device has none (the all-devices-lost recovery case). Entries are
+  re-signed by the importing device; on a date collision the imported entry wins
+  (fresh timestamp). Rejects a file whose `app` !== 'pearpetal'.
+- Delivery is shell-mediated on device (`shell:export` writes a file + opens the
+  share sheet via expo-sharing; `shell:import` uses expo-document-picker), and
+  falls back to a browser Blob download / file input in the WebView preview. The
+  worklet only ever produces/consumes the JSON; it never touches the filesystem.
+- No encryption wrapper by explicit decision (open-Q1): the plaintext file is the
+  user's to store and protect; the UI states this. An optional "encrypt this
+  export" is an additive future change, not a redesign.
+Consequences: the export doubles as a migration path between devices. Verify:
+`npm run verify` green (32 tests); a two-engine smoke test proves the round trip -
+export from one device, import onto a FRESH device (new identity), and the log +
+prediction + prefs all reconstruct; a non-PearPetal file is rejected. Adds
+expo-sharing + expo-document-picker deps (native, exercised on hardware).
+
 ## 2026-07-07 - Flower picker: real species for the dial (slice 6)
 Tier: T1 (device-local display pref; no wire/data change)
 Context: the slice-5 dial was a generic parametric rosette, not a real flower. Add
