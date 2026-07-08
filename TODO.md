@@ -142,17 +142,16 @@ because it demos the finished app).
    `icon`, `android.adaptiveIcon` (fg + mono + `#140f11` bg), expo-splash-screen. REMAINING:
    on-device confirm (needs `expo prebuild` - which wipes the .debug config, so pair with the
    durable-debug-config plugin, dev-infra TODO). Notification icon USAGE lands with #8/notifs.
-7. **About page** (port the PearCircle / PearList pattern): app name/version, what it is,
-   privacy stance ("no account, no server, your data stays on your devices"), open-source +
-   license, links (website/privacy/support), and a **"Support Development"** section (this is
-   where the Bitcoin Lightning donation lives). Reuse PearList's `LIGHTNING_ADDRESS =
-   'peerloomllc@strike.me'`, `LIGHTNING_WALLETS`, the About view, and the `donateBTC` flow
-   (`shell:canOpenURL 'lightning:test'` -> open `lightning:<addr>` or show the wallet sheet).
-   - **iOS first release: HIDE the "Support Development" section** (Apple rejects external
-     donation links). BUT whitelist the Lightning scheme now so wallet detection works later:
-     `LSApplicationQueriesSchemes: ["lightning"]` in iOS `app.json` (see pearcircle/app.json)
-     + the Android queries plugin (`lightning`,`bitcoin`,`https`, per pearlist). Gate the
-     donation UI by platform (live on Android, dark on iOS until an Apple-compliant path).
+7. **About page + Bitcoin donation** - CODE DONE 2026-07-08 (branch feature/about-page):
+   AboutScreen (reached from Cycle settings -> "About PearPetal") with sections How it works /
+   Support development / Learn about Bitcoin / Open source / Share / Contact + version. Donation
+   ports the suite pattern (`LIGHTNING_ADDRESS = peerloomllc@strike.me`, `LIGHTNING_WALLETS`,
+   `donateBTC` via `shell:canOpenURL 'lightning:test'` -> open `lightning:<addr>` or a wallet
+   bottom-sheet). iOS HIDES Support development (`isIOS()` via `window.__pearPlatform`) per App
+   Store 3.1.1. Added `shell:canOpenURL` to the shell; `app.json` iOS `LSApplicationQueriesSchemes`
+   [lightning,bitcoin] + ported the `with-android-queries` plugin (lightning/bitcoin/https/mailto).
+   verify green. REMAINING: on-device check (Android BTC flow opens a wallet or the sheet; iOS
+   hides Support development).
 8. **2-week donation nudge popup** (port PearList's `DonationReminderModal`): one-time gentle
    modal after ~2 weeks of use, driven by a device-local `donation:status` due-flag +
    `donation:dismiss` (never crosses the wire). Respects the iOS gating above.
@@ -197,9 +196,10 @@ because it demos the finished app).
   XChaCha20-Poly1305) so backups aren't plaintext at rest, keeping plain export as the default.
   Decide: default on/off, lost-passphrase = no recovery, import auto-detect encrypted vs plain.
 
-## Feature backlog (product, from Stardust notes - 2026-07-08)
+## Release blockers (v1) - Stardust features (pulled into v1 2026-07-08)
 
-Post-v1 product features Tim wants, cross-checked against what already exists:
+PULLED INTO v1 per Tim 2026-07-08 (these are blockers #11-13, build after #7-#10).
+Cross-checked against what already exists:
 - **Journey / Goals.** PARTIAL: a `goal` pref already exists (General / Trying to conceive /
   Avoiding pregnancy, in Cycle settings). NEW: add a **Pregnancy** mode (currently pregnant ->
   the dial/predictions switch to a gestational view, not cycle prediction), and surface the

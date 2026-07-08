@@ -183,6 +183,11 @@ export default function Shell () {
           if (!args?.url) return replyError(id, 'url required')
           await Linking.openURL(args.url); return reply(id, { ok: true })
         }
+        case 'shell:canOpenURL': {
+          // Used by the donation flow to detect a Lightning wallet (open the
+          // lightning: address if one is installed, else show the wallet sheet).
+          try { const can = await Linking.canOpenURL(String(args?.url ?? '')); return reply(id, { can: !!can }) } catch { return reply(id, { can: false }) }
+        }
         case 'shell:haptic': {
           const k = args?.kind
           try {
