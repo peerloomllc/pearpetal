@@ -107,6 +107,14 @@ because it demos the finished app).
    /join. Verify green, round-trip + routing checked. See DECISIONS 2026-07-07. REMAINING:
    on-device check (copy a link on one phone, open/paste on another) + iOS universal-link
    website association (apple-app-site-association + associatedDomains) is website-side, separate.
+   - **FOLLOW-UP (website-side, not in-app): https universal-link tap-to-open.** Tapping an
+     `https://peerloomllc.com/petal/link|join#...` link auto-opens the app only once the
+     website serves the association files: Android `/.well-known/assetlinks.json` (SHA-256 of
+     the signing cert, `com.pearpetal`) and iOS `/.well-known/apple-app-site-association`
+     (appID `G79ALD29NA.com.pearpetal`, paths `/petal/*`), plus `associatedDomains`
+     (`applinks:peerloomllc.com`) in the iOS app config. Until then tapping shows a chooser /
+     opens the browser; pear:// scheme + paste-into-app both already work. Also needs a static
+     `/petal/link` + `/petal/join` landing page on peerloomllc.com (the # blob stays client-side).
 3. **Native QR scan + QR render** for link/share codes (currently paste/copy only; the
    "Scan" button is a stub - `shell:scanQr` returns null). Builds on the URL format in #2.
 4. **Safe-area top inset** (visual bug): screen titles ("PearPetal", "Partner's cycle") render
