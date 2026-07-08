@@ -2,6 +2,25 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-08 - Health conditions + birth-control toggle (Stardust blocker #12)
+Tier: T1 (device-local prefs feeding on-device prediction; NO wire change - the
+condition/BC flags are never written into the shared projection).
+Context: cycle length/period/luteal prefs existed; nothing captured health context
+that changes how predictions should read.
+Choice: add `prefs.conditions` (whitelisted set: pcos / endometriosis / irregular /
+thyroid) + `prefs.birthControl` (bool). In prediction.js a tracked condition sets
+`uncertain`, which widens the fertile window (+2 days pre / +1 post) and caps
+confidence below `high`; `birthControl` is passed through as a flag. The UI adds a
+"Health & birth control" Settings card (condition chips + a switch) and, in the cycle
+summary, HIDES the fertile-window + ovulation rows and the dial's fertile arc when on
+BC (ovulation is usually suppressed, so that framing misleads), swapping in a soften
+note; a tracked condition shows a wider-estimate caveat.
+Privacy: conditions + BC are device-local and NOT projected to a partner (not added
+to writeProjection); the widened fertile-window DATES do flow to a partner via the
+existing projection (they are just dates, not the condition).
+Consequences: verify green (45 tests + 3 bundles; new prediction tests for widening,
+confidence cap, and the BC flag); verified on the TCL.
+
 ## 2026-07-08 - Pregnancy mode + goal-driven tone (Stardust blocker #11)
 Tier: T1 (new feature inside the existing device-local prefs + IPC surface; NO wire
 change - pregnancy is owner-only, never projected to a partner).

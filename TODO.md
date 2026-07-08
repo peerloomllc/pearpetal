@@ -276,11 +276,16 @@ Cross-checked against what already exists:
   fertile-window row, avoid keeps the "not contraception" caveat loud. verify green (43 tests + 3
   bundles); full flow verified on the TCL (14w0d from an Apr-1 LMP, due Jan 6, reset). STILL TODO
   from this item: surface the goal in first-run onboarding (folds into blocker #10).
-- **Cycle customization.** PARTIAL: cycle length / period length / luteal length already in
-  Cycle settings. NEW: **health conditions** (e.g. PCOS, endometriosis, irregular cycles) that
-  widen prediction uncertainty + tailor copy; and a **birth-control toggle** (on hormonal BC)
-  that changes the "chance of pregnancy" / fertile-window messaging (on BC the fertile-window
-  framing is misleading, so soften/hide it). All device-local prefs; none cross the wire.
+- **Cycle customization.** DONE 2026-07-08 (branch feature/conditions-birth-control, blocker #12).
+  Added device-local `prefs.conditions` (PCOS / Endometriosis / Irregular cycles / Thyroid, a
+  whitelisted multi-select) + `prefs.birthControl` (hormonal-BC toggle) in a new "Health & birth
+  control" Settings card. prediction.js: a tracked condition widens the fertile window (+2/+1 days)
+  and caps confidence below `high` (`uncertain` flag + tailored copy); `birthControl` is surfaced
+  as a flag so the cycle summary HIDES the fertile-window + ovulation rows AND the dial's fertile
+  arc, showing a "fertile-window estimates are hidden" note instead. All device-local; NONE cross
+  the wire (not added to writeProjection). verify green (45 tests + 3 bundles); verified on the TCL
+  (card renders; BC on -> fertile framing hidden on rows + dial; PCOS -> wider + "wider estimate"
+  copy).
 - **Monthly calendar view.** NEW: a month grid alternative to the petal dial + recent-days
   list - color-coded period / fertile / ovulation / logged days, tap a day to log (reuse the
   day-scrub date mapping). A toggle between the dial ("today at a glance") and the calendar

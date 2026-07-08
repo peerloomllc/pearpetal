@@ -87,6 +87,15 @@ function Chip ({ active, onClick, children, color }) {
   )
 }
 function flowColor (k) { return colors.flow[k] || colors.track }
+// A small on/off switch (for the birth-control toggle).
+function Toggle ({ on, onClick, label }) {
+  return (
+    <button onClick={onClick} role='switch' aria-checked={on} aria-label={label} style={{ width: 46, height: 27, flexShrink: 0, borderRadius: radius.full, border: 'none', background: on ? colors.primary : colors.surface.input, boxShadow: on ? 'none' : `inset 0 0 0 1px ${colors.border}`, position: 'relative', cursor: 'pointer', transition: 'background 160ms', padding: 0 }}>
+      <span style={{ position: 'absolute', top: 3, left: on ? 22 : 3, width: 21, height: 21, borderRadius: '50%', background: '#fff', transition: 'left 160ms' }} />
+    </button>
+  )
+}
+const CONDITION_OPTS = [['pcos', 'PCOS'], ['endometriosis', 'Endometriosis'], ['irregular', 'Irregular cycles'], ['thyroid', 'Thyroid condition']]
 
 // Round avatar with an initial fallback. `src` is a data URL (own or a partner's
 // replicated avatar), `name` supplies the fallback letter.
@@ -647,7 +656,7 @@ function CycleSummary ({ pred, today, flower, onSettings, onScrub, selected }) {
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
-      <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} />
+      <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} hideFertile={pred.birthControl} />
       {!pred.known ? (
         <>
           <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Learning your cycle</div>
@@ -660,15 +669,16 @@ function CycleSummary ({ pred, today, flower, onSettings, onScrub, selected }) {
             <span style={{ fontSize: 26, fontWeight: 600, color: PHASE_COLOR[pred.phase] || colors.text.primary }}>{PHASE_LABEL[pred.phase] || pred.phase}</span>
             <span style={{ color: colors.text.muted, fontSize: 14 }}>· day {pred.dayOfCycle}</span>
           </div>
-          {pred.goal === 'conceive' && <div style={{ textAlign: 'center', color: colors.primary, fontSize: 12 }}>Your fertile window is your best chance to conceive.</div>}
-          {pred.goal === 'avoid' && <div style={{ textAlign: 'center', color: colors.warn, fontSize: 12, fontWeight: 500 }}>Not contraception. Do not rely on this to avoid pregnancy.</div>}
+          {!pred.birthControl && pred.goal === 'conceive' && <div style={{ textAlign: 'center', color: colors.primary, fontSize: 12 }}>Your fertile window is your best chance to conceive.</div>}
+          {!pred.birthControl && pred.goal === 'avoid' && <div style={{ textAlign: 'center', color: colors.warn, fontSize: 12, fontWeight: 500 }}>Not contraception. Do not rely on this to avoid pregnancy.</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
             <Row label='Next period' value={`${fmtDate(pred.nextPeriodStart)} · ${nextLabel}`} />
-            <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} accent={pred.goal === 'conceive'} />
-            <Row label={pred.ovulationSource === 'bbt' ? 'Ovulation (from BBT)' : 'Ovulation (est.)'} value={fmtDate(pred.ovulationEst)} />
+            {!pred.birthControl && <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} accent={pred.goal === 'conceive'} />}
+            {!pred.birthControl && <Row label={pred.ovulationSource === 'bbt' ? 'Ovulation (from BBT)' : 'Ovulation (est.)'} value={fmtDate(pred.ovulationEst)} />}
           </div>
+          {pred.birthControl && <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center' }}>On hormonal birth control, ovulation is usually suppressed - fertile-window estimates are hidden.</div>}
           <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center' }}>
-            {pred.confidence === 'high' ? 'Based on your recent cycles.' : pred.confidence === 'medium' ? 'Sharpens as you log more cycles.' : 'Early estimate. Not medical advice.'}
+            {pred.uncertain ? 'A wider estimate for your tracked conditions. Not medical advice.' : pred.confidence === 'high' ? 'Based on your recent cycles.' : pred.confidence === 'medium' ? 'Sharpens as you log more cycles.' : 'Early estimate. Not medical advice.'}
           </div>
         </>
       )}
@@ -825,6 +835,21 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
         {prefs.goal === 'pregnant'
           ? <PregnancySetup prefs={prefs} save={save} />
           : <div style={{ color: colors.text.muted, fontSize: 11 }}>PearPetal is not contraception. Do not rely on it to avoid pregnancy.</div>}
+      </div>
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Health &amp; birth control</div>
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>Conditions that affect your cycle. These stay on your device and are never shared. They widen prediction estimates and tailor the guidance you see.</div>
+        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+          {CONDITION_OPTS.map(([k, l]) => {
+            const on = (prefs.conditions || []).includes(k)
+            return <Chip key={k} active={on} onClick={() => { const cur = prefs.conditions || []; save({ conditions: on ? cur.filter((x) => x !== k) : [...cur, k] }) }}>{l}</Chip>
+          })}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+          <span style={{ color: colors.text.secondary, fontSize: 14 }}>On hormonal birth control</span>
+          <Toggle on={!!prefs.birthControl} label='On hormonal birth control' onClick={() => save({ birthControl: !prefs.birthControl })} />
+        </div>
+        {prefs.birthControl && <div style={{ color: colors.text.muted, fontSize: 11 }}>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal softens them.</div>}
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your data</div>

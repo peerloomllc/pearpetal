@@ -29,7 +29,7 @@ function arcPath (r, degA, degB) {
   return `M${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`
 }
 
-export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayTap, selected }) {
+export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayTap, selected, hideFertile = false }) {
   const known = !!pred?.known
   const L = known ? (pred.cycleLen || 28) : 28
   const dayOfCycle = known ? (pred.dayOfCycle || 1) : 1
@@ -124,7 +124,7 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
         <circle cx={CX} cy={CY} r={120} fill='url(#petalGlow)' opacity={glow} />
         <circle cx={CX} cy={CY} r={R} fill='none' stroke={colors.track} strokeWidth={10} />
         {known && <path d={arcPath(R, dayDeg(1), dayDeg(PERIOD_LEN))} fill='none' stroke={colors.flow.medium} strokeWidth={10} strokeLinecap='round' />}
-        {known && <path d={arcPath(R, dayDeg(ovDay - 5), dayDeg(ovDay + 1))} fill='none' stroke={colors.primary} strokeWidth={10} strokeLinecap='round' opacity={0.9} />}
+        {known && !hideFertile && <path d={arcPath(R, dayDeg(ovDay - 5), dayDeg(ovDay + 1))} fill='none' stroke={colors.primary} strokeWidth={10} strokeLinecap='round' opacity={0.9} />}
         <g>
           {ticks.map((d) => {
             const [x1, y1] = polar(R - 6, dayDeg(d)), [x2, y2] = polar(R + 6, dayDeg(d))

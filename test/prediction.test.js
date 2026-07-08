@@ -76,6 +76,25 @@ test('helpers: median and cycleStarts', () => {
   assert.deepEqual(starts, ['2026-06-01', '2026-07-01'])
 })
 
+test('health conditions widen the fertile window and cap confidence', () => {
+  const periods = [{ start: '2026-04-01' }, { start: '2026-04-29' }, { start: '2026-05-27' }, { start: '2026-06-24' }] // regular 28d
+  const base = projectionFromRows([], periods, { today: '2026-07-01', prefs: {} })
+  const withCond = projectionFromRows([], periods, { today: '2026-07-01', prefs: { conditions: ['pcos'] } })
+  assert.equal(base.uncertain, false)
+  assert.equal(withCond.uncertain, true)
+  const width = (p) => diffDays(p.fertileStart, p.fertileEnd)
+  assert.ok(width(withCond) > width(base)) // wider window under uncertainty
+  assert.equal(base.confidence, 'high')
+  assert.notEqual(withCond.confidence, 'high') // never high with a tracked condition
+})
+
+test('birth control flag is surfaced for the UI to soften fertile framing', () => {
+  const on = projectionFromRows([], [{ start: '2026-06-01' }], { today: '2026-06-15', prefs: { birthControl: true } })
+  assert.equal(on.birthControl, true)
+  const off = projectionFromRows([], [{ start: '2026-06-01' }], { today: '2026-06-15', prefs: {} })
+  assert.equal(off.birthControl, false)
+})
+
 test('pregnancy: inactive unless goal is pregnant with dates', () => {
   assert.equal(pregnancyProjection({}, '2026-07-08').active, false)
   assert.equal(pregnancyProjection({ goal: 'pregnant' }, '2026-07-08').active, false) // no dates
