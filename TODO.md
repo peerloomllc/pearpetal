@@ -239,6 +239,16 @@ throughout with the owner's chosen name.
 - **Adopt bottom sheets for item/data entry where applicable** (day log, symptom/flow entry,
   share creation) instead of full-screen pushes - more native-feeling, keeps context.
 
+- **Light/Dark mode toggle in Settings (queued 2026-07-08).** The theme plumbing already exists
+  in `src/ui/theme.js` (`setTheme('light'|'dark')`, `loadTheme()` persisting to
+  `localStorage['pearpetal:theme']`, and a full LIGHT palette under `:root[data-theme="light"]`);
+  dark is the current default and nothing calls `setTheme` yet. Add a toggle in Cycle Settings
+  (e.g. a segmented Dark / Light / System control) that calls `setTheme` + persists, and apply
+  the saved theme at boot (call `setTheme(loadTheme())` on mount in `App`). Optional: a `System`
+  option via `matchMedia('(prefers-color-scheme: dark)')`. Verify both palettes on-device
+  (the shell also hardcodes a pre-JS `#140f11` flash bg, so a light-mode first paint may briefly
+  flash dark - check whether the shell bg needs to follow the theme too).
+
 ## Design decisions to make (before building the feature)
 
 - **Notifications - to self and/or to partner?** To-self local reminders (period-due /

@@ -689,7 +689,7 @@ function ProfileCard () {
               <Camera size={12} weight='fill' />
             </span>
           </button>
-          {profile.avatar && <button onClick={clearPhoto} style={{ background: 'none', border: 'none', color: colors.text.muted, fontSize: 11, padding: 0, textAlign: 'center', lineHeight: 1.2 }}>Remove</button>}
+          {profile.avatar && <button onClick={clearPhoto} style={{ marginTop: spacing.sm, background: colors.surface.input, border: `1px solid ${colors.border}`, color: colors.text.secondary, fontSize: 11, padding: '4px 12px', borderRadius: radius.full, lineHeight: 1.2, cursor: 'pointer' }}>Remove</button>}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
           <input value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} placeholder='Your name' maxLength={64}
