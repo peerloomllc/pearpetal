@@ -29,6 +29,9 @@ const SUMMARY_WINDOW_DAYS = 21 // how many recent days a `full` share projects
 // Petal-dial species (device-local display pref; must stay in sync with
 // src/ui/flowers.js). Never crosses the wire.
 const FLOWERS = new Set(['rose', 'sakura', 'lotus', 'poppy', 'dahlia'])
+// Tracked health conditions (device-local; widen prediction uncertainty + tailor
+// copy). Never cross the wire. Must stay in sync with the UI list.
+const CONDITIONS = new Set(['pcos', 'endometriosis', 'irregular', 'thyroid'])
 
 function pubkeyHex (ctx) { return b4a.toString(ctx.identity.publicKey, 'hex') }
 
@@ -288,7 +291,7 @@ const methods = {
   // --- prefs (device-local, feed prediction) ------------------------------
   'prefs:get': async (_args, ctx) => {
     const p = await getPrefs(ctx)
-    return { avgCycleLength: p.avgCycleLength ?? null, avgPeriodLength: p.avgPeriodLength ?? null, lutealLength: p.lutealLength ?? null, goal: p.goal || 'track', flower: p.flower || 'rose', pregnancy: p.pregnancy || null }
+    return { avgCycleLength: p.avgCycleLength ?? null, avgPeriodLength: p.avgPeriodLength ?? null, lutealLength: p.lutealLength ?? null, goal: p.goal || 'track', flower: p.flower || 'rose', pregnancy: p.pregnancy || null, conditions: Array.isArray(p.conditions) ? p.conditions : [], birthControl: !!p.birthControl }
   },
   'prefs:set': async (args = {}, ctx) => {
     const cur = await getPrefs(ctx)
@@ -300,6 +303,9 @@ const methods = {
     if ('lutealLength' in args) { const v = num(args.lutealLength, 9, 18); if (v !== undefined) next.lutealLength = v }
     if ('goal' in args && ['track', 'conceive', 'avoid', 'pregnant'].includes(args.goal)) next.goal = args.goal
     if ('flower' in args && FLOWERS.has(args.flower)) next.flower = args.flower
+    // Health conditions (deduped, whitelisted) + hormonal-birth-control flag.
+    if ('conditions' in args && Array.isArray(args.conditions)) next.conditions = [...new Set(args.conditions.filter((c) => CONDITIONS.has(c)))]
+    if ('birthControl' in args) next.birthControl = !!args.birthControl
     // Pregnancy dates (device-local; never projected to a partner). null clears.
     if ('pregnancy' in args) {
       const pg = args.pregnancy

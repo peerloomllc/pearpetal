@@ -69,10 +69,19 @@ function projectionFromRows (dayRows, periodRows, opts = {}) {
   const prefs = opts.prefs || {}
   const periodLen = clamp(prefs.avgPeriodLength, 2, 10) || DEFAULT_PERIOD_LEN
   const lutealLen = clamp(prefs.lutealLength, 9, 18) || DEFAULT_LUTEAL_LEN
+  // Device-local health context (never crosses the wire). Tracked conditions imply
+  // more cycle-to-cycle variability, so the fertile window is widened and the
+  // confidence is capped. Hormonal birth control usually suppresses ovulation, so
+  // the fertile-window framing is flagged as not-applicable for the UI to soften.
+  const conditions = Array.isArray(prefs.conditions) ? prefs.conditions : []
+  const uncertain = conditions.length > 0
+  const birthControl = !!prefs.birthControl
+  const fertilePre = FERTILE_PRE + (uncertain ? 2 : 0)
+  const fertilePost = FERTILE_POST + (uncertain ? 1 : 0)
 
   const anyFlowDays = new Set(dayRows.filter((d) => FLOW_VALUES.has(d.flow)).map((d) => d.date))
   const starts = cycleStarts(dayRows, periodRows)
-  if (!starts.length) return { known: false, phase: 'follicular', dayOfCycle: null, confidence: 'none' }
+  if (!starts.length) return { known: false, phase: 'follicular', dayOfCycle: null, confidence: 'none', conditions, uncertain, birthControl }
 
   // Cycle length: median of recent usable gaps (robust to the odd irregular
   // cycle); fall back to the user's pref, then the default.
@@ -92,8 +101,8 @@ function projectionFromRows (dayRows, periodRows, opts = {}) {
   // (next period minus the luteal length). Confidence rises with data.
   const bbtOv = bbtOvulation(dayRows, cycleStart, today)
   const ovulationEst = bbtOv || addDays(nextPeriodStart, -lutealLen)
-  const fertileStart = addDays(ovulationEst, -FERTILE_PRE)
-  const fertileEnd = addDays(ovulationEst, FERTILE_POST)
+  const fertileStart = addDays(ovulationEst, -fertilePre)
+  const fertileEnd = addDays(ovulationEst, fertilePost)
 
   // Regularity: how spread out recent cycle lengths are.
   const spread = usable.length >= 2 ? Math.max(...usable) - Math.min(...usable) : null
@@ -102,6 +111,9 @@ function projectionFromRows (dayRows, periodRows, opts = {}) {
   else if (usable.length >= 3 && spread != null && spread <= 4) confidence = 'high'
   else if (usable.length >= 1) confidence = 'medium'
   else confidence = 'low' // one start, defaults used
+  // A tracked condition (PCOS, endometriosis, irregular cycles, ...) means cycles
+  // vary more than the log alone shows, so never claim high confidence.
+  if (uncertain && confidence === 'high') confidence = 'medium'
 
   let phase
   if (anyFlowDays.has(today) || dayOfCycle <= periodLen) phase = 'menstrual'
@@ -114,6 +126,7 @@ function projectionFromRows (dayRows, periodRows, opts = {}) {
     nextPeriodStart, daysUntilNextPeriod: diffDays(today, nextPeriodStart),
     ovulationEst, ovulationSource: bbtOv ? 'bbt' : 'calendar',
     fertileStart, fertileEnd, confidence,
+    conditions, uncertain, birthControl,
   }
 }
 

@@ -87,6 +87,25 @@ function Chip ({ active, onClick, children, color }) {
   )
 }
 function flowColor (k) { return colors.flow[k] || colors.track }
+// A small on/off switch (for the birth-control toggle).
+function Toggle ({ on, onClick, label }) {
+  return (
+    <button onClick={onClick} role='switch' aria-checked={on} aria-label={label} style={{ width: 46, height: 27, flexShrink: 0, borderRadius: radius.full, border: 'none', background: on ? colors.primary : colors.surface.input, boxShadow: on ? 'none' : `inset 0 0 0 1px ${colors.border}`, position: 'relative', cursor: 'pointer', transition: 'background 160ms', padding: 0 }}>
+      <span style={{ position: 'absolute', top: 3, left: on ? 22 : 3, width: 21, height: 21, borderRadius: '50%', background: '#fff', transition: 'left 160ms' }} />
+    </button>
+  )
+}
+// key, label, and a short explainer (what it is + how it shifts the estimates).
+const CONDITION_OPTS = [
+  ['pcos', 'PCOS', 'Polycystic ovary syndrome often makes cycles longer and irregular and ovulation hard to time, so the fertile window is widened and confidence is capped.'],
+  ['endometriosis', 'Endometriosis', 'Endometriosis can bring painful, irregular periods; cycle timing varies more, so predictions are wider and less certain.'],
+  ['irregular', 'Irregular cycles', 'Cycles that vary a lot in length make the fertile window and next-period date rougher estimates, so they are widened.'],
+  ['thyroid', 'Thyroid condition', 'Thyroid conditions can lengthen, shorten, or skip cycles, so predictions are treated as less certain.'],
+]
+// Inline text link (e.g. "tracked conditions" -> the Settings health section).
+function LinkSpan ({ onClick, children }) {
+  return <button onClick={onClick} style={{ background: 'none', border: 'none', padding: 0, margin: 0, color: colors.primary, textDecoration: 'underline', fontSize: 'inherit', fontWeight: 'inherit', cursor: 'pointer' }}>{children}</button>
+}
 
 // Round avatar with an initial fallback. `src` is a data URL (own or a partner's
 // replicated avatar), `name` supplies the fallback letter.
@@ -636,18 +655,18 @@ function PregnancyView ({ preg, flower, onSettings }) {
         <Row label='Due date' value={`${fmtDate(dueDate)} · ${dueLabel}`} />
         <Row label='Progress' value={`${Math.round(progress * 100)}% of ~40 weeks`} />
       </div>
-      <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center' }}>A calendar estimate, not medical advice. Follow your provider's dates.</div>
+      <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center' }}>A calendar estimate. Follow your provider's dates.</div>
     </div>
   )
 }
 
-function CycleSummary ({ pred, today, flower, onSettings, onScrub, selected }) {
+function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub, selected }) {
   if (!pred) return null
   const days = pred.daysUntilNextPeriod
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
-      <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} />
+      <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} hideFertile={pred.birthControl} />
       {!pred.known ? (
         <>
           <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Learning your cycle</div>
@@ -660,16 +679,20 @@ function CycleSummary ({ pred, today, flower, onSettings, onScrub, selected }) {
             <span style={{ fontSize: 26, fontWeight: 600, color: PHASE_COLOR[pred.phase] || colors.text.primary }}>{PHASE_LABEL[pred.phase] || pred.phase}</span>
             <span style={{ color: colors.text.muted, fontSize: 14 }}>· day {pred.dayOfCycle}</span>
           </div>
-          {pred.goal === 'conceive' && <div style={{ textAlign: 'center', color: colors.primary, fontSize: 12 }}>Your fertile window is your best chance to conceive.</div>}
-          {pred.goal === 'avoid' && <div style={{ textAlign: 'center', color: colors.warn, fontSize: 12, fontWeight: 500 }}>Not contraception. Do not rely on this to avoid pregnancy.</div>}
+          {!pred.birthControl && pred.goal === 'conceive' && <div style={{ textAlign: 'center', color: colors.primary, fontSize: 12 }}>Your fertile window is your best chance to conceive.</div>}
+          {!pred.birthControl && pred.goal === 'avoid' && <div style={{ textAlign: 'center', color: colors.warn, fontSize: 12, fontWeight: 500 }}>Not contraception. Do not rely on this to avoid pregnancy.</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
             <Row label='Next period' value={`${fmtDate(pred.nextPeriodStart)} · ${nextLabel}`} />
-            <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} accent={pred.goal === 'conceive'} />
-            <Row label={pred.ovulationSource === 'bbt' ? 'Ovulation (from BBT)' : 'Ovulation (est.)'} value={fmtDate(pred.ovulationEst)} />
+            {!pred.birthControl && <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} accent={pred.goal === 'conceive'} />}
+            {!pred.birthControl && <Row label={pred.ovulationSource === 'bbt' ? 'Ovulation (from BBT)' : 'Ovulation (est.)'} value={fmtDate(pred.ovulationEst)} />}
           </div>
-          <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center' }}>
-            {pred.confidence === 'high' ? 'Based on your recent cycles.' : pred.confidence === 'medium' ? 'Sharpens as you log more cycles.' : 'Early estimate. Not medical advice.'}
-          </div>
+          {pred.birthControl
+            ? <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center' }}>On hormonal birth control, ovulation is usually suppressed, so fertile-window estimates are hidden.</div>
+            : <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center', lineHeight: 1.45 }}>
+                {pred.uncertain
+                  ? <>Your fertile window is estimated to be wider than normal due to your <LinkSpan onClick={onConditions}>tracked conditions</LinkSpan>.</>
+                  : pred.confidence === 'high' ? 'Based on your recent cycles.' : pred.confidence === 'medium' ? 'Sharpens as you log more cycles.' : 'Early estimate.'}
+              </div>}
         </>
       )}
     </div>
@@ -741,16 +764,23 @@ function PregnancySetup ({ prefs, save }) {
       {due
         ? <div style={{ color: colors.text.secondary, fontSize: 13 }}>Estimated due date: <span style={{ color: colors.text.primary, fontWeight: 500 }}>{fmtDate(due)}</span> (about 40 weeks). The dial now tracks your pregnancy.</div>
         : <div style={{ color: colors.text.muted, fontSize: 12 }}>Enter the first day of your last period to see how far along you are and your estimated due date.</div>}
-      <div style={{ color: colors.text.muted, fontSize: 11 }}>A calendar estimate, not medical advice. Your provider's dating is what counts.</div>
+      <div style={{ color: colors.text.muted, fontSize: 11 }}>A calendar estimate. Your provider's dating is what counts.</div>
       <button onClick={() => save({ goal: 'track', pregnancy: null })} style={{ alignSelf: 'center', marginTop: spacing.xs, background: colors.surface.input, border: `1px solid ${colors.border}`, color: colors.text.secondary, fontSize: 13, fontWeight: 500, padding: `8px 16px`, borderRadius: radius.lg, cursor: 'pointer' }}>No longer pregnant</button>
     </div>
   )
 }
 
-function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
+function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState('')
   useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
+  // Deep-link scroll: when opened via a link (e.g. "tracked conditions"), jump to
+  // that section once prefs have rendered, then clear the request.
+  useEffect(() => {
+    if (!prefs || scrollTo !== 'health') return
+    const id = requestAnimationFrame(() => { document.getElementById('health-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); onScrolled && onScrolled() })
+    return () => cancelAnimationFrame(id)
+  }, [prefs, scrollTo])
   if (!prefs) return null
   const save = async (patch) => { const next = { ...prefs, ...patch }; setPrefs(next); await call('prefs:set', patch).catch(() => {}); onSaved && onSaved() }
   const pickFlower = (key) => { save({ flower: key }); onFlower && onFlower(key); haptic('light') }
@@ -825,6 +855,26 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
         {prefs.goal === 'pregnant'
           ? <PregnancySetup prefs={prefs} save={save} />
           : <div style={{ color: colors.text.muted, fontSize: 11 }}>PearPetal is not contraception. Do not rely on it to avoid pregnancy.</div>}
+      </div>
+      <div id='health-section' style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, scrollMarginTop: screenPadTop }}>
+        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Health &amp; birth control</div>
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>Conditions that affect your cycle. These stay on your device and are never shared. They widen prediction estimates and tailor the guidance you see. Tap one to see how it changes your estimates.</div>
+        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+          {CONDITION_OPTS.map(([k, l]) => {
+            const on = (prefs.conditions || []).includes(k)
+            return <Chip key={k} active={on} onClick={() => { const cur = prefs.conditions || []; save({ conditions: on ? cur.filter((x) => x !== k) : [...cur, k] }) }}>{l}</Chip>
+          })}
+        </div>
+        {CONDITION_OPTS.filter(([k]) => (prefs.conditions || []).includes(k)).map(([k, l, explain]) => (
+          <div key={k} style={{ color: colors.text.muted, fontSize: 12, lineHeight: 1.45, borderLeft: `2px solid ${colors.primary}`, paddingLeft: spacing.md }}>
+            <span style={{ color: colors.text.secondary, fontWeight: 500 }}>{l}.</span> {explain}
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+          <span style={{ color: colors.text.secondary, fontSize: 14 }}>On hormonal birth control</span>
+          <Toggle on={!!prefs.birthControl} label='On hormonal birth control' onClick={() => save({ birthControl: !prefs.birthControl })} />
+        </div>
+        {prefs.birthControl && <div style={{ color: colors.text.muted, fontSize: 12, lineHeight: 1.45, borderLeft: `2px solid ${colors.primary}`, paddingLeft: spacing.md }}>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal hides them and leads with your period dates.</div>}
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your data</div>
@@ -920,6 +970,10 @@ function AboutScreen ({ onClose }) {
         <div style={{ color: colors.text.muted, fontSize: 14, marginTop: spacing.xs }}>Private cycle tracking. No account, no server.</div>
       </div>
 
+      <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.base, color: colors.text.secondary, fontSize: 13, lineHeight: 1.5 }}>
+        <span style={{ fontWeight: 600, color: colors.text.primary }}>Not medical advice.</span> PearPetal gives calendar-based estimates for your information only. It is not a medical device and not contraception. Do not rely on it to prevent pregnancy, and talk to a healthcare provider for medical decisions.
+      </div>
+
       <AboutSection title='How it works' open={open === 'how'} onToggle={() => toggle('how')}>
         <AboutText>PearPetal keeps your cycle on your own devices and syncs it peer-to-peer over the Hypercore Protocol - no account, no server, no cloud, no data collection. You choose exactly what a partner sees; your full log and notes never leave your devices.</AboutText>
         <AboutLink onClick={() => openUrl('https://pears.com/')}>Learn about P2P ↗</AboutLink>
@@ -1002,6 +1056,7 @@ export default function App () {
   const [flower, setFlower] = useState('rose')
   const [notice, setNotice] = useState('')
   const [donateReminder, setDonateReminder] = useState(false)
+  const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
 
   const refresh = useCallback(async () => {
     const [d, pr] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null)])
@@ -1056,13 +1111,13 @@ export default function App () {
   else if (mode === 'viewer') content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); boot() }} />
   else if (screen === 'devices') content = <Devices onClose={() => setScreen('main')} />
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
-  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onDevices={() => setScreen('devices')} />
+  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onDevices={() => setScreen('devices')} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} />
   else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       {pred?.pregnancy?.active
         ? <PregnancyView preg={pred.pregnancy} flower={flower} onSettings={() => setScreen('settings')} />
-        : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />}
+        : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />}
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
       <div>
         <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>
