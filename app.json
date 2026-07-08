@@ -7,6 +7,7 @@
     "orientation": "portrait",
     "scheme": "pear",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/images/icon.png",
     "ios": {
       "bundleIdentifier": "com.pearpetal",
       "buildNumber": "1",
@@ -22,6 +23,11 @@
     "android": {
       "package": "com.pearpetal",
       "versionCode": 100000,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "monochromeImage": "./assets/images/monochrome-icon.png",
+        "backgroundColor": "#140f11"
+      },
       "permissions": [
         "CAMERA"
       ],
@@ -78,6 +84,15 @@
           "android": {
             "minSdkVersion": 29
           }
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/adaptive-icon.png",
+          "imageWidth": 180,
+          "backgroundColor": "#140f11",
+          "resizeMode": "contain"
         }
       ]
     ],

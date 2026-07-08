@@ -132,9 +132,15 @@ because it demos the finished app).
    taps ignored). Outer element is now a div + clickable svg (was a single button). verify green.
    REMAINING: on-device confirm (owner taps a past tick -> editor jumps to that day; partner sees
    the dial).
-6. **App logo / icon + notification-bar icons**: launcher icon, Android adaptive icon
-   (foreground/background), and monochrome notification / status-bar icons. Needed before
-   any store submission (expo prebuild already warns "no icon").
+6. **App logo / icon + notification-bar icons** - FIRST PASS DONE 2026-07-07 (branch
+   feature/app-icon): a cherry-blossom bloom on solid `#140f11`, generated from the app's own
+   `buildFlower` geometry (`scripts` inline) so the icon IS the in-app flower. Three 1024 PNGs
+   in `assets/images/`: `icon.png` (opaque, iOS/legacy), `adaptive-icon.png` (transparent fg,
+   safe-zone crop), `monochrome-icon.png` (white silhouette, Android themed/notification).
+   Wired in `app.json`: `icon`, `android.adaptiveIcon` (fg + mono + `#140f11` bg),
+   expo-splash-screen. REMAINING: pick the final art (Tim comparing AI-generated alternates),
+   then on-device confirm (needs `expo prebuild` - which wipes the .debug config, so pair with
+   the durable-debug-config plugin, dev-infra TODO). Notification icon USAGE lands with #8/notifs.
 7. **About page** (port the PearCircle / PearList pattern): app name/version, what it is,
    privacy stance ("no account, no server, your data stays on your devices"), open-source +
    license, links (website/privacy/support), and a **"Support Development"** section (this is
