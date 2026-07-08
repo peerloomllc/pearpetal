@@ -1,9 +1,11 @@
 // PearPetal design tokens. Suite conventions (CSS variables under [data-theme],
 // spacing/radius scales), with a soft floral palette (rose primary) instead of
-// PearList's green. Dark is the default. Slice 1 uses the system font stack; the
-// Manrope embed and the petal-dial visual land in a later UI slice.
+// PearList's green. Dark is the default. Font is Manrope (embedded via fonts.js),
+// matching the rest of the PeerLoom suite: body weight 300, headings 500/600.
 
-export const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+import { FONT_CSS } from './fonts.js'
+
+export const FONT = "'Manrope', -apple-system, BlinkMacSystemFont, sans-serif"
 export const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace'
 
 export const spacing = { xs: 4, sm: 8, md: 12, base: 16, lg: 20, xl: 24, xxl: 32, xxxl: 48 }
@@ -42,8 +44,8 @@ const RESET = `
 *{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
 html,body,#root{height:100%;margin:0}
 body,#root{background:var(--color-surface-base)}
-body{color:var(--color-text-primary);font-family:${FONT};font-weight:400;-webkit-font-smoothing:antialiased}
-input,textarea{-webkit-user-select:text;user-select:text;font-size:16px;font-family:${FONT}}
+body{color:var(--color-text-primary);font-family:${FONT};font-weight:300;-webkit-font-smoothing:antialiased}
+input,textarea{-webkit-user-select:text;user-select:text;font-size:16px;font-family:${FONT};font-weight:300}
 button{font-family:${FONT};cursor:pointer;transition:transform 120ms cubic-bezier(0.2,0,0,1)}
 button:active{transform:scale(0.97)}
 @keyframes pearpetal-spin{to{transform:rotate(360deg)}}
@@ -54,7 +56,7 @@ export function injectGlobalStyles () {
   if (document.getElementById('pearpetal-styles')) return
   const el = document.createElement('style')
   el.id = 'pearpetal-styles'
-  el.textContent = THEME_VARS + RESET
+  el.textContent = FONT_CSS + THEME_VARS + RESET
   document.head.appendChild(el)
 }
 

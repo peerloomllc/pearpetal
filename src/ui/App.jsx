@@ -9,6 +9,7 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -319,7 +320,7 @@ function Sharing ({ onClose, onOpenPartner }) {
           {partners.map((p) => (
             <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ color: colors.text.primary, fontWeight: 500 }}>A partner's cycle</span>
-              <span style={{ color: colors.text.muted, fontSize: 12 }}>{p.scope || '...'} ›</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12 }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
             </button>
           ))}
         </div>
@@ -556,7 +557,7 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
       {partners.map((p) => (
         <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ color: colors.text.primary, fontWeight: 500 }}>A partner's cycle</span>
-          <span style={{ color: colors.text.muted, fontSize: 12 }}>{p.scope || '...'} ›</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12 }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
         </button>
       ))}
       <Btn kind='ghost' onClick={onBecomeOwner}>Start tracking my own cycle</Btn>
@@ -706,7 +707,7 @@ function AboutSection ({ title, open, onToggle, children }) {
     <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
       <button onClick={onToggle} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: `${spacing.base}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: colors.text.primary }}>
         <span style={{ fontSize: 16, fontWeight: 400 }}>{title}</span>
-        <span style={{ color: colors.text.muted, fontSize: 16, lineHeight: 1, transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }}>›</span>
+        <CaretRight size={18} color={colors.text.muted} weight='regular' style={{ flexShrink: 0, transition: 'transform 0.3s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
       </button>
       <div style={{ maxHeight: open ? 640 : 0, overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)' }}>
         <div style={{ padding: `0 ${spacing.base}px ${spacing.base}px`, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>{children}</div>
@@ -807,23 +808,27 @@ function AboutScreen ({ onClose }) {
   )
 }
 
-// Persistent bottom navigation (owner mode). Label-based, with a top accent line on
-// the active tab. Sits above the home-indicator via the safe-bottom inset.
+// Persistent bottom navigation (owner mode). Phosphor glyph + label per tab, with a
+// top accent line on the active tab. Sits above the home-indicator via the
+// safe-bottom inset. The active tab fills its glyph for extra weight.
 const NAV_TABS = [
-  { key: 'main', label: 'Cycle' },
-  { key: 'share', label: 'Share' },
-  { key: 'settings', label: 'Settings' },
-  { key: 'about', label: 'About' },
+  { key: 'main', label: 'Cycle', Icon: Flower },
+  { key: 'share', label: 'Share', Icon: ShareNetwork },
+  { key: 'settings', label: 'Settings', Icon: Gear },
+  { key: 'about', label: 'About', Icon: Info },
 ]
 function BottomNav ({ active, onTab }) {
   return (
     <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, display: 'flex', background: 'rgba(20,15,17,0.94)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderTop: `1px solid ${colors.border}`, paddingBottom: 'var(--pear-safe-bottom)' }}>
       {NAV_TABS.map((t) => {
         const on = active === t.key
+        const tint = on ? colors.primary : colors.text.muted
+        const Icon = t.Icon
         return (
-          <button key={t.key} onClick={() => onTab(t.key)} aria-current={on ? 'page' : undefined} style={{ flex: 1, background: 'none', border: 'none', padding: `${spacing.md}px 0 ${spacing.sm}px`, cursor: 'pointer', position: 'relative', display: 'flex', justifyContent: 'center' }}>
+          <button key={t.key} onClick={() => onTab(t.key)} aria-current={on ? 'page' : undefined} style={{ flex: 1, background: 'none', border: 'none', padding: `${spacing.sm}px 0 ${spacing.sm}px`, cursor: 'pointer', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
             <span style={{ position: 'absolute', top: 0, width: 26, height: 2, borderRadius: 2, background: on ? colors.primary : 'transparent' }} />
-            <span style={{ fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? colors.primary : colors.text.muted }}>{t.label}</span>
+            <Icon size={22} color={tint} weight={on ? 'fill' : 'regular'} />
+            <span style={{ fontSize: 11, fontWeight: on ? 600 : 400, color: tint }}>{t.label}</span>
           </button>
         )
       })}
