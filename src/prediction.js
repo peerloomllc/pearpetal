@@ -117,8 +117,33 @@ function projectionFromRows (dayRows, periodRows, opts = {}) {
   }
 }
 
+// --- pregnancy (gestational) projection -------------------------------------
+// When the user's goal is 'pregnant', the app shows a gestational view instead of
+// cycle prediction. Pure: derived from the stored pregnancy dates + today, no log
+// rows needed. Device-local only - never projected to a partner.
+const GESTATION_DAYS = 280 // 40 weeks, dated from the last menstrual period (LMP)
+
+// prefs.pregnancy = { lmp?: iso, dueDate?: iso } (either is enough; the other is
+// derived at the standard 280-day offset). Returns { active:false } unless the
+// goal is 'pregnant' and a usable date is present.
+function pregnancyProjection (prefs = {}, todayArg) {
+  if (!prefs || prefs.goal !== 'pregnant' || !prefs.pregnancy) return { active: false }
+  const today = todayArg || todayIso()
+  const { lmp, dueDate } = prefs.pregnancy
+  const start = lmp || (dueDate ? addDays(dueDate, -GESTATION_DAYS) : null)
+  const due = dueDate || (lmp ? addDays(lmp, GESTATION_DAYS) : null)
+  if (!start || !due) return { active: false }
+  const gestDays = Math.max(0, diffDays(start, today))
+  const weeks = Math.floor(gestDays / 7)
+  const days = gestDays % 7
+  const trimester = weeks < 14 ? 1 : weeks < 28 ? 2 : 3
+  const daysUntilDue = diffDays(today, due)
+  const progress = Math.max(0, Math.min(1, gestDays / GESTATION_DAYS))
+  return { active: true, lmp: start, dueDate: due, gestDays, weeks, days, trimester, daysUntilDue, progress }
+}
+
 module.exports = {
-  projectionFromRows, cycleStarts, bbtOvulation, median,
+  projectionFromRows, pregnancyProjection, cycleStarts, bbtOvulation, median,
   isoToDays, daysToIso, addDays, diffDays, todayIso,
-  FLOW_VALUES, BLEEDING_FLOWS, DEFAULT_CYCLE_LEN, DEFAULT_LUTEAL_LEN, DEFAULT_PERIOD_LEN,
+  FLOW_VALUES, BLEEDING_FLOWS, DEFAULT_CYCLE_LEN, DEFAULT_LUTEAL_LEN, DEFAULT_PERIOD_LEN, GESTATION_DAYS,
 }

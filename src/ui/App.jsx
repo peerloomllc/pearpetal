@@ -14,7 +14,7 @@ import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
 import { colors, spacing, radius } from './theme.js'
-import PetalDial, { FlowerThumb, isoDiff } from './PetalDial.jsx'
+import PetalDial, { PregnancyDial, FlowerThumb, isoDiff, addDaysIso } from './PetalDial.jsx'
 import { FLOWER_KEYS, flowerLabel } from './flowers.js'
 
 const FLOWS = [
@@ -459,11 +459,11 @@ function PartnerView ({ groupId, onClose, onLeft }) {
     </div>
   )
 }
-function Row ({ label, value }) {
+function Row ({ label, value, accent }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ color: colors.text.secondary, fontSize: 14 }}>{label}</span>
-      <span style={{ color: colors.text.primary, fontWeight: 500 }}>{value}</span>
+      <span style={{ color: accent ? colors.primary : colors.text.secondary, fontSize: 14 }}>{label}</span>
+      <span style={{ color: accent ? colors.primary : colors.text.primary, fontWeight: accent ? 600 : 500 }}>{value}</span>
     </div>
   )
 }
@@ -618,6 +618,29 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
 const PHASE_COLOR = { menstrual: '#c8384f', follicular: '#c9a0d8', fertile: '#e8859b', luteal: '#8f8288' }
 function fmtDate (iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }) } catch { return iso } }
 
+// Pregnancy (gestational) hero: replaces the cycle summary when the goal is
+// Pregnant. Shows the bloom-by-gestation dial + weeks/trimester/due-date.
+const TRIMESTER_LABEL = { 1: 'First trimester', 2: 'Second trimester', 3: 'Third trimester' }
+function PregnancyView ({ preg, flower, onSettings }) {
+  if (!preg?.active) return null
+  const { weeks, days, trimester, dueDate, daysUntilDue, progress } = preg
+  const dueLabel = daysUntilDue > 0 ? `in ${daysUntilDue} day${daysUntilDue === 1 ? '' : 's'}` : daysUntilDue === 0 ? 'today' : `${-daysUntilDue} day${daysUntilDue === -1 ? '' : 's'} ago`
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
+      <PregnancyDial progress={progress} weeks={weeks} days={days} flower={flower} />
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: spacing.sm, marginTop: `-${spacing.sm}px` }}>
+        <span style={{ fontSize: 26, fontWeight: 600, color: colors.primary }}>{weeks}w {days}d</span>
+        <span style={{ color: colors.text.muted, fontSize: 14 }}>· {TRIMESTER_LABEL[trimester]}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+        <Row label='Due date' value={`${fmtDate(dueDate)} · ${dueLabel}`} />
+        <Row label='Progress' value={`${Math.round(progress * 100)}% of ~40 weeks`} />
+      </div>
+      <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center' }}>A calendar estimate, not medical advice. Follow your provider's dates.</div>
+    </div>
+  )
+}
+
 function CycleSummary ({ pred, today, flower, onSettings, onScrub, selected }) {
   if (!pred) return null
   const days = pred.daysUntilNextPeriod
@@ -637,16 +660,15 @@ function CycleSummary ({ pred, today, flower, onSettings, onScrub, selected }) {
             <span style={{ fontSize: 26, fontWeight: 600, color: PHASE_COLOR[pred.phase] || colors.text.primary }}>{PHASE_LABEL[pred.phase] || pred.phase}</span>
             <span style={{ color: colors.text.muted, fontSize: 14 }}>· day {pred.dayOfCycle}</span>
           </div>
+          {pred.goal === 'conceive' && <div style={{ textAlign: 'center', color: colors.primary, fontSize: 12 }}>Your fertile window is your best chance to conceive.</div>}
+          {pred.goal === 'avoid' && <div style={{ textAlign: 'center', color: colors.warn, fontSize: 12, fontWeight: 500 }}>Not contraception. Do not rely on this to avoid pregnancy.</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
             <Row label='Next period' value={`${fmtDate(pred.nextPeriodStart)} · ${nextLabel}`} />
-            <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} />
+            <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} accent={pred.goal === 'conceive'} />
             <Row label={pred.ovulationSource === 'bbt' ? 'Ovulation (from BBT)' : 'Ovulation (est.)'} value={fmtDate(pred.ovulationEst)} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ color: colors.text.muted, fontSize: 11 }}>
-              {pred.confidence === 'high' ? 'Based on your recent cycles.' : pred.confidence === 'medium' ? 'Sharpens as you log more cycles.' : 'Early estimate. Not medical advice.'}
-            </span>
-            <button onClick={onSettings} style={{ background: 'none', border: 'none', color: colors.text.muted, fontSize: 13, padding: 0 }}>Settings</button>
+          <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center' }}>
+            {pred.confidence === 'high' ? 'Based on your recent cycles.' : pred.confidence === 'medium' ? 'Sharpens as you log more cycles.' : 'Early estimate. Not medical advice.'}
           </div>
         </>
       )}
@@ -703,6 +725,28 @@ function ProfileCard () {
   )
 }
 
+// Pregnancy date setup, revealed under the goal chips when goal is Pregnant.
+// The user enters the first day of their last period (LMP); the due date is the
+// standard 40 weeks (280 days) later. All device-local; never shared.
+function PregnancySetup ({ prefs, save }) {
+  const lmp = prefs.pregnancy?.lmp || ''
+  const due = lmp ? addDaysIso(lmp, 280) : (prefs.pregnancy?.dueDate || '')
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
+        <span style={{ color: colors.text.secondary, fontSize: 14 }}>First day of your last period</span>
+        <input type='date' value={lmp} max={todayIso()} onChange={(e) => save({ pregnancy: { lmp: e.target.value } })}
+          style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `6px 10px` }} />
+      </div>
+      {due
+        ? <div style={{ color: colors.text.secondary, fontSize: 13 }}>Estimated due date: <span style={{ color: colors.text.primary, fontWeight: 500 }}>{fmtDate(due)}</span> (about 40 weeks). The dial now tracks your pregnancy.</div>
+        : <div style={{ color: colors.text.muted, fontSize: 12 }}>Enter the first day of your last period to see how far along you are and your estimated due date.</div>}
+      <div style={{ color: colors.text.muted, fontSize: 11 }}>A calendar estimate, not medical advice. Your provider's dating is what counts.</div>
+      <button onClick={() => save({ goal: 'track', pregnancy: null })} style={{ alignSelf: 'center', marginTop: spacing.xs, background: colors.surface.input, border: `1px solid ${colors.border}`, color: colors.text.secondary, fontSize: 13, fontWeight: 500, padding: `8px 16px`, borderRadius: radius.lg, cursor: 'pointer' }}>No longer pregnant</button>
+    </div>
+  )
+}
+
 function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState('')
@@ -748,7 +792,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
       <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Cycle settings</div>
       <ProfileCard />
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14 }}>Your flower</div>
+        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your flower</div>
         <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', paddingBottom: spacing.xs }}>
           {FLOWER_KEYS.map((key) => {
             const active = (prefs.flower || 'rose') === key
@@ -772,18 +816,20 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
         <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14 }}>What are you tracking for?</div>
+        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>What are you tracking for?</div>
         <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-          {[['track', 'General'], ['conceive', 'Trying to conceive'], ['avoid', 'Avoiding pregnancy']].map(([k, l]) => (
+          {[['track', 'General'], ['conceive', 'Trying to conceive'], ['avoid', 'Avoiding pregnancy'], ['pregnant', 'Pregnant']].map(([k, l]) => (
             <Chip key={k} active={(prefs.goal || 'track') === k} onClick={() => save({ goal: k })}>{l}</Chip>
           ))}
         </div>
-        <div style={{ color: colors.text.muted, fontSize: 11 }}>PearPetal is not contraception. Do not rely on it to avoid pregnancy.</div>
+        {prefs.goal === 'pregnant'
+          ? <PregnancySetup prefs={prefs} save={save} />
+          : <div style={{ color: colors.text.muted, fontSize: 11 }}>PearPetal is not contraception. Do not rely on it to avoid pregnancy.</div>}
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14 }}>Your data</div>
+        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your data</div>
         <div style={{ display: 'flex', gap: spacing.sm }}>
-          <Btn onClick={doExport} style={{ flex: 1 }}>Export backup</Btn>
+          <Btn onClick={doExport} style={{ flex: 1 }}>Export</Btn>
           <Btn kind='ghost' onClick={doImport} style={{ flex: 1 }}>Import</Btn>
         </div>
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Export saves a plain file to your device. It is not encrypted and never leaves your device on its own, so keep it somewhere private. Import merges a backup into your log.</div>
@@ -1014,7 +1060,9 @@ export default function App () {
   else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />
+      {pred?.pregnancy?.active
+        ? <PregnancyView preg={pred.pregnancy} flower={flower} onSettings={() => setScreen('settings')} />
+        : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />}
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
       <div>
         <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>

@@ -145,6 +145,53 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
   )
 }
 
+// Gestational dial for pregnancy mode: a 40-week progress ring with the flower
+// blooming as the pregnancy advances (full bloom near term), plus trimester marks.
+// Display-only. Reuses the same geometry + species flowers as the cycle dial.
+export function PregnancyDial ({ progress = 0, weeks = 0, days = 0, flower = 'rose' }) {
+  const p = clamp(progress, 0, 1)
+  const bloom = 0.12 + 0.88 * p
+  const [bl, setBl] = useState(0.06)
+  const raf = useRef(0)
+  useEffect(() => {
+    const reduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce) { setBl(bloom); return undefined }
+    const from = bl, start = performance.now(), dur = 720
+    cancelAnimationFrame(raf.current)
+    const step = (t) => { const k = Math.min(1, (t - start) / dur); const e = 1 - Math.pow(1 - k, 3); setBl(from + (bloom - from) * e); if (k < 1) raf.current = requestAnimationFrame(step) }
+    raf.current = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bloom])
+  const fl = buildFlower(flower, bl)
+  const glow = Math.max(0, (bl - 0.55) / 0.45) * 0.9
+  const arcEnd = -90 + Math.min(0.9999, p) * 360
+  const triDeg = (wk) => -90 + (wk / 40) * 360
+  return (
+    <div style={{ width: '100%', maxWidth: 320, margin: '0 auto' }}>
+      <svg viewBox='0 0 320 320' role='img' aria-label={`${weeks} weeks ${days} days pregnant`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+        <defs>
+          <radialGradient id='pregGlow' cx='50%' cy='50%' r='50%'>
+            <stop offset='0%' stopColor={colors.primary} stopOpacity='0.55' />
+            <stop offset='60%' stopColor={colors.primary} stopOpacity='0.10' />
+            <stop offset='100%' stopColor={colors.primary} stopOpacity='0' />
+          </radialGradient>
+        </defs>
+        <circle cx={CX} cy={CY} r={120} fill='url(#pregGlow)' opacity={glow} />
+        <circle cx={CX} cy={CY} r={R} fill='none' stroke={colors.track} strokeWidth={10} />
+        {p > 0.002 && <path d={arcPath(R, -90, arcEnd)} fill='none' stroke={colors.primary} strokeWidth={10} strokeLinecap='round' />}
+        {[14, 28].map((wk) => { const [x1, y1] = polar(R - 7, triDeg(wk)), [x2, y2] = polar(R + 7, triDeg(wk)); return <line key={wk} x1={x1} y1={y1} x2={x2} y2={y2} stroke='rgba(255,255,255,0.5)' strokeWidth={1.6} /> })}
+        <g transform={`translate(${CX},${CY})`}>
+          {fl.petals.map((pt, i) => <path key={i} d={pt.d} fill={pt.fill} opacity={pt.opacity} transform={pt.transform} />)}
+          <circle cx={0} cy={0} r={fl.center.r} fill={fl.center.fill} />
+          <circle cx={0} cy={-2} r={fl.centerHi.r} fill='rgba(255,255,255,0.25)' />
+        </g>
+        <text x={CX} y={CY - 148} textAnchor='middle' fill={colors.text.muted} fontSize={11}>week {weeks}</text>
+      </svg>
+    </div>
+  )
+}
+
 // A small static thumbnail of a species at a fixed bloom, for the flower picker.
 export function FlowerThumb ({ flower, size = 56, bloom = 0.85 }) {
   const fl = buildFlower(flower, bloom, 0.62)
