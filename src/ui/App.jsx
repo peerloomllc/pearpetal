@@ -8,7 +8,9 @@
 // The petal dial and partner sharing are deliberately NOT here yet (later
 // slices). This proves the data path end to end: log on device A, see on B.
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import QRCode from 'qrcode'
+import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
 import { colors, spacing, radius } from './theme.js'
 import PetalDial, { FlowerThumb } from './PetalDial.jsx'
@@ -26,6 +28,19 @@ function todayIso () {
   const d = new Date()
   const p = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+// Re-run a loader whenever synced data changes. Every base view update - a local
+// edit OR a replicated-then-applied remote change from another of your devices or a
+// partner - emits group:updated. This loads once on mount and again on each such
+// event, so any screen showing synced data refreshes in real time (no manual
+// reload, no leave-and-return). `load` must be stable (useCallback) so the
+// subscription is registered once and torn down on unmount.
+function useSynced (load) {
+  useEffect(() => {
+    load()
+    return on('group:updated', load)
+  }, [load])
 }
 
 // --- small styled primitives ------------------------------------------------
@@ -50,28 +65,127 @@ function Chip ({ active, onClick, children, color }) {
 }
 function flowColor (k) { return colors.flow[k] || colors.track }
 
+// --- invite links -----------------------------------------------------------
+// Wrap the engine's base64 invite blob as a universal link matching the rest of
+// the suite. The blob rides in the URL #fragment so it never reaches
+// peerloomllc.com's server (it is the secret that grants access). Two kinds:
+// device linking (/petal/link) and partner share (/petal/join).
+const INVITE_BASE = 'https://peerloomllc.com/petal'
+const linkUrl = (key) => (key ? `${INVITE_BASE}/link#${key}` : '')
+const shareUrl = (key) => (key ? `${INVITE_BASE}/join#${key}` : '')
+// Accept a pasted / scanned / deep-linked invite in any shape: a full https/pear
+// URL (blob in the #fragment, an ?i= query, or after the /link|/join path) or a
+// bare blob (backwards compatible). Returns just the invite blob.
+function parseInvite (text) {
+  const s = String(text || '').trim()
+  if (/^(https?:|pear:)/i.test(s)) {
+    const h = s.indexOf('#'); if (h !== -1) return s.slice(h + 1).trim()
+    const m = s.match(/[?&]i=([^&#]+)/); if (m) return decodeURIComponent(m[1]).trim()
+    const j = s.search(/\/(link|join)(?![a-z])/i); if (j !== -1) return s.slice(j).replace(/^\/(link|join)/i, '').replace(/^[/?#]+/, '').trim()
+    return ''
+  }
+  return s
+}
+// Does this invite carry the device-link kind (vs a partner share)? Only a URL
+// says which; a bare blob is ambiguous, so paste flows that already know the mode
+// pass it through and this is used only for deep links.
+const isLinkInvite = (text) => /(peerloomllc\.com\/petal|pearpetal)\/link(?![a-z])/i.test(String(text || ''))
+
+// --- QR (render + scan, all in the WebView) ---------------------------------
+// A QR of an invite link, always on a white quiet-zone box so it scans in dark mode.
+function QrImage ({ text, size = 190 }) {
+  const [url, setUrl] = useState(null)
+  useEffect(() => {
+    let alive = true
+    QRCode.toString(text || '', { type: 'svg', margin: 1, errorCorrectionLevel: 'M' })
+      .then((svg) => { if (alive) setUrl('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [text])
+  if (!text) return null
+  return (
+    <div style={{ alignSelf: 'center', width: size, height: size, background: '#fff', borderRadius: radius.md, padding: 8, boxSizing: 'content-box', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {url ? <img src={url} width={size} height={size} alt='Invite QR code' /> : null}
+    </div>
+  )
+}
+
+// In-WebView QR scanner: camera stream -> canvas frames -> jsQR decode. Works once
+// the shell grants the WebView camera permission (see app/index.tsx). onDecode gets
+// the raw decoded string; the caller runs it through parseInvite.
+function ScannerView ({ open, onClose, onDecode }) {
+  const videoRef = useRef(null)
+  const [error, setError] = useState(null)
+  useEffect(() => {
+    if (!open) return undefined
+    setError(null)
+    let stream = null; let raf = null; let cancelled = false
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const stop = () => { cancelled = true; if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach((t) => t.stop()) }
+    ;(async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera not available on this device')
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return }
+        const v = videoRef.current
+        v.srcObject = stream; await v.play()
+        const tick = () => {
+          if (cancelled) return
+          if (v.readyState >= 2 && v.videoWidth) {
+            canvas.width = v.videoWidth; canvas.height = v.videoHeight
+            ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
+            let img = null
+            try { img = ctx.getImageData(0, 0, canvas.width, canvas.height) } catch {}
+            if (img) {
+              const found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' })
+              if (found?.data) { stop(); haptic('success'); onDecode(found.data); return }
+            }
+          }
+          raf = requestAnimationFrame(tick)
+        }
+        tick()
+      } catch (e) { setError(e?.message || 'Could not open the camera') }
+    })()
+    return stop
+  }, [open])
+  if (!open) return null
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: '#000' }}>
+      <video ref={videoRef} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+        <div style={{ width: 240, height: 240, border: `3px solid ${colors.primary}`, borderRadius: radius.lg }} />
+      </div>
+      <button onClick={onClose} aria-label='Close scanner' style={{ position: 'absolute', top: spacing.base, right: spacing.base, width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 20, lineHeight: 1, cursor: 'pointer' }}>✕</button>
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, textAlign: 'center', color: '#fff', fontSize: 14, padding: `${spacing.xl}px ${spacing.base}px`, background: 'linear-gradient(transparent, rgba(0,0,0,0.7))' }}>
+        {error || 'Point the camera at an invite QR code'}
+      </div>
+    </div>
+  )
+}
+
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady }) {
   const [mode, setMode] = useState(null) // null | 'link' | 'partner'
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
+  const [scanning, setScanning] = useState(false)
 
   const start = async () => {
     setErr('')
     try { await call('cycle:create'); haptic('success'); onReady() } catch (e) { setErr(e.message) }
   }
-  const link = async () => {
+  const link = async (raw) => {
     setErr('')
-    try { await call('link:join', { inviteKey: code.trim() }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
+    try { await call('link:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
   }
-  const joinPartner = async () => {
+  const joinPartner = async (raw) => {
     setErr('')
-    try { await call('partner:join', { inviteKey: code.trim() }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
+    try { await call('partner:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
   }
-  const scan = async () => {
-    try { const r = await call('shell:scanQr'); if (r?.code) setCode(r.code) } catch {}
-  }
-  const back = () => { setMode(null); setErr(''); setCode('') }
+  const submit = () => (mode === 'link' ? link() : joinPartner())
+  const onScanned = (txt) => { setScanning(false); (mode === 'link' ? link : joinPartner)(txt) }
+  const back = () => { setMode(null); setErr(''); setCode(''); setScanning(false) }
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100%', justifyContent: 'center' }}>
@@ -96,13 +210,14 @@ function Onboarding ({ onReady, onViewerReady }) {
           <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder='Paste code' rows={3}
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
           <div style={{ display: 'flex', gap: spacing.sm }}>
-            <Btn onClick={mode === 'link' ? link : joinPartner} style={{ flex: 1 }}>{mode === 'link' ? 'Link this device' : 'View their cycle'}</Btn>
-            <Btn kind='ghost' onClick={scan}>Scan</Btn>
+            <Btn onClick={submit} style={{ flex: 1 }}>{mode === 'link' ? 'Link this device' : 'View their cycle'}</Btn>
+            <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }}>Scan QR</Btn>
           </div>
           <Btn kind='ghost' onClick={back}>Back</Btn>
         </div>
       )}
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
+      <ScannerView open={scanning} onClose={() => setScanning(false)} onDecode={onScanned} />
     </div>
   )
 }
@@ -120,11 +235,12 @@ function Sharing ({ onClose, onOpenPartner }) {
   const [shares, setShares] = useState([])
   const [partners, setPartners] = useState([])
   const [err, setErr] = useState('')
-  const load = async () => {
+  const [qrFor, setQrFor] = useState(null)
+  const load = useCallback(async () => {
     setShares(await call('share:list').catch(() => []))
     setPartners(await call('partner:list').catch(() => []))
-  }
-  useEffect(() => { load() }, [])
+  }, [])
+  useSynced(load)
   const create = async () => {
     setErr('')
     try { await call('share:create', { scope }); haptic('success'); load() } catch (e) { setErr(e.message) }
@@ -164,10 +280,12 @@ function Sharing ({ onClose, onOpenPartner }) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ color: colors.text.primary, fontWeight: 500, textTransform: 'capitalize' }}>{s.scope}</span>
                 <div style={{ display: 'flex', gap: spacing.sm }}>
-                  <Btn kind='ghost' onClick={() => copy(s.inviteKey)} style={{ padding: '6px 10px', fontSize: 13 }}>Copy code</Btn>
+                  <Btn kind='ghost' onClick={() => setQrFor(qrFor === s.groupId ? null : s.groupId)} style={{ padding: '6px 10px', fontSize: 13 }}>{qrFor === s.groupId ? 'Hide QR' : 'QR'}</Btn>
+                  <Btn kind='ghost' onClick={() => copy(shareUrl(s.inviteKey))} style={{ padding: '6px 10px', fontSize: 13 }}>Copy link</Btn>
                   <Btn kind='ghost' onClick={() => revoke(s.groupId)} style={{ padding: '6px 10px', fontSize: 13, color: colors.error }}>Revoke</Btn>
                 </div>
               </div>
+              {qrFor === s.groupId && <QrImage text={shareUrl(s.inviteKey)} />}
             </div>
           ))}
         </div>
@@ -195,6 +313,18 @@ function PartnerView ({ groupId, onClose, onLeft }) {
   const load = async () => { try { setData(await call('partner:view', { groupId })) } catch (e) { setErr(e.message) } }
   useEffect(() => { load() }, [groupId])
   useEffect(() => on('group:updated', (d) => { if (d?.groupId === groupId) load() }), [groupId])
+  // The owner's projection may still be replicating when this view first opens:
+  // partner:view returns nulls until share:meta/phase apply, and the group:updated
+  // that would refresh us can fire in the gap before this view mounts (it is then
+  // consumed by the owner-mode listener without being buffered). Without this, the
+  // view sits blank until the user leaves and re-enters. Poll until the projection
+  // lands, then stop and rely on the live group:updated subscription above.
+  const synced = !!(data && (data.ownerPubkey || data.phase || data.predict))
+  useEffect(() => {
+    if (synced) return undefined
+    const t = setInterval(load, 2000)
+    return () => clearInterval(t)
+  }, [groupId, synced])
   const leave = async () => { try { await call('partner:leave', { groupId }); onLeft() } catch (e) { setErr(e.message) } }
 
   const phase = data?.phase
@@ -261,6 +391,15 @@ function DayEditor ({ date, setDate, onSaved }) {
     setNotes(r?.notes || '')
   }, [date])
   useEffect(() => { load() }, [load])
+  // Live-refresh the open day when another of your devices edits it. Reload flow +
+  // symptoms always, but only adopt the remote note when the notes field is not
+  // focused, so a sync never yanks text you are mid-typing (it saves on blur, LWW).
+  useEffect(() => on('group:updated', async () => {
+    const r = await call('day:get', { date }).catch(() => null)
+    setRow(r || { date, flow: null, symptoms: [] })
+    const typingNote = typeof document !== 'undefined' && document.activeElement && document.activeElement.tagName === 'TEXTAREA'
+    if (!typingNote) setNotes(r?.notes || '')
+  }), [date])
 
   if (!row) return null
   const setFlow = async (k) => {
@@ -327,13 +466,14 @@ function RecentDays ({ days, onPick }) {
 function Devices ({ onClose }) {
   const [devices, setDevices] = useState([])
   const [invite, setInvite] = useState('')
-  const load = async () => {
+  const load = useCallback(async () => {
     setDevices(await call('device:getAll').catch(() => []))
     try { const r = await call('link:invite'); setInvite(r.inviteKey) } catch {}
-  }
-  useEffect(() => { load() }, [])
-  const share = () => call('shell:share', { title: 'Link a device to PearPetal', text: invite }).catch(() => {})
-  const copy = async () => { try { await navigator.clipboard.writeText(invite); haptic('success') } catch { share() } }
+  }, [])
+  useSynced(load)
+  const inviteLink = linkUrl(invite)
+  const share = () => call('shell:share', { title: 'Link a device to PearPetal', text: inviteLink }).catch(() => {})
+  const copy = async () => { try { await navigator.clipboard.writeText(inviteLink); haptic('success') } catch { share() } }
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
@@ -350,10 +490,11 @@ function Devices ({ onClose }) {
         ))}
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ fontSize: 14, color: colors.text.secondary }}>Link another of your devices: open PearPetal on it, tap "Link another device", and paste this code.</div>
-        <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.text.secondary, wordBreak: 'break-all', maxHeight: 96, overflow: 'auto' }}>{invite || '...'}</div>
+        <div style={{ fontSize: 14, color: colors.text.secondary }}>Link another of your devices: scan this QR on it, open this link on it, or paste it into "Link another device".</div>
+        <QrImage text={inviteLink} />
+        <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.text.secondary, wordBreak: 'break-all', maxHeight: 96, overflow: 'auto' }}>{inviteLink || '...'}</div>
         <div style={{ display: 'flex', gap: spacing.sm }}>
-          <Btn onClick={copy} style={{ flex: 1 }}>Copy code</Btn>
+          <Btn onClick={copy} style={{ flex: 1 }}>Copy link</Btn>
           <Btn kind='ghost' onClick={share}>Share</Btn>
         </div>
       </div>
@@ -364,8 +505,8 @@ function Devices ({ onClose }) {
 // --- viewer-only home (a device that only watches partners, no own cycle) ---
 function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   const [partners, setPartners] = useState([])
-  const load = async () => setPartners(await call('partner:list').catch(() => []))
-  useEffect(() => { load() }, [])
+  const load = useCallback(async () => setPartners(await call('partner:list').catch(() => [])), [])
+  useSynced(load)
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: `calc(${spacing.xl}px + var(--pear-safe-top))`, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
@@ -522,6 +663,7 @@ export default function App () {
   const [days, setDays] = useState([])
   const [pred, setPred] = useState(null)
   const [flower, setFlower] = useState('rose')
+  const [notice, setNotice] = useState('')
 
   const refresh = useCallback(async () => {
     const [d, pr] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null)])
@@ -542,19 +684,30 @@ export default function App () {
   useEffect(() => { boot() }, [boot])
   useEffect(() => on('group:updated', () => { if (mode === 'owner') refresh() }), [mode, refresh])
 
-  if (mode === null) return <div style={{ height: '100%' }} />
-  if (mode === 'onboard') return <Onboarding onReady={boot} onViewerReady={boot} />
+  // Invite deep link: the shell forwards the opened URL (https://peerloomllc.com/
+  // petal/link|join#<blob> or pear://pearpetal/link|join?...). Route by path -
+  // /link adds THIS device to a cycle, /join opens a partner's shared cycle - then
+  // re-boot into the right mode. Errors (e.g. already tracking) surface as a notice.
+  useEffect(() => on('deeplink:invite', async ({ url }) => {
+    const key = parseInvite(url)
+    if (!key) { setNotice('That invite link looks empty or malformed.'); return }
+    try {
+      if (isLinkInvite(url)) await call('link:join', { inviteKey: key })
+      else await call('partner:join', { inviteKey: key })
+      haptic('success'); await boot()
+    } catch (e) { setNotice(e?.message || 'Could not open that invite.') }
+  }), [boot])
+  useEffect(() => { if (!notice) return undefined; const t = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(t) }, [notice])
 
-  if (partnerGroup) return <PartnerView groupId={partnerGroup} onClose={() => setPartnerGroup(null)} onLeft={() => { setPartnerGroup(null); boot() }} />
-
-  if (mode === 'viewer') return <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); boot() }} />
-
-  // owner
-  if (screen === 'devices') return <Devices onClose={() => setScreen('main')} />
-  if (screen === 'share') return <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
-  if (screen === 'settings') return <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} />
-
-  return (
+  let content
+  if (mode === null) content = <div style={{ height: '100%' }} />
+  else if (mode === 'onboard') content = <Onboarding onReady={boot} onViewerReady={boot} />
+  else if (partnerGroup) content = <PartnerView groupId={partnerGroup} onClose={() => setPartnerGroup(null)} onLeft={() => { setPartnerGroup(null); boot() }} />
+  else if (mode === 'viewer') content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); boot() }} />
+  else if (screen === 'devices') content = <Devices onClose={() => setScreen('main')} />
+  else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
+  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} />
+  else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: `calc(${spacing.xl}px + var(--pear-safe-top))`, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
@@ -570,5 +723,16 @@ export default function App () {
         <RecentDays days={days} onPick={setDate} />
       </div>
     </div>
+  )
+
+  return (
+    <>
+      {content}
+      {notice && (
+        <div onClick={() => setNotice('')} style={{ position: 'fixed', left: 12, right: 12, bottom: 'calc(16px + var(--pear-safe-bottom))', zIndex: 50, background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, color: colors.text.primary, fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
+          {notice}
+        </div>
+      )}
+    </>
   )
 }

@@ -250,6 +250,12 @@ export default function Shell () {
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
+        // In-WebView camera for the QR scanner (getUserMedia). The scanner runs in
+        // the UI bundle; the shell just grants the WebView's camera request.
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+        mediaCapturePermissionGrantType='grant'
+        onPermissionRequest={(ev: any) => { try { ev?.grant?.(ev.resources) } catch {} }}
       />
     </>
   )

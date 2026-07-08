@@ -29,6 +29,63 @@ session lives in memory + (should land in) DECISIONS.md.
     (rocksdb-native, bare-fs, ...) the iOS build couldn't link. Fixed by resolving core
     deps to the app's single top-level set + `npm install` on the Mac in ios-dev-install.sh.
 
+## FIXED 2026-07-07 - partner view blank until re-nav (a UI refresh race, NOT a sync bug)
+
+Symptom: partner's cycle stayed blank after a fresh share+join (both iPhone<-Android AND
+Android<->Android); leaving the app and re-entering made it appear. Diagnosed on-device:
+replication + apply were working the WHOLE time (partner corestore grew ~95KB on join; owner
++104KB; clocks agree so no future-timestamp apply-reject; invites are distinct - the "same
+link" look is just the shared `eyJncm91cElkIjoi` base64 prefix). Root cause was purely UI:
+`PartnerView` (src/ui/App.jsx) did ONE initial `partner:view` on mount (returns nulls while
+the projection is still replicating) and otherwise only refetched on `group:updated` - but
+that event can fire in the gap before the view mounts, and is then consumed by the always-on
+owner-mode `group:updated` listener (App.jsx ~543) WITHOUT being buffered (ipc.js only buffers
+when there are zero listeners). So the mounted partner view never heard the refresh and sat
+blank until a manual remount (leave + re-enter), whose fresh initial load ran after data
+landed. FIX: `PartnerView` now polls `partner:view` every 2s until the projection lands
+(ownerPubkey/phase/predict present), then stops and relies on the live `group:updated`
+subscription. T0/T1 UI-only, no wire change. Needs on-device confirmation (auto-fills without
+leaving the view). Consider later: don't let the owner-mode listener swallow events meant for
+other views (per-groupId event routing), so the poll is a belt-and-suspenders, not the load-
+bearing path.
+
+## Flower design options - INVESTIGATED 2026-07-07: NOT lost
+
+The 5-species flower picker (rose, cherry blossom, lotus, poppy, dahlia) is intact in
+`src/ui/flowers.js` and fully wired in `src/ui/App.jsx` (Settings "Your flower" picker w/
+live thumbnails -> drives the petal dial). Committed + merged in PR #5 (9affdf8) on main.
+Git history clean, no stashes, no orphaned/dangling flower commits, working tree clean - the
+morning crash did NOT eat it. If it looks absent ON A DEVICE, that's a stale build (see bug
+above), not lost code.
+
+## KNOWN LIMITATION (deferred) - linked device's writes slow to sync back to founder
+
+Device linking (own 2nd device on the private base) currently syncs founder->device (A->B)
+immediately, but device->founder (B->A - the new device's own edits + its roster row) can
+STALL until a clean reconnect. Confirmed on-device 2026-07-07 (TCL founder + Pixel linked
+device): Pixel edits did not reach the TCL, and the Pixel was absent from the TCL Devices
+roster - UNTIL the TCL app was force-stopped + reopened, after which both appeared. So the
+data is NOT lost and the merge logic is NOT wrong; it converges once a fresh connection forms.
+- ROOT CAUSE: connection CHURN during initial writer admission. Trace (private base
+  af1BcrUP): the founder applied `addWriter` for the Pixel's key TWICE, interleaved with
+  pair:onclose/pair:remote-open - the swarm connection kept dropping + re-forming right as the
+  founder should have started pulling the new writer's core, so that pull stalled. A fresh
+  app start tears down all swarm state and the pull completes.
+- The churn is ENVIRONMENTAL (two real Android devices; likely the leave-then-relink
+  transition: Pixel had just left a partner share (destroyGroup -> swarm.leave) then linked
+  the private base with the same peer). It does NOT reproduce on a clean local testnet: a
+  two-peer repro of the exact leave-relink sequence (written 2026-07-07, then removed) PASSED
+  in ~0.8s, proving pairing/replication logic is correct.
+- WHY DEFERRED: multi-device-for-one-user is a minor use case for this app (partner sharing -
+  the hero feature, owner-write-only, partner read-only - does NOT use the B->A writer path
+  and is fully verified). New-phone migration is better served by export/import (slice 4).
+- IF REVISITED: make the founder re-pull new writer cores once the connection settles (churn-
+  resilience), needs a way to reproduce real-network churn to verify. Also a genuine small app
+  gap: a device that becomes writable AFTER link:join never re-publishes its device:{pubkey}
+  row (publishDevice runs only at join + boot, both before writable; add a post-became-writable
+  retry, e.g. device:publish on group:updated while owner). Release-notes wording: "a linked
+  second device may need an app reopen to finish syncing its first edits."
+
 ## Release blockers (v1) - do before shipping
 
 Everything here ships in v1. Rough build order below (the onboarding demo is last
@@ -42,9 +99,22 @@ because it demos the finished app).
    `ios/` regenerated. Verify green, autolinking confirmed. See DECISIONS 2026-07-07.
    REMAINING: install on the iPhone (`scripts/ios-dev-install.sh`) and confirm the LN prompt
    appears + partner sync (iPhone <- Android owner) takes the LAN path.
-2. **Invite/share code as a universal-link URL** (`https://peerloomllc.com/join/<payload>`)
-   matching the other apps, instead of the raw base64 blob. Applies to both device linking
-   and partner share codes; foundation for web invite handling + QR (do before #3).
+2. **Invite/share code as a universal-link URL** - CODE DONE 2026-07-07 (branch
+   feature/invite-urls, stacked on feature/realtime-ui-sync). Invites now render/copy as
+   `https://peerloomllc.com/petal/link#<blob>` (device) and `.../petal/join#<blob>` (partner),
+   blob in the #fragment (never hits the server). `parseInvite()` accepts URL or bare blob
+   (back-compat); deep links route by path (/link vs /join); added Android intent filters for
+   /join. Verify green, round-trip + routing checked. See DECISIONS 2026-07-07. REMAINING:
+   on-device check (copy a link on one phone, open/paste on another) + iOS universal-link
+   website association (apple-app-site-association + associatedDomains) is website-side, separate.
+   - **FOLLOW-UP (website-side, not in-app): https universal-link tap-to-open.** Tapping an
+     `https://peerloomllc.com/petal/link|join#...` link auto-opens the app only once the
+     website serves the association files: Android `/.well-known/assetlinks.json` (SHA-256 of
+     the signing cert, `com.pearpetal`) and iOS `/.well-known/apple-app-site-association`
+     (appID `G79ALD29NA.com.pearpetal`, paths `/petal/*`), plus `associatedDomains`
+     (`applinks:peerloomllc.com`) in the iOS app config. Until then tapping shows a chooser /
+     opens the browser; pear:// scheme + paste-into-app both already work. Also needs a static
+     `/petal/link` + `/petal/join` landing page on peerloomllc.com (the # blob stays client-side).
 3. **Native QR scan + QR render** for link/share codes (currently paste/copy only; the
    "Scan" button is a stub - `shell:scanQr` returns null). Builds on the URL format in #2.
 4. **Safe-area top inset** (visual bug): screen titles ("PearPetal", "Partner's cycle") render
@@ -73,6 +143,28 @@ because it demos the finished app).
 10. **First-run onboarding / guided demo** (build LAST - demos the finished app): name/avatar
     creation, a walkthrough of the menus + petal dial, how to log a day, how partner sharing
     works. An interactive tour or short skippable demo, not dropping users onto the day editor.
+
+## UX / sharing polish (nice-to-have, found 2026-07-07 on-device)
+
+- **Flower picker is buried in Cycle Settings.** Confirmed present + working on-device, but
+  the "Your flower" picker lives inside Settings (gear), which is itself hard to find. Surface
+  flower choice more prominently (e.g. tap the dial to switch, or a top-level control) in the
+  UI polish phase.
+
+- **Owner Share screen: differentiate share instances.** Multiple shares of the same scope
+  render as identical-looking "Phase" rows with near-identical codes (invites share the
+  `eyJncm91cElkIjoi` base64 prefix; only the tail differs - they ARE distinct). Add a label /
+  created-date / short fingerprint (e.g. last 6 chars of groupId) + let the user name a share
+  or see who joined, so two "Phase" shares are tellable apart.
+
+## UX / navigation (nice-to-have, found 2026-07-07 on-device)
+
+- **Android Back should navigate the stack, not exit the app.** The hardware/gesture Back
+  currently backs out of the app instead of popping to the previous screen (or the main page).
+  Wire Back to the in-app nav stack (the shell already emits a `back` event via BackHandler +
+  `shell:navState canBack`; the UI needs to consume it and only fall through to exit at the root).
+- **Adopt bottom sheets for item/data entry where applicable** (day log, symptom/flow entry,
+  share creation) instead of full-screen pushes - more native-feeling, keeps context.
 
 ## Design decisions to make (before building the feature)
 

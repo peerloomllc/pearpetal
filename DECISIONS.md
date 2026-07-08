@@ -2,6 +2,38 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-07 - Invite/share codes as universal-link URLs (release blocker #2)
+Tier: T1 (invite PRESENTATION + deep-link routing; the invite payload/pairing is
+unchanged - implements the URL format already approved in the v1 wire protocol).
+Context: invites were shown/copied as a raw base64 blob. The approved wire protocol
+specifies universal-link URLs under `/petal/` on `peerloomllc.com` (matching the
+suite), the foundation for web invite handling + QR (blocker #3).
+Choices:
+- Wrap the engine's base64 invite blob in a URL with the blob in the `#fragment`:
+  device link -> `https://peerloomllc.com/petal/link#<blob>`, partner share ->
+  `.../petal/join#<blob>`. The fragment NEVER reaches peerloomllc.com's server (it is
+  the secret that grants access); the server only ever needs a static landing page.
+- Two paths encode the KIND: `/link` = add this device to your own cycle, `/join` =
+  view a partner's shared cycle. A deep link routes by path (isLinkInvite -> link:join
+  vs partner:join); a manual paste already knows the mode from the onboarding choice.
+- `parseInvite()` accepts any shape (URL #fragment, `?i=` query, after the path, or a
+  BARE blob) so old raw codes and hand-typed blobs still work - backwards compatible.
+- Added Android intent filters for `/join` (pear) + `/petal/join` (https) so partner
+  share links open the app too (only `/link` was registered before).
+- GOTCHA (expo-router): a deep link whose path is a file-route miss (`/link`, `/join`)
+  renders expo-router's "Unmatched Route" page and never reaches the shell's Linking
+  handler. Fix = tiny landing routes `app/link.tsx` + `app/join.tsx` + `app/+not-found.tsx`
+  (the https `/petal/*` paths), each just `<Redirect href='/' />`, so expo-router bounces
+  back to the shell where `app/index.tsx`'s Linking listeners parse the invite. Confirmed
+  on-device: cold-start `pear://pearpetal/link#...` lands on main + toasts the `link:join`
+  error ("already tracking a cycle"), proving the full path + routing. Suite pattern (cf.
+  pearlist app/join.tsx + +not-found.tsx).
+Consequences: UI-only + manifest (`app.json`); no wire/payload change; `npm run verify`
+green (32 tests + 3 bundles); parse/URL round-trip + link-vs-join routing checked for
+all shapes. iOS universal-link OPENING still needs the website apple-app-site-
+association + associatedDomains (website-side, separate) - the pear:// scheme + paste
+flow work now regardless. Copy buttons relabeled "Copy link". Foundation for QR (#3).
+
 ## 2026-07-07 - iOS Local Network prompt module (release blocker #1)
 Tier: T1 (device-local permission trigger; no wire / IPC / topic change)
 Context: on the 2026-07-07 cross-platform hardware verify, iOS never prompted for
