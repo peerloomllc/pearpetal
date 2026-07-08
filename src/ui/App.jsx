@@ -765,6 +765,10 @@ function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, on
   const cells = []
   for (let i = 0; i < startWeekday; i++) cells.push(null)
   for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  // Always render 6 week rows (42 cells) so the grid - and the whole calendar
+  // container - is the same height every month (some months span 5 rows, some 6);
+  // otherwise the content below shifts when you change month.
+  while (cells.length < 42) cells.push(null)
   const navBtn = { background: 'none', border: 'none', color: colors.text.secondary, cursor: 'pointer', padding: spacing.xs, display: 'flex', alignItems: 'center' }
   // Swipe left/right to change month. A tap on a day has near-zero travel, so it
   // never trips the swipe; a real swipe sets `swiped` so the day's click is ignored.
@@ -796,7 +800,7 @@ function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, on
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
           {WEEKDAYS.map((w, i) => <div key={i} style={{ textAlign: 'center', fontSize: 11, color: colors.text.muted, paddingBottom: 2 }}>{w}</div>)}
           {cells.map((d, i) => {
-            if (d == null) return <div key={`b${i}`} />
+            if (d == null) return <div key={`b${i}`} style={{ minHeight: 42 }} />
             const iso = `${y}-${pad2(m)}-${pad2(d)}`
             const logged = daysByIso[iso]
             const bleeding = logged && BLEEDING.has(logged.flow)
