@@ -551,10 +551,10 @@ function DayEditor ({ date, setDate, onSaved }) {
 
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <input type='date' value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)}
           style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `6px 10px` }} />
-        <span style={{ color: colors.success, fontSize: 13, opacity: saved ? 1 : 0, transition: 'opacity 200ms' }}>Saved</span>
+        <span style={{ position: 'absolute', right: 0, color: colors.success, fontSize: 13, opacity: saved ? 1 : 0, transition: 'opacity 200ms' }}>Saved</span>
       </div>
       <div>
         <div style={{ fontSize: 13, color: colors.text.muted, marginBottom: spacing.sm }}>Flow</div>
@@ -1215,17 +1215,20 @@ const NAV_TABS = [
   { key: 'about', label: 'About', Icon: Info },
 ]
 function BottomNav ({ active, onTab }) {
+  const activeIndex = Math.max(0, NAV_TABS.findIndex((t) => t.key === active))
   return (
     <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, display: 'flex', background: 'rgba(20,15,17,0.94)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderTop: `1px solid ${colors.border}`, paddingBottom: 'var(--pear-safe-bottom)' }}>
+      {/* A single accent that slides to the active tab. */}
+      <div style={{ position: 'absolute', top: 0, height: 2, width: 26, borderRadius: 2, background: colors.primary, left: `calc(${activeIndex * 25 + 12.5}% - 13px)`, transition: 'left 280ms cubic-bezier(0.4,0,0.2,1)' }} />
       {NAV_TABS.map((t) => {
         const on = active === t.key
-        const tint = on ? colors.primary : colors.text.muted
         const Icon = t.Icon
         return (
-          <button key={t.key} onClick={() => onTab(t.key)} aria-current={on ? 'page' : undefined} style={{ flex: 1, background: 'none', border: 'none', padding: `${spacing.sm}px 0 ${spacing.sm}px`, cursor: 'pointer', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-            <span style={{ position: 'absolute', top: 0, width: 26, height: 2, borderRadius: 2, background: on ? colors.primary : 'transparent' }} />
-            <Icon size={22} color={tint} weight={on ? 'fill' : 'regular'} />
-            <span style={{ fontSize: 11, fontWeight: on ? 600 : 400, color: tint }}>{t.label}</span>
+          <button key={t.key} onClick={() => onTab(t.key)} aria-current={on ? 'page' : undefined} style={{ flex: 1, background: 'none', border: 'none', padding: `${spacing.sm}px 0`, cursor: 'pointer', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, color: on ? colors.primary : colors.text.muted, transition: 'color 240ms' }}>
+            <span style={{ display: 'flex', transform: on ? 'scale(1.12)' : 'scale(1)', transition: 'transform 220ms cubic-bezier(0.2,0.8,0.2,1)' }}>
+              <Icon size={22} weight={on ? 'fill' : 'regular'} />
+            </span>
+            <span style={{ fontSize: 11, fontWeight: on ? 600 : 400 }}>{t.label}</span>
           </button>
         )
       })}
