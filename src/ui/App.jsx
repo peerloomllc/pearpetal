@@ -786,16 +786,39 @@ function PregnancySetup ({ prefs, save }) {
   )
 }
 
+// Collapsible settings card for the occasional / advanced sections. Centered title
+// with a caret on the right, matching the About accordion's motion; independent
+// open/close (not one-at-a-time, unlike About) since you may adjust several.
+function CollapsibleCard ({ title, open, onToggle, children, id }) {
+  return (
+    <div id={id} style={{ ...card, padding: 0, overflow: 'hidden', scrollMarginTop: screenPadTop }}>
+      <button onClick={onToggle} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: spacing.base, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer', color: colors.text.secondary }}>
+        <span style={{ fontSize: 14, fontWeight: 500 }}>{title}</span>
+        <CaretRight size={16} color={colors.text.muted} weight='regular' style={{ position: 'absolute', right: spacing.base, top: '50%', marginTop: -8, transition: 'transform 0.3s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+      </button>
+      <div style={{ maxHeight: open ? 2500 : 0, overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)' }}>
+        <div style={{ padding: `0 ${spacing.lg}px ${spacing.lg}px`, display: 'flex', flexDirection: 'column', gap: spacing.md }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
 function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState('')
+  // The advanced/occasional sections collapse independently (collapsed by default).
+  const [openSection, setOpenSection] = useState({})
+  const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
   useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
-  // Deep-link scroll: when opened via a link (e.g. "tracked conditions"), jump to
-  // that section once prefs have rendered, then clear the request.
+  // Deep-link: when opened via the "tracked conditions" link, expand the health
+  // section and scroll to it once prefs have rendered, then clear the request. The
+  // scroll is delayed so the expand has committed first - scrolling mid-animation
+  // (while the section grows from 0) lands short.
   useEffect(() => {
     if (!prefs || scrollTo !== 'health') return
-    const id = requestAnimationFrame(() => { document.getElementById('health-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); onScrolled && onScrolled() })
-    return () => cancelAnimationFrame(id)
+    setOpenSection((s) => ({ ...s, health: true }))
+    const t = setTimeout(() => { document.getElementById('health-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); onScrolled && onScrolled() }, 140)
+    return () => clearTimeout(t)
   }, [prefs, scrollTo])
   if (!prefs) return null
   const save = async (patch) => { const next = { ...prefs, ...patch }; setPrefs(next); await call('prefs:set', patch).catch(() => {}); onSaved && onSaved() }
@@ -855,13 +878,12 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
           })}
         </div>
       </div>
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Cycle lengths</div>
+      <CollapsibleCard title='Cycle lengths' open={openSection.lengths} onToggle={() => toggleSection('lengths')}>
         <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
         <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />
         <Stepper label='Luteal phase length' value={prefs.lutealLength} def={14} min={9} max={18} field='lutealLength' />
         <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
-      </div>
+      </CollapsibleCard>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>What are you tracking for?</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
@@ -873,8 +895,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
           ? <PregnancySetup prefs={prefs} save={save} />
           : <Explainer>{(GOAL_OPTS.find(([k]) => k === (prefs.goal || 'track')) || [])[2]}</Explainer>}
       </div>
-      <div id='health-section' style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, scrollMarginTop: screenPadTop }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Health &amp; birth control</div>
+      <CollapsibleCard id='health-section' title='Health & birth control' open={openSection.health} onToggle={() => toggleSection('health')}>
         <div style={{ color: colors.text.muted, fontSize: 12 }}>Conditions that affect your cycle. These stay on your device and are never shared. They widen prediction estimates and tailor the guidance you see. Tap one to see how it changes your estimates.</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
           {CONDITION_OPTS.map(([k, l]) => {
@@ -890,16 +911,15 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
           <Toggle on={!!prefs.birthControl} label='On hormonal birth control' onClick={() => save({ birthControl: !prefs.birthControl })} />
         </div>
         {prefs.birthControl && <Explainer>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal hides them and leads with your period dates.</Explainer>}
-      </div>
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your data</div>
+      </CollapsibleCard>
+      <CollapsibleCard title='Your data' open={openSection.data} onToggle={() => toggleSection('data')}>
         <div style={{ display: 'flex', gap: spacing.sm }}>
           <Btn onClick={doExport} style={{ flex: 1 }}>Export</Btn>
           <Btn kind='ghost' onClick={doImport} style={{ flex: 1 }}>Import</Btn>
         </div>
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Export saves a plain file to your device. It is not encrypted and never leaves your device on its own, so keep it somewhere private. Import merges a backup into your log.</div>
         {dataMsg && <div style={{ color: colors.success, fontSize: 13 }}>{dataMsg}</div>}
-      </div>
+      </CollapsibleCard>
     </div>
   )
 }
