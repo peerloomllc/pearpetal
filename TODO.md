@@ -167,6 +167,10 @@ because it demos the finished app).
 
 ## User profile - name + avatar (queued 2026-07-08)
 
+**PROPOSAL WRITTEN** 2026-07-08: `proposals/2026-07-08-user-profile.md` (T2, awaiting
+Tim's approval per Constitution SS3). The detail below is the summary; the proposal is
+the spec.
+
 Add a user profile (display name + avatar) at the TOP of the Settings page, following
 PearList's proven pattern. Replaces the generic "partner" / "A partner's cycle" strings
 throughout with the owner's chosen name.
