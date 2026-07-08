@@ -273,10 +273,7 @@ function Sharing ({ onClose, onOpenPartner }) {
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 20, fontWeight: 600 }}>Sharing</div>
-        <Btn kind='ghost' onClick={onClose}>Done</Btn>
-      </div>
+      <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Sharing</div>
 
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ fontSize: 15, fontWeight: 500 }}>Share with a partner</div>
@@ -647,10 +644,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
   )
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 20, fontWeight: 600 }}>Cycle settings</div>
-        <Btn kind='ghost' onClick={onClose}>Done</Btn>
-      </div>
+      <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Cycle settings</div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ color: colors.text.secondary, fontSize: 14 }}>Your flower</div>
         <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', paddingBottom: spacing.xs }}>
@@ -693,7 +687,6 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Export saves a plain file to your device. It is not encrypted and never leaves your device on its own, so keep it somewhere private. Import merges a backup into your log.</div>
         {dataMsg && <div style={{ color: colors.success, fontSize: 13 }}>{dataMsg}</div>}
       </div>
-      <Btn kind='ghost' onClick={onDevices}>Your devices</Btn>
     </div>
   )
 }
@@ -773,10 +766,7 @@ function AboutScreen ({ onClose }) {
   const share = () => { const p = call('shell:share', { title: 'PearPetal', text: 'PearPetal - a private, peer-to-peer cycle tracker. No account, no server.\n\nhttps://peerloomllc.com/pearpetal/' }); if (p && p.catch) p.catch(() => {}) }
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 20, fontWeight: 600 }}>About</div>
-        <Btn kind='ghost' onClick={onClose}>Done</Btn>
-      </div>
+      <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>About</div>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 28, fontWeight: 600, color: colors.primary }}>PearPetal</div>
         <div style={{ color: colors.text.muted, fontSize: 14, marginTop: spacing.xs }}>Private cycle tracking. No account, no server.</div>
@@ -922,7 +912,6 @@ export default function App () {
   else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary, textAlign: 'center' }}>PearPetal</div>
       <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
       <div>
