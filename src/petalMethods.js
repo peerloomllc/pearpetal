@@ -15,7 +15,7 @@ const b4a = require('b4a')
 const sodium = require('sodium-universal')
 
 const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE } = require('./petalWire')
-const { projectionFromRows, addDays, diffDays, todayIso, FLOW_VALUES } = require('./prediction')
+const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FLOW_VALUES } = require('./prediction')
 
 // Consent scopes (see DECISIONS.md 2026-07-06). Each governs which projection
 // fields the OWNER writes to a shared base; the partner structurally never
@@ -278,24 +278,39 @@ const methods = {
   // from the private log, never written to any base. Returns { known:false }
   // when there is not enough history yet (the UI shows a "computing" hint).
   'cycle:prediction': async (_args, ctx) => {
-    if (!(await privateMembership(ctx))) return { known: false, phase: null, confidence: 'none' }
-    try { const { proj } = await computeProjection(ctx); return proj } catch { return { known: false, phase: null, confidence: 'none' } }
+    const prefs = await getPrefs(ctx)
+    const goal = prefs.goal || 'track'
+    const pregnancy = pregnancyProjection(prefs, todayIso())
+    if (!(await privateMembership(ctx))) return { known: false, phase: null, confidence: 'none', goal, pregnancy }
+    try { const { proj } = await computeProjection(ctx); return { ...proj, goal, pregnancy } } catch { return { known: false, phase: null, confidence: 'none', goal, pregnancy } }
   },
 
   // --- prefs (device-local, feed prediction) ------------------------------
   'prefs:get': async (_args, ctx) => {
     const p = await getPrefs(ctx)
-    return { avgCycleLength: p.avgCycleLength ?? null, avgPeriodLength: p.avgPeriodLength ?? null, lutealLength: p.lutealLength ?? null, goal: p.goal || 'track', flower: p.flower || 'rose' }
+    return { avgCycleLength: p.avgCycleLength ?? null, avgPeriodLength: p.avgPeriodLength ?? null, lutealLength: p.lutealLength ?? null, goal: p.goal || 'track', flower: p.flower || 'rose', pregnancy: p.pregnancy || null }
   },
   'prefs:set': async (args = {}, ctx) => {
     const cur = await getPrefs(ctx)
     const next = { ...cur }
     const num = (v, lo, hi) => (v === null ? null : (Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : undefined))
+    const isIso = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
     if ('avgCycleLength' in args) { const v = num(args.avgCycleLength, 21, 45); if (v !== undefined) next.avgCycleLength = v }
     if ('avgPeriodLength' in args) { const v = num(args.avgPeriodLength, 2, 10); if (v !== undefined) next.avgPeriodLength = v }
     if ('lutealLength' in args) { const v = num(args.lutealLength, 9, 18); if (v !== undefined) next.lutealLength = v }
-    if ('goal' in args && ['track', 'conceive', 'avoid'].includes(args.goal)) next.goal = args.goal
+    if ('goal' in args && ['track', 'conceive', 'avoid', 'pregnant'].includes(args.goal)) next.goal = args.goal
     if ('flower' in args && FLOWERS.has(args.flower)) next.flower = args.flower
+    // Pregnancy dates (device-local; never projected to a partner). null clears.
+    if ('pregnancy' in args) {
+      const pg = args.pregnancy
+      if (pg === null) delete next.pregnancy
+      else if (pg && typeof pg === 'object') {
+        const clean = {}
+        if (isIso(pg.lmp)) clean.lmp = pg.lmp
+        if (isIso(pg.dueDate)) clean.dueDate = pg.dueDate
+        if (clean.lmp || clean.dueDate) next.pregnancy = clean
+      }
+    }
     next.updatedAt = Date.now()
     await ctx.localDb.put('prefs', next)
     await refreshShares(ctx).catch(() => {}) // prefs change the projection partners see

@@ -266,12 +266,16 @@ throughout with the owner's chosen name.
 
 PULLED INTO v1 per Tim 2026-07-08 (these are blockers #11-13, build after #7-#10).
 Cross-checked against what already exists:
-- **Journey / Goals.** PARTIAL: a `goal` pref already exists (General / Trying to conceive /
-  Avoiding pregnancy, in Cycle settings). NEW: add a **Pregnancy** mode (currently pregnant ->
-  the dial/predictions switch to a gestational view, not cycle prediction), and surface the
-  goal more prominently (a first-run "your journey" step, not buried in settings). Goal should
-  drive tone + which numbers lead (conceive -> fertile window front and center; avoid -> the
-  "not contraception" caveat stays loud).
+- **Journey / Goals.** DONE 2026-07-08 (branch feature/pregnancy-mode, blocker #11). Added a
+  **Pregnant** goal chip that reveals an LMP date input (due date = LMP + 280d shown); when set,
+  the main screen swaps the cycle summary for a **gestational view** (`PregnancyView` + a new
+  `PregnancyDial` that blooms the flower across ~40 weeks, with trimester ticks) showing weeks+days,
+  trimester, due date + countdown, and % progress; day-logging is preserved. "No longer pregnant"
+  clears it. Pure `pregnancyProjection(prefs, today)` in prediction.js (device-local; NEVER
+  projected to a partner). Goal now also drives tone in the cycle summary: conceive highlights the
+  fertile-window row, avoid keeps the "not contraception" caveat loud. verify green (43 tests + 3
+  bundles); full flow verified on the TCL (14w0d from an Apr-1 LMP, due Jan 6, reset). STILL TODO
+  from this item: surface the goal in first-run onboarding (folds into blocker #10).
 - **Cycle customization.** PARTIAL: cycle length / period length / luteal length already in
   Cycle settings. NEW: **health conditions** (e.g. PCOS, endometriosis, irregular cycles) that
   widen prediction uncertainty + tailor copy; and a **birth-control toggle** (on hormonal BC)

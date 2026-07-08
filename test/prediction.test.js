@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { projectionFromRows, cycleStarts, median, addDays, diffDays } = require('../src/prediction')
+const { projectionFromRows, pregnancyProjection, cycleStarts, median, addDays, diffDays } = require('../src/prediction')
 
 const day = (date, flow, bbt) => (bbt === undefined ? { date, flow } : { date, flow, bbt })
 const at = (today) => ({ today })
@@ -74,4 +74,32 @@ test('helpers: median and cycleStarts', () => {
   assert.equal(median([28, 30]), 29)
   const starts = cycleStarts([{ date: '2026-07-01', flow: 'medium' }, { date: '2026-07-02', flow: 'light' }], [{ start: '2026-06-01' }])
   assert.deepEqual(starts, ['2026-06-01', '2026-07-01'])
+})
+
+test('pregnancy: inactive unless goal is pregnant with dates', () => {
+  assert.equal(pregnancyProjection({}, '2026-07-08').active, false)
+  assert.equal(pregnancyProjection({ goal: 'pregnant' }, '2026-07-08').active, false) // no dates
+  assert.equal(pregnancyProjection({ goal: 'track', pregnancy: { lmp: '2026-01-01' } }, '2026-07-08').active, false)
+})
+
+test('pregnancy: weeks/days, trimester, due date derived from LMP', () => {
+  // LMP 2026-01-01, today +100 days -> 14 weeks 2 days, trimester 2.
+  const p = pregnancyProjection({ goal: 'pregnant', pregnancy: { lmp: '2026-01-01' } }, addDays('2026-01-01', 100))
+  assert.equal(p.active, true)
+  assert.equal(p.gestDays, 100)
+  assert.equal(p.weeks, 14)
+  assert.equal(p.days, 2)
+  assert.equal(p.trimester, 2)
+  assert.equal(p.dueDate, addDays('2026-01-01', 280)) // 40 weeks from LMP
+  assert.equal(p.daysUntilDue, 180)
+})
+
+test('pregnancy: dueDate-only derives the LMP and progress clamps', () => {
+  const due = '2026-10-08'
+  const p = pregnancyProjection({ goal: 'pregnant', pregnancy: { dueDate: due } }, due)
+  assert.equal(p.active, true)
+  assert.equal(p.lmp, addDays(due, -280))
+  assert.equal(p.daysUntilDue, 0)
+  assert.equal(p.weeks, 40)
+  assert.equal(p.progress, 1) // at/after term, clamped
 })

@@ -2,6 +2,25 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-08 - Pregnancy mode + goal-driven tone (Stardust blocker #11)
+Tier: T1 (new feature inside the existing device-local prefs + IPC surface; NO wire
+change - pregnancy is owner-only, never projected to a partner).
+Context: `goal` existed (track / conceive / avoid) but did nothing beyond a label;
+no pregnancy support.
+Choice: add a `pregnant` goal + `prefs.pregnancy = { lmp?, dueDate? }` (device-local).
+A pure `pregnancyProjection(prefs, today)` in prediction.js derives weeks/days,
+trimester, due date (LMP + 280d, or LMP from due date), countdown, and progress;
+surfaced via `cycle:prediction` (which now also returns `goal`). When active the UI
+swaps the cycle summary for `PregnancyView` + a `PregnancyDial` (the flower blooms
+across ~40 weeks, trimester ticks at 14/28); day-logging stays. Goal also tints the
+cycle summary (conceive -> fertile row highlighted; avoid -> loud not-contraception
+caveat). Pregnancy is deliberately NOT shared with partners in v1 (sensitive; the
+shared projection stays cycle-based).
+Alternatives: sharing a pregnancy state with a partner (deferred - needs its own
+consent decision); a full gestational calendar (that is blocker #13's calendar).
+Consequences: verify green (43 tests + 3 bundles; new pregnancyProjection tests);
+on-device full-flow verified (TCL). Onboarding surfacing of the goal folds into #10.
+
 ## 2026-07-08 - User profile (name + avatar) implemented
 Tier: T2 (implements the approved proposal `proposals/2026-07-08-user-profile.md`).
 Context: partner views said "A partner"; owners had no identity.
