@@ -2,6 +2,24 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-08 - Two-week donation nudge (release blocker #8)
+Tier: T0 (device-local reminder; no wire, data model, or cross-peer effect).
+Context: the suite shows a one-time gentle donation nudge after ~2 weeks of use.
+PearPetal shipped the About-page donation flow (blocker #7) but not the nudge.
+Choices:
+- Port PearList's pattern verbatim: two device-local methods on `ctx.localDb`.
+  `donation:status` lazily seeds `{ firstUseAt, shown }` on first call and returns
+  `due = !shown && (now - firstUseAt >= 14 days)`; `donation:dismiss` sets
+  `shown = true`. The row NEVER crosses the wire (localDb, not an Autobase).
+- UI: `DonationReminderModal` (styled to PearPetal - Manrope, suite `Btn`s), shown
+  once when the owner is set up. The effect skips iOS (App Store 3.1.1, matching the
+  About page) and marks it shown the moment it surfaces, so it never nags twice.
+  "Support development" routes to the About screen's donation section; "Maybe later"
+  and "Already donated" just dismiss.
+Verify: `npm run verify` green (34 tests incl. 2 new donation-reminder tests + 3
+bundles). On-device on the Pixel 9: modal renders, "Support development" -> About,
+dismiss paths work (forced open for the shot, then reverted).
+
 ## 2026-07-08 - Phosphor icons + Manrope font (suite UI consistency)
 Tier: T0 (cosmetic / UI-only; no wire, data model, or IPC change).
 Context: PearPetal used the system font stack and label-only nav / a text `›`

@@ -215,6 +215,23 @@ const methods = {
     return { ok: true }
   },
 
+  // --- donation reminder (device-local) -----------------------------------
+  // Suite pattern: nudge once after 2 weeks of use. Tracks first use + whether
+  // shown. Never crosses the wire. The UI additionally gates this off on iOS
+  // (App Store 3.1.1, no external donation links).
+  'donation:status': async (_args, ctx) => {
+    let row = (await ctx.localDb.get('donateReminder'))?.value
+    if (!row) { row = { firstUseAt: Date.now(), shown: false }; await ctx.localDb.put('donateReminder', row) }
+    const FOURTEEN_DAYS = 14 * 24 * 60 * 60 * 1000
+    return { due: !row.shown && (Date.now() - row.firstUseAt >= FOURTEEN_DAYS), shown: !!row.shown, firstUseAt: row.firstUseAt }
+  },
+  'donation:dismiss': async (_args, ctx) => {
+    const row = (await ctx.localDb.get('donateReminder'))?.value || { firstUseAt: Date.now() }
+    row.shown = true
+    await ctx.localDb.put('donateReminder', row)
+    return { ok: true }
+  },
+
   // --- export / import (device-local backup + migration) ------------------
   // Return the full cycle log as a plain JSON object. The shell writes this to a
   // local file the user saves themselves. No secrets (no identity/keys), no
