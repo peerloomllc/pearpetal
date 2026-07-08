@@ -2,6 +2,25 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-08 - Phosphor icons + Manrope font (suite UI consistency)
+Tier: T0 (cosmetic / UI-only; no wire, data model, or IPC change).
+Context: PearPetal used the system font stack and label-only nav / a text `›`
+caret, out of step with PearList and PearGuard, which use Manrope and
+`@phosphor-icons/react`.
+Choices:
+- Font: adopt Manrope, embedded via `src/ui/fonts.js` (copied verbatim from
+  PearList, self-contained `FONT_CSS` with weights 300/400/500). `theme.js` sets
+  `FONT` to Manrope, base body/input weight 300 (was 400), and injects `FONT_CSS`
+  ahead of the theme vars. One central change flows to every screen.
+- Icons: add `@phosphor-icons/react` (esbuild tree-shakes to the used glyphs, same
+  as PearList). Bottom-nav tabs gain real glyphs - Cycle=`Flower`, Share=
+  `ShareNetwork`, Settings=`Gear`, About=`Info` - filled (`weight='fill'`) when
+  active. The About accordion caret and the partner drill-in rows use `CaretRight`
+  (rotates 90deg on expand), replacing the text `›`.
+Verify: `npm run verify` green (32 tests + 3 bundles). On-device on the Pixel 9 +
+TCL across Cycle / Share / Settings / About: font unified, nav glyphs render,
+active-tab fill + accent, caret rotates on expand.
+
 ## 2026-07-07 - Invite/share codes as universal-link URLs (release blocker #2)
 Tier: T1 (invite PRESENTATION + deep-link routing; the invite payload/pairing is
 unchanged - implements the URL format already approved in the v1 wire protocol).
