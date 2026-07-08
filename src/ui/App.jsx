@@ -704,12 +704,12 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
 function AboutSection ({ title, open, onToggle, children }) {
   return (
     <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-      <button onClick={onToggle} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: `${spacing.md}px`, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, cursor: 'pointer', color: colors.text.primary }}>
-        <span style={{ fontSize: 15, fontWeight: 600 }}>{title}</span>
-        <span style={{ color: colors.text.muted, fontSize: 11, transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }}>▼</span>
+      <button onClick={onToggle} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: `${spacing.base}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: colors.text.primary }}>
+        <span style={{ fontSize: 16, fontWeight: 400 }}>{title}</span>
+        <span style={{ color: colors.text.muted, fontSize: 16, lineHeight: 1, transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }}>›</span>
       </button>
       <div style={{ maxHeight: open ? 640 : 0, overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)' }}>
-        <div style={{ padding: `0 ${spacing.md}px ${spacing.md}px`, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>{children}</div>
+        <div style={{ padding: `0 ${spacing.base}px ${spacing.base}px`, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>{children}</div>
       </div>
     </div>
   )
