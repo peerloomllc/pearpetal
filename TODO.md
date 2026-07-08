@@ -197,6 +197,25 @@ because it demos the finished app).
   XChaCha20-Poly1305) so backups aren't plaintext at rest, keeping plain export as the default.
   Decide: default on/off, lost-passphrase = no recovery, import auto-detect encrypted vs plain.
 
+## Feature backlog (product, from Stardust notes - 2026-07-08)
+
+Post-v1 product features Tim wants, cross-checked against what already exists:
+- **Journey / Goals.** PARTIAL: a `goal` pref already exists (General / Trying to conceive /
+  Avoiding pregnancy, in Cycle settings). NEW: add a **Pregnancy** mode (currently pregnant ->
+  the dial/predictions switch to a gestational view, not cycle prediction), and surface the
+  goal more prominently (a first-run "your journey" step, not buried in settings). Goal should
+  drive tone + which numbers lead (conceive -> fertile window front and center; avoid -> the
+  "not contraception" caveat stays loud).
+- **Cycle customization.** PARTIAL: cycle length / period length / luteal length already in
+  Cycle settings. NEW: **health conditions** (e.g. PCOS, endometriosis, irregular cycles) that
+  widen prediction uncertainty + tailor copy; and a **birth-control toggle** (on hormonal BC)
+  that changes the "chance of pregnancy" / fertile-window messaging (on BC the fertile-window
+  framing is misleading, so soften/hide it). All device-local prefs; none cross the wire.
+- **Monthly calendar view.** NEW: a month grid alternative to the petal dial + recent-days
+  list - color-coded period / fertile / ovulation / logged days, tap a day to log (reuse the
+  day-scrub date mapping). A toggle between the dial ("today at a glance") and the calendar
+  ("the month"). Consider it for the partner view too (scoped).
+
 ## Deferred - security / scale
 
 - **Shared-base addWriter gating** (security): a partner is an Autobase writer, so they could

@@ -94,7 +94,8 @@
           "backgroundColor": "#140f11",
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "./plugins/with-android-debug-standalone"
     ],
     "assets": [
       "./assets/bare-universal.bundle",
