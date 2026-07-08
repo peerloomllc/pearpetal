@@ -20,6 +20,14 @@ Choices:
   BARE blob) so old raw codes and hand-typed blobs still work - backwards compatible.
 - Added Android intent filters for `/join` (pear) + `/petal/join` (https) so partner
   share links open the app too (only `/link` was registered before).
+- GOTCHA (expo-router): a deep link whose path is a file-route miss (`/link`, `/join`)
+  renders expo-router's "Unmatched Route" page and never reaches the shell's Linking
+  handler. Fix = tiny landing routes `app/link.tsx` + `app/join.tsx` + `app/+not-found.tsx`
+  (the https `/petal/*` paths), each just `<Redirect href='/' />`, so expo-router bounces
+  back to the shell where `app/index.tsx`'s Linking listeners parse the invite. Confirmed
+  on-device: cold-start `pear://pearpetal/link#...` lands on main + toasts the `link:join`
+  error ("already tracking a cycle"), proving the full path + routing. Suite pattern (cf.
+  pearlist app/join.tsx + +not-found.tsx).
 Consequences: UI-only + manifest (`app.json`); no wire/payload change; `npm run verify`
 green (32 tests + 3 bundles); parse/URL round-trip + link-vs-join routing checked for
 all shapes. iOS universal-link OPENING still needs the website apple-app-site-
