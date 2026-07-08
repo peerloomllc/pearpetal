@@ -20,6 +20,23 @@ to writeProjection); the widened fertile-window DATES do flow to a partner via t
 existing projection (they are just dates, not the condition).
 Consequences: verify green (45 tests + 3 bundles; new prediction tests for widening,
 confidence cap, and the BC flag); verified on the TCL.
+Review follow-ups (same PR): (a) each selected condition shows an inline explainer
+(what it is + how it shifts the estimate); (b) the cycle-summary uncertainty hint is
+now specific ("Your fertile window is estimated to be wider than normal due to your
+tracked conditions") with "tracked conditions" a link that opens Settings and scrolls
+to the health section (App `settingsAnchor` -> CycleSettings `scrollTo` ->
+`scrollIntoView('#health-section')`).
+
+## 2026-07-08 - One canonical "not medical advice" disclaimer
+Tier: T0 (copy only).
+Context: "not medical advice" was repeated across the cycle summary, pregnancy view,
+and pregnancy setup - noisy and easy to miss the one that matters.
+Choice: put ONE prominent disclaimer on the About page (not a medical device / not
+medical advice / not contraception) and drop the generic tag elsewhere, KEEPING the
+actionable contextual notes at their point of use ("Follow your provider's dates",
+"Your provider's dating is what counts", and the "not contraception" caveats on the
+avoid goal). Net: one authoritative disclaimer, less repetition, safety-critical
+context preserved where a specific claim is made.
 
 ## 2026-07-08 - Pregnancy mode + goal-driven tone (Stardust blocker #11)
 Tier: T1 (new feature inside the existing device-local prefs + IPC surface; NO wire
