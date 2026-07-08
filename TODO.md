@@ -132,9 +132,16 @@ because it demos the finished app).
    taps ignored). Outer element is now a div + clickable svg (was a single button). verify green.
    REMAINING: on-device confirm (owner taps a past tick -> editor jumps to that day; partner sees
    the dial).
-6. **App logo / icon + notification-bar icons**: launcher icon, Android adaptive icon
-   (foreground/background), and monochrome notification / status-bar icons. Needed before
-   any store submission (expo prebuild already warns "no icon").
+6. **App logo / icon + notification-bar icons** - ART CHOSEN 2026-07-07 (branch feature/app-icon,
+   PR #15): a cherry-blossom bloom on solid `#140f11`. Final art = the AI-generated "Alt-2" (in
+   ~/Downloads/pearpetal/5e868a36-...svg), chosen over my `buildFlower`-generated one (flatter/
+   paler) and the other two alternates; scaled up ~18% and re-squared (its source was a stretched
+   2048x1509 canvas). Three 1024 PNGs in `assets/images/` composed via cairosvg + ImageMagick:
+   `icon.png` (opaque, iOS/legacy), `adaptive-icon.png` (transparent fg, ~63% safe zone),
+   `monochrome-icon.png` (white silhouette, Android themed/notification). Wired in `app.json`:
+   `icon`, `android.adaptiveIcon` (fg + mono + `#140f11` bg), expo-splash-screen. REMAINING:
+   on-device confirm (needs `expo prebuild` - which wipes the .debug config, so pair with the
+   durable-debug-config plugin, dev-infra TODO). Notification icon USAGE lands with #8/notifs.
 7. **About page** (port the PearCircle / PearList pattern): app name/version, what it is,
    privacy stance ("no account, no server, your data stays on your devices"), open-source +
    license, links (website/privacy/support), and a **"Support Development"** section (this is
