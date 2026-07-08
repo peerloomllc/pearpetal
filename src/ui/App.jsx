@@ -878,12 +878,6 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
           })}
         </div>
       </div>
-      <CollapsibleCard title='Cycle lengths' open={openSection.lengths} onToggle={() => toggleSection('lengths')}>
-        <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
-        <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />
-        <Stepper label='Luteal phase length' value={prefs.lutealLength} def={14} min={9} max={18} field='lutealLength' />
-        <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
-      </CollapsibleCard>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>What are you tracking for?</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
@@ -895,6 +889,12 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
           ? <PregnancySetup prefs={prefs} save={save} />
           : <Explainer>{(GOAL_OPTS.find(([k]) => k === (prefs.goal || 'track')) || [])[2]}</Explainer>}
       </div>
+      <CollapsibleCard title='Cycle lengths' open={openSection.lengths} onToggle={() => toggleSection('lengths')}>
+        <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
+        <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />
+        <Stepper label='Luteal phase length' value={prefs.lutealLength} def={14} min={9} max={18} field='lutealLength' />
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
+      </CollapsibleCard>
       <CollapsibleCard id='health-section' title='Health & birth control' open={openSection.health} onToggle={() => toggleSection('health')}>
         <div style={{ color: colors.text.muted, fontSize: 12 }}>Conditions that affect your cycle. These stay on your device and are never shared. They widen prediction estimates and tailor the guidance you see. Tap one to see how it changes your estimates.</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
