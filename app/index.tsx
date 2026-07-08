@@ -1,9 +1,10 @@
 // PearPetal shell: hosts the Bare worklet (P2P backend) and the WebView UI, and
-// bridges IPC between them. No custom native code - the worklet and WebView are
-// pure RN libraries. Slice 1 keeps the shell minimal: worklet host, WebView, IPC
-// bridge, a few shell actions, and deep-link invite delivery. Notifications,
-// background sync, native QR scan, and the iOS local-network prompt land in
-// later slices (see the wire proposal and TODO).
+// bridges IPC between them. The one bit of custom native code is the iOS
+// local-network prompt module (modules/local-network); the worklet and WebView
+// are otherwise pure RN libraries. The shell stays minimal: worklet host,
+// WebView, IPC bridge, a few shell actions, the local-network nudge, and
+// deep-link invite delivery. Notifications, background sync, and native QR scan
+// land in later slices (see the wire proposal and TODO).
 
 import { useEffect, useRef, useState } from 'react'
 import { View, Platform, Share, StatusBar, BackHandler } from 'react-native'
@@ -17,6 +18,7 @@ import * as Linking from 'expo-linking'
 import * as Haptics from 'expo-haptics'
 import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
+import { requestLocalNetworkPermission } from '../modules/local-network'
 
 // --- worklet + IPC (module-scoped so it survives remounts) -----------------
 let _worklet: any = null
@@ -132,6 +134,10 @@ export default function Shell () {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      // Nudge iOS to show the Local Network prompt so same-WiFi peers (own
+      // devices + partner) connect directly instead of via a relay (see
+      // modules/local-network). Fire-and-forget; no-op off iOS.
+      requestLocalNetworkPermission()
       const initErr = await startWorklet()
       if (cancelled) return
       setHtml(initErr ? errorHtml(initErr) : await loadUiHtml())

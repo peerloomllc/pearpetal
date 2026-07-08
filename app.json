@@ -11,7 +11,12 @@
       "bundleIdentifier": "com.pearpetal",
       "buildNumber": "1",
       "infoPlist": {
-        "NSCameraUsageDescription": "Used to scan an invite QR code to link a device or view a partner's cycle."
+        "NSCameraUsageDescription": "Used to scan an invite QR code to link a device or view a partner's cycle.",
+        "NSLocalNetworkUsageDescription": "PearPetal connects directly to your own devices and your partner on your Wi-Fi to sync cycle data peer-to-peer.",
+        "NSBonjourServices": [
+          "_hyperswarm._udp",
+          "_pearpetallan._tcp"
+        ]
       }
     },
     "android": {
