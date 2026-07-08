@@ -9,7 +9,14 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.pearpetal",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "PearPetal connects directly to your own devices and your partner on your Wi-Fi to sync cycle data peer-to-peer.",
+        "NSBonjourServices": [
+          "_hyperswarm._udp",
+          "_pearpetallan._tcp"
+        ]
+      }
     },
     "android": {
       "package": "com.pearpetal",
