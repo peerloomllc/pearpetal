@@ -165,11 +165,17 @@ because it demos the finished app).
     creation, a walkthrough of the menus + petal dial, how to log a day, how partner sharing
     works. An interactive tour or short skippable demo, not dropping users onto the day editor.
 
-## User profile - name + avatar (queued 2026-07-08)
+## User profile - name + avatar - DONE 2026-07-08 (branch feature/user-profile)
 
-**PROPOSAL WRITTEN** 2026-07-08: `proposals/2026-07-08-user-profile.md` (T2, awaiting
-Tim's approval per Constitution SS3). The detail below is the summary; the proposal is
-the spec.
+**IMPLEMENTED** per the approved proposal `proposals/2026-07-08-user-profile.md`
+(T2, all 4 open questions resolved as recommended). Backend: `profile` localDb row +
+`profile:get`/`profile:set` (avatar in the core blob store, deduped by hash), name +
+avatar projected into `share:meta`, `partner:view`/`list` return `ownerName`/
+`ownerAvatar`. UI: profile card atop Cycle Settings; "{name}'s cycle" + avatar in
+PartnerView / Sharing / ViewerHome. verify green (40 tests + 3 bundles); owner side
+on-device on the TCL. REMAINING: live two-phone owner->partner name display (needs the
+Pixel as partner = Tim's phone) - propagation is unit-covered. The summary below is the
+original spec.
 
 Add a user profile (display name + avatar) at the TOP of the Settings page, following
 PearList's proven pattern. Replaces the generic "partner" / "A partner's cycle" strings
@@ -209,6 +215,21 @@ throughout with the owner's chosen name.
   created-date / short fingerprint (e.g. last 6 chars of groupId) + let the user name a share
   or see who joined, so two "Phase" shares are tellable apart.
 
+- **Are "People you share with" rows 1:1 with a person, or reusable by many? (queued 2026-07-08)**
+  Today each `share:create` makes a NEW shared base with its own invite, but the invite is a
+  bearer link: ANYONE who has it can `partner:join` and become a writer on that base, so a single
+  share row is technically 1:many (multiple people could join the same code and all see the same
+  projection). Nothing binds a row to one individual. DECIDE the model:
+  - If shares should be **per-individual**: have the joiner publish their identity (name/avatar,
+    reusing the new profile blob-avatar pattern) into the shared base, gated so only the intended
+    joiner writes it, and show that name + avatar on the owner's share row ("Shared with Ada").
+    This needs the addWriter gating below (a partner is a writer and could admit a 3rd party), so
+    it is entangled with the "Shared-base addWriter gating" security item.
+  - If shares stay **reusable/bearer**: keep them code-based but make that explicit in copy, and
+    lean on the share label / fingerprint item above for disambiguation.
+  Cross-ref the owner-identity work just shipped (owner name/avatar already ride `share:meta`);
+  this is the mirror - the JOINER's identity back to the owner.
+
 ## UX / navigation (nice-to-have, found 2026-07-07 on-device)
 
 - **Android Back should navigate the stack, not exit the app.** The hardware/gesture Back
@@ -217,6 +238,16 @@ throughout with the owner's chosen name.
   `shell:navState canBack`; the UI needs to consume it and only fall through to exit at the root).
 - **Adopt bottom sheets for item/data entry where applicable** (day log, symptom/flow entry,
   share creation) instead of full-screen pushes - more native-feeling, keeps context.
+
+- **Light/Dark mode toggle in Settings (queued 2026-07-08).** The theme plumbing already exists
+  in `src/ui/theme.js` (`setTheme('light'|'dark')`, `loadTheme()` persisting to
+  `localStorage['pearpetal:theme']`, and a full LIGHT palette under `:root[data-theme="light"]`);
+  dark is the current default and nothing calls `setTheme` yet. Add a toggle in Cycle Settings
+  (e.g. a segmented Dark / Light / System control) that calls `setTheme` + persists, and apply
+  the saved theme at boot (call `setTheme(loadTheme())` on mount in `App`). Optional: a `System`
+  option via `matchMedia('(prefers-color-scheme: dark)')`. Verify both palettes on-device
+  (the shell also hardcodes a pre-JS `#140f11` flash bg, so a light-mode first paint may briefly
+  flash dark - check whether the shell bg needs to follow the theme too).
 
 ## Design decisions to make (before building the feature)
 

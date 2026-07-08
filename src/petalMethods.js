@@ -12,6 +12,7 @@
 const { signValue } = require('@peerloom/core/records')
 const { defaultEncodeInvite } = require('@peerloom/core/engine')
 const b4a = require('b4a')
+const sodium = require('sodium-universal')
 
 const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE } = require('./petalWire')
 const { projectionFromRows, addDays, diffDays, todayIso, FLOW_VALUES } = require('./prediction')
@@ -30,6 +31,53 @@ const SUMMARY_WINDOW_DAYS = 21 // how many recent days a `full` share projects
 const FLOWERS = new Set(['rose', 'sakura', 'lotus', 'poppy', 'dahlia'])
 
 function pubkeyHex (ctx) { return b4a.toString(ctx.identity.publicKey, 'hex') }
+
+// --- avatars (content blob store, not inline) -------------------------------
+// A profile / share:meta row carries only a tiny { avatarBlob:{key,id},
+// avatarHash, avatarType } pointer; the bytes live in the core blob store, which
+// replicates to a partner over the shared base (the blob core is in the same
+// corestore that store.replicate serves - no core change). Resolved back to a
+// data URL for the UI, cached by content hash so a poll does not refetch. Hard
+// cap bounds replication + storage (proposal 2026-07-08 open-Q3). Stills are
+// downscaled to ~256px in the UI (tiny); animated GIF/WebP are kept RAW so the
+// animation survives, so the cap is sized for them (matches PearList's 2MB).
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024
+const avatarCache = new Map()   // contentHash -> data URL
+const avatarPending = new Set()  // contentHash currently being fetched
+
+function blobHash (buf) { const out = b4a.alloc(32); sodium.crypto_generichash(out, buf); return b4a.toString(out, 'hex') }
+function parseDataUrl (s) {
+  const m = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(String(s))
+  if (!m) return null
+  return { mime: m[1] || 'application/octet-stream', base64: !!m[2], data: m[3] }
+}
+// Await the bytes (own blob is local -> fast; a partner's replicates on demand).
+async function resolveAvatarAwait (ctx, row) {
+  if (row?.avatar) return row.avatar // legacy inline data URL
+  if (row?.avatarBlob && row?.avatarHash) {
+    if (avatarCache.has(row.avatarHash)) return avatarCache.get(row.avatarHash)
+    const bytes = await ctx.blobs.get(row.avatarBlob)
+    if (!bytes) return null
+    const url = `data:${row.avatarType || 'image/png'};base64,${b4a.toString(bytes, 'base64')}`
+    avatarCache.set(row.avatarHash, url)
+    return url
+  }
+  return null
+}
+// Non-blocking: cached data URL or null, kicking off a background fetch so a
+// partner's avatar "pops in" on the next poll instead of stalling a list load.
+function resolveAvatarCached (ctx, row) {
+  if (row?.avatar) return row.avatar
+  if (row?.avatarBlob && row?.avatarHash) {
+    if (avatarCache.has(row.avatarHash)) return avatarCache.get(row.avatarHash)
+    if (!avatarPending.has(row.avatarHash)) {
+      avatarPending.add(row.avatarHash)
+      resolveAvatarAwait(ctx, row).catch(() => {}).finally(() => avatarPending.delete(row.avatarHash))
+    }
+    return null
+  }
+  return null
+}
 
 // Stamp authorship + a fresh updatedAt, then sign. Every write records the
 // CURRENT editor as pubkey (proves who made this edit); createdBy is preserved
@@ -129,6 +177,45 @@ async function getPrefs (ctx) {
   return (await ctx.localDb.get('prefs'))?.value || {}
 }
 
+// The owner's device-local profile (name + avatar pointer). Distinct from
+// `deviceProfile` (which names this DEVICE for the roster) - this names the
+// PERSON. Never replicated except via the owner-written share:meta projection.
+async function getProfile (ctx) {
+  return (await ctx.localDb.get('profile'))?.value || {}
+}
+// The identity fields the owner projects into share:meta. Shared on ALL scopes
+// (identity is WHO is sharing, not cycle data - proposal 2026-07-08 open-Q2).
+function profileMetaFields (prof) {
+  const f = {}
+  if (prof?.displayName) f.displayName = String(prof.displayName).slice(0, 64)
+  if (prof?.avatarBlob && prof?.avatarHash) { f.avatarBlob = prof.avatarBlob; f.avatarHash = prof.avatarHash; f.avatarType = prof.avatarType || 'image/png' }
+  return f
+}
+// Owner-write the share:meta claim (ownership + scope + identity) for ONE shared
+// base. Owner-only is enforced by the apply rule (petalWire rowSharedDecision),
+// so the added identity fields inherit that gate. createdAt is preserved across
+// updates so the row keeps its original timestamp.
+async function writeShareMeta (ctx, groupId, scope, prof) {
+  let existing = null
+  try { existing = await readRow(viewFor(ctx, groupId), 'share:meta') } catch {}
+  await putRow(ctx, groupId, 'share:meta', {
+    ownerPubkey: pubkeyHex(ctx), scope,
+    createdAt: existing?.createdAt || Date.now(),
+    ...profileMetaFields(prof),
+  })
+}
+// Re-project the current profile into every shared-out base's share:meta so
+// existing partners get an updated name/avatar. Only writable bases (the owner
+// is the writer) are touched.
+async function refreshShareMeta (ctx) {
+  const prof = await getProfile(ctx)
+  for (const m of await membershipsByKind(ctx, 'shared-out')) {
+    const base = ctx.bases.get(m.groupId)
+    if (!base || !base.writable) continue
+    try { await writeShareMeta(ctx, m.groupId, m.scope || 'phase', prof) } catch {}
+  }
+}
+
 async function computeProjection (ctx) {
   const base = viewFor(ctx, await privateGroupId(ctx))
   await base.update()
@@ -213,6 +300,46 @@ const methods = {
     await ctx.localDb.put('prefs', next)
     await refreshShares(ctx).catch(() => {}) // prefs change the projection partners see
     return { ok: true }
+  },
+
+  // --- profile (device-local; name + avatar projected to partners) --------
+  // Stored in localDb as { displayName, avatarBlob?, avatarHash?, avatarType?,
+  // updatedAt }. Avatar bytes live in the content blob store (not inline); reads
+  // resolve them back to a data URL. See proposals/2026-07-08-user-profile.md.
+  'profile:get': async (_args, ctx) => {
+    const p = await getProfile(ctx)
+    const out = { displayName: p.displayName || '', updatedAt: p.updatedAt || 0 }
+    const avatar = await resolveAvatarAwait(ctx, p) // own blob is local -> fast
+    if (avatar) out.avatar = avatar
+    return out
+  },
+  'profile:set': async (args = {}, ctx) => {
+    const existing = await getProfile(ctx)
+    const profile = { ...existing, updatedAt: Date.now() }
+    if (typeof args.displayName === 'string') profile.displayName = args.displayName.trim().slice(0, 64)
+    // avatar: key absent -> preserve; null -> clear; data URL -> store in the blob
+    // store (deduped by content hash so a name-only edit re-appends nothing).
+    if (Object.prototype.hasOwnProperty.call(args, 'avatar')) {
+      if (args.avatar) {
+        const parsed = parseDataUrl(args.avatar)
+        if (!parsed || !parsed.base64) throw new Error('avatar must be a base64 data URL')
+        const bytes = b4a.from(parsed.data, 'base64')
+        if (bytes.length > AVATAR_MAX_BYTES) throw new Error('That image is too large. Pick a smaller one.')
+        const hash = blobHash(bytes)
+        let ref = (await ctx.localDb.get('blobref:' + hash))?.value
+        if (!ref) { const put = await ctx.blobs.put(bytes); ref = { key: put.key, id: put.id, type: parsed.mime }; await ctx.localDb.put('blobref:' + hash, ref) }
+        profile.avatarBlob = { key: ref.key, id: ref.id }; profile.avatarHash = hash; profile.avatarType = ref.type
+        avatarCache.set(hash, String(args.avatar)) // warm cache with the exact bytes we were handed
+      } else {
+        delete profile.avatarBlob; delete profile.avatarHash; delete profile.avatarType; delete profile.avatar
+      }
+    }
+    await ctx.localDb.put('profile', profile)
+    await refreshShareMeta(ctx).catch(() => {}) // push the new name/avatar to current partners
+    const out = { displayName: profile.displayName || '', updatedAt: profile.updatedAt }
+    const avatar = await resolveAvatarAwait(ctx, profile)
+    if (avatar) out.avatar = avatar
+    return out
   },
 
   // --- donation reminder (device-local) -----------------------------------
@@ -459,8 +586,10 @@ const methods = {
     const r = await ctx.createGroup({ name: 'PearPetal share' })
     const rec = (await ctx.localDb.get('groups:joined:' + r.groupId))?.value || {}
     await ctx.localDb.put('groups:joined:' + r.groupId, { ...rec, kind: 'shared-out', scope })
-    // Claim ownership of the shared base (owner-write-only enforcement keys off this).
-    await putRow(ctx, r.groupId, 'share:meta', { ownerPubkey: pubkeyHex(ctx), scope, createdAt: Date.now() })
+    // Claim ownership of the shared base (owner-write-only enforcement keys off
+    // this) + project the owner's identity (name/avatar) so the partner sees a
+    // name, not "A partner".
+    await writeShareMeta(ctx, r.groupId, scope, await getProfile(ctx))
     const { proj, dayRows } = await computeProjection(ctx)
     await writeProjection(ctx, r.groupId, scope, proj, dayRows)
     return { groupId: r.groupId, inviteKey: r.inviteKey, scope }
@@ -503,7 +632,7 @@ const methods = {
       const base = ctx.bases.get(m.groupId)
       let meta = null
       if (base) { try { await base.update(); meta = (await base.view.get('share:meta'))?.value } catch {} }
-      out.push({ groupId: m.groupId, ownerPubkey: meta?.ownerPubkey || null, scope: meta?.scope || null, joinedAt: m.joinedAt || 0 })
+      out.push({ groupId: m.groupId, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar: resolveAvatarCached(ctx, meta), scope: meta?.scope || null, joinedAt: m.joinedAt || 0 })
     }
     out.sort((a, b) => a.joinedAt - b.joinedAt)
     return out
@@ -521,7 +650,12 @@ const methods = {
     const summary = []
     for await (const { value } of base.view.createReadStream(SUMMARY_RANGE)) if (value) summary.push(value)
     summary.sort((a, b) => String(b.date).localeCompare(String(a.date)))
-    return { scope: meta?.scope || null, ownerPubkey: meta?.ownerPubkey || null, phase, predict, summary }
+    // Non-blocking: never gate the name/phase on the avatar blob fetch (it can
+    // take seconds to replicate). Returns the cached avatar or null + kicks off a
+    // background fetch; ownerHasAvatar tells the UI to keep polling until it lands.
+    const ownerAvatar = resolveAvatarCached(ctx, meta)
+    const ownerHasAvatar = !!(meta?.avatarBlob || meta?.avatar)
+    return { scope: meta?.scope || null, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar, ownerHasAvatar, phase, predict, summary }
   },
 
   'partner:leave': async ({ groupId }, ctx) => {
