@@ -152,9 +152,13 @@ because it demos the finished app).
    [lightning,bitcoin] + ported the `with-android-queries` plugin (lightning/bitcoin/https/mailto).
    verify green. REMAINING: on-device check (Android BTC flow opens a wallet or the sheet; iOS
    hides Support development).
-8. **2-week donation nudge popup** (port PearList's `DonationReminderModal`): one-time gentle
-   modal after ~2 weeks of use, driven by a device-local `donation:status` due-flag +
-   `donation:dismiss` (never crosses the wire). Respects the iOS gating above.
+8. **2-week donation nudge popup** - DONE 2026-07-08 (branch feature/donation-nudge, stacked
+   on feature/phosphor-icons-font). Ported PearList's `DonationReminderModal`: device-local
+   `donation:status` (lazily seeds `{firstUseAt, shown}`, `due` at 14 days) + `donation:dismiss`
+   (marks shown) on `ctx.localDb`, never crosses the wire. `DonationReminderModal` (PearPetal-
+   styled) shows once when the owner is set up; the effect skips iOS (App Store 3.1.1) and marks
+   it shown on surface so it never nags twice. "Support development" routes to the About screen.
+   verify green (34 tests incl. 2 new + 3 bundles); on-device modal + routing confirmed on Pixel.
 9. **Store assets, release scripts, privacy page, listing copy** (the publish mechanics).
    Privacy page is an App Store requirement. Port PearList/PearGuard release scripts.
 10. **First-run onboarding / guided demo** (build LAST - demos the finished app): name/avatar
