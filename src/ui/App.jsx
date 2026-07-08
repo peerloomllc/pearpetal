@@ -744,6 +744,24 @@ function WalletSheet ({ onClose }) {
   )
 }
 
+// Two-week donation nudge (suite pattern). Shown once ever; the caller gates it
+// off on iOS (App Store 3.1.1) and marks it shown as soon as it surfaces.
+function DonationReminderModal ({ open, onDonate, onDismiss }) {
+  if (!open) return null
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
+      <div style={{ background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.xl, padding: spacing.xl, maxWidth: 360, width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        <div style={{ fontSize: 40 }}>⚡</div>
+        <div style={{ fontSize: 20, fontWeight: 600, color: colors.text.primary }}>Enjoying PearPetal?</div>
+        <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.5, marginBottom: spacing.sm }}>PearPetal is free and open source, with no ads, accounts, or subscriptions. If it has brought you value, consider sending a little back to support development.</div>
+        <Btn onClick={onDonate}>Support development</Btn>
+        <Btn kind='ghost' onClick={onDismiss}>Maybe later</Btn>
+        <button onClick={onDismiss} style={{ marginTop: spacing.xs, background: 'none', border: 'none', color: colors.text.muted, fontSize: 14, cursor: 'pointer' }}>Already donated ✓</button>
+      </div>
+    </div>
+  )
+}
+
 function AboutScreen ({ onClose }) {
   const [walletOpen, setWalletOpen] = useState(false)
   const [open, setOpen] = useState(null)
@@ -845,6 +863,7 @@ export default function App () {
   const [pred, setPred] = useState(null)
   const [flower, setFlower] = useState('rose')
   const [notice, setNotice] = useState('')
+  const [donateReminder, setDonateReminder] = useState(false)
 
   const refresh = useCallback(async () => {
     const [d, pr] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null)])
@@ -880,6 +899,18 @@ export default function App () {
   }), [boot])
   useEffect(() => { if (!notice) return undefined; const t = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(t) }, [notice])
 
+  // Two-week donation nudge: once the owner is set up, check the device-local due
+  // flag once, skip on iOS, and show the modal a single time ever (mark shown as
+  // soon as it surfaces). Never crosses the wire.
+  useEffect(() => {
+    if (mode !== 'owner' || isIOS()) return undefined
+    let done = false
+    call('donation:status', {}).then((s) => {
+      if (!done && s?.due) { setDonateReminder(true); call('donation:dismiss', {}).catch(() => {}) }
+    }).catch(() => {})
+    return () => { done = true }
+  }, [mode])
+
   let content
   if (mode === null) content = <div style={{ height: '100%' }} />
   else if (mode === 'onboard') content = <Onboarding onReady={boot} onViewerReady={boot} />
@@ -907,6 +938,7 @@ export default function App () {
     <>
       <div style={showNav ? { paddingBottom: 'calc(64px + var(--pear-safe-bottom))' } : undefined}>{content}</div>
       {showNav && <BottomNav active={navActive} onTab={setScreen} />}
+      <DonationReminderModal open={donateReminder} onDonate={() => { setDonateReminder(false); setScreen('about') }} onDismiss={() => setDonateReminder(false)} />
       {notice && (
         <div onClick={() => setNotice('')} style={{ position: 'fixed', left: 12, right: 12, bottom: `calc(16px + 64px + var(--pear-safe-bottom))`, zIndex: 50, background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, color: colors.text.primary, fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
           {notice}
