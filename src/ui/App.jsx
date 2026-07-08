@@ -76,13 +76,14 @@ function Btn ({ children, onClick, kind = 'primary', style }) {
   }
   return <button onClick={onClick} style={{ ...base, ...kinds[kind], ...style }}>{children}</button>
 }
-function Chip ({ active, onClick, children, color }) {
+function Chip ({ active, onClick, children, color, style }) {
   return (
     <button onClick={onClick} style={{
       border: `1px solid ${active ? (color || colors.primary) : colors.border}`,
       background: active ? (color || colors.primary) : 'transparent',
       color: active ? colors.text.onPrimary : colors.text.secondary,
       borderRadius: radius.full, padding: `6px 12px`, fontSize: 13, fontWeight: 500,
+      ...style,
     }}>{children}</button>
   )
 }
@@ -102,6 +103,21 @@ const CONDITION_OPTS = [
   ['irregular', 'Irregular cycles', 'Cycles that vary a lot in length make the fertile window and next-period date rougher estimates, so they are widened.'],
   ['thyroid', 'Thyroid condition', 'Thyroid conditions can lengthen, shorten, or skip cycles, so predictions are treated as less certain.'],
 ]
+// Goal chips + a one-line explainer of what each mode does for the estimates.
+const GOAL_OPTS = [
+  ['track', 'General', 'Keeping an eye on your cycle. PearPetal shows your phase, next period, and fertile window.'],
+  ['conceive', 'Trying to conceive', 'Your fertile window is highlighted as the best time to try.'],
+  ['avoid', 'Avoiding pregnancy', 'The fertile window shows when pregnancy is most likely. PearPetal is not contraception - do not rely on it to avoid pregnancy.'],
+  ['pregnant', 'Pregnant', ''], // reveals the pregnancy date setup instead of a one-liner
+]
+// A short explainer line (accent left border) used under the goal + health sections.
+function Explainer ({ title, children }) {
+  return (
+    <div style={{ color: colors.text.muted, fontSize: 12, lineHeight: 1.45, borderLeft: `2px solid ${colors.primary}`, paddingLeft: spacing.md }}>
+      {title && <span style={{ color: colors.text.secondary, fontWeight: 500 }}>{title} </span>}{children}
+    </div>
+  )
+}
 // Inline text link (e.g. "tracked conditions" -> the Settings health section).
 function LinkSpan ({ onClick, children }) {
   return <button onClick={onClick} style={{ background: 'none', border: 'none', padding: 0, margin: 0, color: colors.primary, textDecoration: 'underline', fontSize: 'inherit', fontWeight: 'inherit', cursor: 'pointer' }}>{children}</button>
@@ -770,16 +786,82 @@ function PregnancySetup ({ prefs, save }) {
   )
 }
 
+// Horizontal flower picker with edge fades that appear only when there is content
+// scrolled off that side, so a fade never covers the first or last flower.
+function FlowerPicker ({ value, onPick }) {
+  const scrollRef = useRef(null)
+  const [edges, setEdges] = useState({ left: false, right: false })
+  const update = () => {
+    const el = scrollRef.current; if (!el) return
+    setEdges({ left: el.scrollLeft > 2, right: el.scrollLeft < el.scrollWidth - el.clientWidth - 2 })
+  }
+  useEffect(() => { update() }, [])
+  const fade = { position: 'absolute', top: 0, bottom: spacing.xs, width: 32, pointerEvents: 'none', transition: 'opacity 150ms' }
+  return (
+    <div style={{ position: 'relative' }}>
+      <div ref={scrollRef} onScroll={update} style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', paddingBottom: spacing.xs }}>
+        {FLOWER_KEYS.map((key) => {
+          const active = (value || 'rose') === key
+          return (
+            <button key={key} onClick={() => onPick(key)} aria-pressed={active} style={{
+              flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              background: active ? 'rgba(232,133,155,0.10)' : 'transparent',
+              border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.md}px`,
+            }}>
+              <FlowerThumb flower={key} size={52} />
+              <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{flowerLabel(key)}</span>
+            </button>
+          )
+        })}
+      </div>
+      <div style={{ ...fade, left: 0, opacity: edges.left ? 1 : 0, background: `linear-gradient(to left, transparent, ${colors.surface.card})` }} />
+      <div style={{ ...fade, right: 0, opacity: edges.right ? 1 : 0, background: `linear-gradient(to right, transparent, ${colors.surface.card})` }} />
+    </div>
+  )
+}
+
+// Collapsible settings card for the occasional / advanced sections. Centered title
+// with a caret on the right, matching the About accordion's motion; independent
+// open/close (not one-at-a-time, unlike About) since you may adjust several.
+function CollapsibleCard ({ title, open, onToggle, children, id }) {
+  const ref = useRef(null)
+  // When a section opens, once the expand has finished, scroll it into view so its
+  // content clears the fixed bottom nav (block:'nearest' + the root's scroll-padding
+  // does the minimum needed; a no-op if it is already fully visible).
+  useEffect(() => {
+    if (!open || !ref.current) return undefined
+    const t = setTimeout(() => { ref.current && ref.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, 380)
+    return () => clearTimeout(t)
+  }, [open])
+  return (
+    <div id={id} ref={ref} style={{ ...card, padding: 0, overflow: 'hidden', scrollMarginTop: screenPadTop }}>
+      <button onClick={onToggle} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: spacing.base, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer', color: colors.text.secondary }}>
+        <span style={{ fontSize: 14, fontWeight: 500 }}>{title}</span>
+        <CaretRight size={16} color={colors.text.muted} weight='regular' style={{ position: 'absolute', right: spacing.base, top: '50%', marginTop: -8, transition: 'transform 0.3s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+      </button>
+      <div style={{ maxHeight: open ? 2500 : 0, overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)' }}>
+        <div style={{ padding: `0 ${spacing.lg}px ${spacing.lg}px`, display: 'flex', flexDirection: 'column', gap: spacing.md }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
 function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState('')
+  // The advanced/occasional sections collapse independently (collapsed by default).
+  const [openSection, setOpenSection] = useState({})
+  const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
   useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
-  // Deep-link scroll: when opened via a link (e.g. "tracked conditions"), jump to
-  // that section once prefs have rendered, then clear the request.
+  // Deep-link: when opened via the "tracked conditions" link, expand the health
+  // section and scroll to it once prefs have rendered, then clear the request. The
+  // scroll is delayed so the expand has committed first - scrolling mid-animation
+  // (while the section grows from 0) lands short.
   useEffect(() => {
     if (!prefs || scrollTo !== 'health') return
-    const id = requestAnimationFrame(() => { document.getElementById('health-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); onScrolled && onScrolled() })
-    return () => cancelAnimationFrame(id)
+    setOpenSection((s) => ({ ...s, health: true }))
+    const t = setTimeout(() => { document.getElementById('health-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); onScrolled && onScrolled() }, 140)
+    return () => clearTimeout(t)
   }, [prefs, scrollTo])
   if (!prefs) return null
   const save = async (patch) => { const next = { ...prefs, ...patch }; setPrefs(next); await call('prefs:set', patch).catch(() => {}); onSaved && onSaved() }
@@ -823,68 +905,50 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
       <ProfileCard />
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your flower</div>
-        <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', paddingBottom: spacing.xs }}>
-          {FLOWER_KEYS.map((key) => {
-            const active = (prefs.flower || 'rose') === key
-            return (
-              <button key={key} onClick={() => pickFlower(key)} aria-pressed={active} style={{
-                flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                background: active ? 'rgba(232,133,155,0.10)' : 'transparent',
-                border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.md}px`,
-              }}>
-                <FlowerThumb flower={key} size={52} />
-                <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{flowerLabel(key)}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
-        <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
-        <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />
-        <Stepper label='Luteal phase length' value={prefs.lutealLength} def={14} min={9} max={18} field='lutealLength' />
-        <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
+        <FlowerPicker value={prefs.flower} onPick={pickFlower} />
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>What are you tracking for?</div>
-        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-          {[['track', 'General'], ['conceive', 'Trying to conceive'], ['avoid', 'Avoiding pregnancy'], ['pregnant', 'Pregnant']].map(([k, l]) => (
-            <Chip key={k} active={(prefs.goal || 'track') === k} onClick={() => save({ goal: k })}>{l}</Chip>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
+          {GOAL_OPTS.map(([k, l]) => (
+            <Chip key={k} active={(prefs.goal || 'track') === k} onClick={() => save({ goal: k })} style={{ width: '100%' }}>{l}</Chip>
           ))}
         </div>
         {prefs.goal === 'pregnant'
           ? <PregnancySetup prefs={prefs} save={save} />
-          : <div style={{ color: colors.text.muted, fontSize: 11 }}>PearPetal is not contraception. Do not rely on it to avoid pregnancy.</div>}
+          : <Explainer>{(GOAL_OPTS.find(([k]) => k === (prefs.goal || 'track')) || [])[2]}</Explainer>}
       </div>
-      <div id='health-section' style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, scrollMarginTop: screenPadTop }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Health &amp; birth control</div>
+      <CollapsibleCard title='Cycle lengths' open={openSection.lengths} onToggle={() => toggleSection('lengths')}>
+        <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
+        <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />
+        <Stepper label='Luteal phase length' value={prefs.lutealLength} def={14} min={9} max={18} field='lutealLength' />
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
+      </CollapsibleCard>
+      <CollapsibleCard id='health-section' title='Health & birth control' open={openSection.health} onToggle={() => toggleSection('health')}>
         <div style={{ color: colors.text.muted, fontSize: 12 }}>Conditions that affect your cycle. These stay on your device and are never shared. They widen prediction estimates and tailor the guidance you see. Tap one to see how it changes your estimates.</div>
-        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
           {CONDITION_OPTS.map(([k, l]) => {
             const on = (prefs.conditions || []).includes(k)
-            return <Chip key={k} active={on} onClick={() => { const cur = prefs.conditions || []; save({ conditions: on ? cur.filter((x) => x !== k) : [...cur, k] }) }}>{l}</Chip>
+            return <Chip key={k} active={on} onClick={() => { const cur = prefs.conditions || []; save({ conditions: on ? cur.filter((x) => x !== k) : [...cur, k] }) }} style={{ width: '100%' }}>{l}</Chip>
           })}
         </div>
         {CONDITION_OPTS.filter(([k]) => (prefs.conditions || []).includes(k)).map(([k, l, explain]) => (
-          <div key={k} style={{ color: colors.text.muted, fontSize: 12, lineHeight: 1.45, borderLeft: `2px solid ${colors.primary}`, paddingLeft: spacing.md }}>
-            <span style={{ color: colors.text.secondary, fontWeight: 500 }}>{l}.</span> {explain}
-          </div>
+          <Explainer key={k} title={`${l}.`}>{explain}</Explainer>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
           <span style={{ color: colors.text.secondary, fontSize: 14 }}>On hormonal birth control</span>
           <Toggle on={!!prefs.birthControl} label='On hormonal birth control' onClick={() => save({ birthControl: !prefs.birthControl })} />
         </div>
-        {prefs.birthControl && <div style={{ color: colors.text.muted, fontSize: 12, lineHeight: 1.45, borderLeft: `2px solid ${colors.primary}`, paddingLeft: spacing.md }}>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal hides them and leads with your period dates.</div>}
-      </div>
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your data</div>
+        {prefs.birthControl && <Explainer>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal hides them and leads with your period dates.</Explainer>}
+      </CollapsibleCard>
+      <CollapsibleCard title='Your data' open={openSection.data} onToggle={() => toggleSection('data')}>
         <div style={{ display: 'flex', gap: spacing.sm }}>
           <Btn onClick={doExport} style={{ flex: 1 }}>Export</Btn>
           <Btn kind='ghost' onClick={doImport} style={{ flex: 1 }}>Import</Btn>
         </div>
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Export saves a plain file to your device. It is not encrypted and never leaves your device on its own, so keep it somewhere private. Import merges a backup into your log.</div>
         {dataMsg && <div style={{ color: colors.success, fontSize: 13 }}>{dataMsg}</div>}
-      </div>
+      </CollapsibleCard>
     </div>
   )
 }
