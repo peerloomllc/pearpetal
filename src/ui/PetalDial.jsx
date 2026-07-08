@@ -40,20 +40,39 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
   // center means today. onTap is the simpler "open today" fallback. Neither ->
   // the dial is display-only (e.g. the partner view).
   const interactive = !!(onTap || onDayTap)
-  const handleTap = (e) => {
-    if (!interactive) return
-    if (!onDayTap) { onTap && onTap(); return }
+  const dragging = useRef(false)
+  const lastDay = useRef(null)
+  // Map a pointer position on the dial to a cycle day: the angle picks the day
+  // (near the center means today).
+  const posToDay = (e) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const x = (e.clientX - rect.left) / rect.width * 320
     const y = (e.clientY - rect.top) / rect.height * 320
     const dx = x - CX; const dy = y - CY
-    let day = dayOfCycle
-    if (Math.hypot(dx, dy) >= 46) {
-      const ang = Math.atan2(dy, dx) * 180 / Math.PI
-      day = clamp(Math.round((((ang + 90) % 360 + 360) % 360) / 360 * L) + 1, 1, L)
-    }
+    if (Math.hypot(dx, dy) < 46) return dayOfCycle
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI
+    return clamp(Math.round((((ang + 90) % 360 + 360) % 360) / 360 * L) + 1, 1, L)
+  }
+  // Only fire when the day actually changes, so a fast drag does not spam the
+  // editor's per-day fetch.
+  const fire = (e) => {
+    const day = posToDay(e)
+    if (day === lastDay.current) return
+    lastDay.current = day
     onDayTap(addDaysIso(today, day - dayOfCycle))
   }
+  // Tap OR press-and-drag: pointerdown starts, moves scrub live (the marker + date
+  // follow the finger), release commits wherever it ends. A plain tap is just a
+  // down with no move.
+  const onDown = (e) => {
+    if (!interactive) return
+    if (!onDayTap) { onTap && onTap(); return }
+    dragging.current = true; lastDay.current = null
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
+    fire(e)
+  }
+  const onMove = (e) => { if (dragging.current && onDayTap) fire(e) }
+  const endDrag = (e) => { dragging.current = false; try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {} }
 
   // Ovulation as a day-of-cycle (from the predicted date when known), and the
   // fertile arc around it.
@@ -91,7 +110,7 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
 
   return (
     <div style={{ width: '100%', maxWidth: 320, margin: '0 auto' }}>
-      <svg onClick={handleTap} viewBox='0 0 320 320' role={interactive ? 'button' : 'img'} aria-label={onDayTap ? 'Tap a day on the ring to log it' : (interactive ? 'Open today' : 'Cycle dial')} style={{ width: '100%', height: 'auto', overflow: 'visible', cursor: interactive ? 'pointer' : 'default' }}>
+      <svg onPointerDown={onDown} onPointerMove={onMove} onPointerUp={endDrag} onPointerCancel={endDrag} viewBox='0 0 320 320' role={interactive ? 'button' : 'img'} aria-label={onDayTap ? 'Tap or drag a day on the ring to log it' : (interactive ? 'Open today' : 'Cycle dial')} style={{ width: '100%', height: 'auto', overflow: 'visible', cursor: interactive ? 'pointer' : 'default', touchAction: onDayTap ? 'none' : 'auto' }}>
         <defs>
           <radialGradient id='petalGlow' cx='50%' cy='50%' r='50%'>
             <stop offset='0%' stopColor={colors.primary} stopOpacity='0.55' />
