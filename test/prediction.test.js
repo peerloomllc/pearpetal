@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { projectionFromRows, pregnancyProjection, cycleStarts, median, addDays, diffDays } = require('../src/prediction')
+const { projectionFromRows, pregnancyProjection, projectCalendar, cycleStarts, median, addDays, diffDays } = require('../src/prediction')
 
 const day = (date, flow, bbt) => (bbt === undefined ? { date, flow } : { date, flow, bbt })
 const at = (today) => ({ today })
@@ -93,6 +93,28 @@ test('birth control flag is surfaced for the UI to soften fertile framing', () =
   assert.equal(on.birthControl, true)
   const off = projectionFromRows([], [{ start: '2026-06-01' }], { today: '2026-06-15', prefs: {} })
   assert.equal(off.birthControl, false)
+})
+
+test('calendar: projects period forward + fertile/ovulation both ways within range', () => {
+  const pred = { known: true, cycleLen: 28, periodLen: 5, nextPeriodStart: '2026-08-01', ovulationEst: '2026-07-18', fertileStart: '2026-07-13', fertileEnd: '2026-07-19' }
+  const m = projectCalendar(pred, '2026-08-01', '2026-08-31')
+  // period: Aug 1-5 (this cycle) and Aug 29 (next cycle start = Aug 1 + 28)
+  assert.ok(m.period.has('2026-08-01') && m.period.has('2026-08-05'))
+  assert.ok(!m.period.has('2026-08-06'))
+  assert.ok(m.period.has('2026-08-29'))
+  // fertile window shifts +28d into Aug 10-16; ovulation Jul 18 -> Aug 15
+  assert.ok(m.fertile.has('2026-08-10') && m.fertile.has('2026-08-16') && !m.fertile.has('2026-08-17'))
+  assert.ok(m.ovulation.has('2026-08-15'))
+  // nothing outside the range
+  assert.ok(!m.period.has('2026-07-31') && !m.fertile.has('2026-09-01'))
+})
+
+test('calendar: birth control suppresses fertile + ovulation, keeps period', () => {
+  const pred = { known: true, cycleLen: 28, periodLen: 5, nextPeriodStart: '2026-08-01', ovulationEst: '2026-07-18', fertileStart: '2026-07-13', fertileEnd: '2026-07-19', birthControl: true }
+  const m = projectCalendar(pred, '2026-08-01', '2026-08-31')
+  assert.ok(m.period.has('2026-08-01'))
+  assert.equal(m.fertile.size, 0)
+  assert.equal(m.ovulation.size, 0)
 })
 
 test('pregnancy: inactive unless goal is pregnant with dates', () => {

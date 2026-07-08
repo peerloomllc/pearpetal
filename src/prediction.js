@@ -122,12 +122,39 @@ function projectionFromRows (dayRows, periodRows, opts = {}) {
   else phase = 'luteal'
 
   return {
-    known: true, phase, dayOfCycle, cycleLen,
+    known: true, phase, dayOfCycle, cycleLen, periodLen,
     nextPeriodStart, daysUntilNextPeriod: diffDays(today, nextPeriodStart),
     ovulationEst, ovulationSource: bbtOv ? 'bbt' : 'calendar',
     fertileStart, fertileEnd, confidence,
     conditions, uncertain, birthControl,
   }
+}
+
+// Project the predicted period / fertile / ovulation days across a date range, for
+// the month calendar. Repeats the current-cycle pattern by cycle length. Predicted
+// PERIOD days are only projected forward (k>=0); past periods come from the actual
+// log in the UI. Fertile / ovulation are projected both ways (they are never logged).
+// Returns { period, fertile, ovulation } as Sets of ISO dates. Birth control
+// suppresses fertile / ovulation (the framing does not apply), matching the dial.
+function projectCalendar (pred, startIso, endIso) {
+  const out = { period: new Set(), fertile: new Set(), ovulation: new Set() }
+  if (!pred || !pred.known || !pred.nextPeriodStart) return out
+  const L = pred.cycleLen || DEFAULT_CYCLE_LEN
+  const pLen = pred.periodLen || DEFAULT_PERIOD_LEN
+  const s = isoToDays(startIso); const e = isoToDays(endIso)
+  const within = (n) => n >= s && n <= e
+  const anchorP = isoToDays(pred.nextPeriodStart)
+  const anchorO = pred.ovulationEst ? isoToDays(pred.ovulationEst) : null
+  const anchorFs = pred.fertileStart ? isoToDays(pred.fertileStart) : null
+  const anchorFe = pred.fertileEnd ? isoToDays(pred.fertileEnd) : null
+  for (let k = -6; k <= 6; k++) {
+    if (k >= 0) for (let d = 0; d < pLen; d++) { const n = anchorP + k * L + d; if (within(n)) out.period.add(daysToIso(n)) }
+    if (!pred.birthControl) {
+      if (anchorO != null) { const n = anchorO + k * L; if (within(n)) out.ovulation.add(daysToIso(n)) }
+      if (anchorFs != null && anchorFe != null) for (let n = anchorFs + k * L; n <= anchorFe + k * L; n++) if (within(n)) out.fertile.add(daysToIso(n))
+    }
+  }
+  return out
 }
 
 // --- pregnancy (gestational) projection -------------------------------------
@@ -156,7 +183,7 @@ function pregnancyProjection (prefs = {}, todayArg) {
 }
 
 module.exports = {
-  projectionFromRows, pregnancyProjection, cycleStarts, bbtOvulation, median,
+  projectionFromRows, pregnancyProjection, projectCalendar, cycleStarts, bbtOvulation, median,
   isoToDays, daysToIso, addDays, diffDays, todayIso,
   FLOW_VALUES, BLEEDING_FLOWS, DEFAULT_CYCLE_LEN, DEFAULT_LUTEAL_LEN, DEFAULT_PERIOD_LEN, GESTATION_DAYS,
 }

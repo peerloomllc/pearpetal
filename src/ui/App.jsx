@@ -9,11 +9,12 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, Camera } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
 import { colors, spacing, radius } from './theme.js'
+import { projectCalendar } from '../prediction.js'
 import PetalDial, { PregnancyDial, FlowerThumb, isoDiff, addDaysIso } from './PetalDial.jsx'
 import { FLOWER_KEYS, flowerLabel } from './flowers.js'
 
@@ -41,10 +42,18 @@ const LIGHTNING_WALLETS = [
 const isIOS = () => typeof window !== 'undefined' && window.__pearPlatform === 'ios'
 const openUrl = (url) => { try { const p = call('shell:openUrl', { url }); if (p && p.catch) p.catch(() => {}) } catch {} }
 
+const pad2 = (n) => String(n).padStart(2, '0')
+const BLEEDING = new Set(['light', 'medium', 'heavy'])
 function todayIso () {
   const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+// ISO of the first day of the month containing `iso`, and month-shift by n months.
+const monthStart = (iso) => `${iso.slice(0, 7)}-01`
+function shiftMonthIso (iso, n) {
+  const [y, m] = iso.split('-').map(Number)
+  const d = new Date(Date.UTC(y, m - 1 + n, 1))
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-01`
 }
 
 // Re-run a loader whenever synced data changes. Every base view update - a local
@@ -542,10 +551,10 @@ function DayEditor ({ date, setDate, onSaved }) {
 
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <input type='date' value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)}
           style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `6px 10px` }} />
-        <span style={{ color: colors.success, fontSize: 13, opacity: saved ? 1 : 0, transition: 'opacity 200ms' }}>Saved</span>
+        <span style={{ position: 'absolute', right: 0, color: colors.success, fontSize: 13, opacity: saved ? 1 : 0, transition: 'opacity 200ms' }}>Saved</span>
       </div>
       <div>
         <div style={{ fontSize: 13, color: colors.text.muted, marginBottom: spacing.sm }}>Flow</div>
@@ -711,6 +720,120 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
               </div>}
         </>
       )}
+    </div>
+  )
+}
+
+// Toggle between the dial ("today at a glance") and the calendar ("the month").
+function ViewToggle ({ value, onChange }) {
+  const opts = [['dial', 'Dial', Flower], ['calendar', 'Month', CalendarBlank]]
+  return (
+    <div style={{ display: 'flex', alignSelf: 'center', width: 240, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
+      {opts.map(([k, l, Icon]) => {
+        const on = value === k
+        return (
+          <button key={k} onClick={() => onChange(k)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', borderRadius: radius.full, padding: '7px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>
+            <Icon size={16} weight={on ? 'fill' : 'regular'} />{l}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Month grid: color-coded period / fertile / ovulation / logged days. Tap a past or
+// today cell to select it for the day editor. Predicted marks come from
+// projectCalendar; logged bleeding days are period too (the log is authoritative
+// for the past).
+const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+const CAL_PERIOD_BG = 'rgba(200,56,79,0.38)'
+const CAL_FERTILE_BG = 'rgba(232,133,155,0.20)'
+function LegendSwatch ({ color, ring, label }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: colors.text.muted, fontSize: 11 }}>
+      <span style={{ width: 11, height: 11, borderRadius: 3, background: color || 'transparent', border: ring ? `1.5px solid ${ring}` : 'none', boxSizing: 'border-box' }} />{label}
+    </span>
+  )
+}
+function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, onPrev, onNext, onToday, dir }) {
+  const [y, m] = monthIso.split('-').map(Number)
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  const startWeekday = new Date(Date.UTC(y, m - 1, 1)).getUTCDay()
+  const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  const isCurrentMonth = monthIso.slice(0, 7) === today.slice(0, 7)
+  const marks = projectCalendar(pred, `${monthIso.slice(0, 7)}-01`, `${monthIso.slice(0, 7)}-${pad2(daysInMonth)}`)
+  const cells = []
+  for (let i = 0; i < startWeekday; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  // Always render 6 week rows (42 cells) so the grid - and the whole calendar
+  // container - is the same height every month (some months span 5 rows, some 6);
+  // otherwise the content below shifts when you change month.
+  while (cells.length < 42) cells.push(null)
+  const navBtn = { background: 'none', border: 'none', color: colors.text.secondary, cursor: 'pointer', padding: spacing.xs, display: 'flex', alignItems: 'center' }
+  // Swipe left/right to change month. A tap on a day has near-zero travel, so it
+  // never trips the swipe; a real swipe sets `swiped` so the day's click is ignored.
+  const touch = useRef(null); const swiped = useRef(false)
+  const onTouchStart = (e) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY }; swiped.current = false }
+  const onTouchEnd = (e) => {
+    if (!touch.current) return
+    const t = e.changedTouches[0]; const dx = t.clientX - touch.current.x; const dy = t.clientY - touch.current.y
+    touch.current = null
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      swiped.current = true; if (dx < 0) onNext(); else onPrev()
+      setTimeout(() => { swiped.current = false }, 400)
+    }
+  }
+  const slide = (dir >= 0 ? 'pearpetal-slide-r' : 'pearpetal-slide-l')
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <button onClick={onPrev} aria-label='Previous month' style={navBtn}><CaretLeft size={20} /></button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.sm }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>{monthLabel}</div>
+          {/* Always in layout (reserves height) so the header does not jump; fades in
+              only when off the current month. */}
+          <button onClick={onToday} aria-hidden={isCurrentMonth} style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: '2px 12px', fontSize: 11, fontWeight: 500, color: colors.primary, cursor: 'pointer', opacity: isCurrentMonth ? 0 : 1, pointerEvents: isCurrentMonth ? 'none' : 'auto', transition: 'opacity 200ms' }}>Today</button>
+        </div>
+        <button onClick={onNext} aria-label='Next month' style={navBtn}><CaretRight size={20} /></button>
+      </div>
+      <div key={monthIso} style={{ animation: `${slide} 240ms ease` }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {WEEKDAYS.map((w, i) => <div key={i} style={{ textAlign: 'center', fontSize: 11, color: colors.text.muted, paddingBottom: 2 }}>{w}</div>)}
+          {cells.map((d, i) => {
+            if (d == null) return <div key={`b${i}`} style={{ minHeight: 42 }} />
+            const iso = `${y}-${pad2(m)}-${pad2(d)}`
+            const logged = daysByIso[iso]
+            const bleeding = logged && BLEEDING.has(logged.flow)
+            const isPeriod = marks.period.has(iso) || bleeding
+            const isFertile = !isPeriod && marks.fertile.has(iso)
+            const isOvul = marks.ovulation.has(iso)
+            const isToday = iso === today
+            const isSel = iso === selected
+            const isFuture = iso > today
+            const bg = isPeriod ? CAL_PERIOD_BG : isFertile ? CAL_FERTILE_BG : 'transparent'
+            const border = isSel ? `2px solid ${colors.primary}` : isToday ? `1px solid ${colors.text.secondary}` : '1px solid transparent'
+            return (
+              <button key={iso} onClick={() => { if (swiped.current || isFuture) return; haptic('light'); onPick(iso) }} disabled={isFuture} style={{
+                position: 'relative', minHeight: 42, borderRadius: radius.md, background: bg, border, padding: 0,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                color: isFuture ? colors.text.muted : colors.text.primary, opacity: isFuture ? 0.45 : 1, cursor: isFuture ? 'default' : 'pointer',
+              }}>
+                <span style={{ fontSize: 13, fontWeight: isToday || isSel ? 700 : 400 }}>{d}</span>
+                <span style={{ height: 6, display: 'flex', alignItems: 'center', gap: 3 }}>
+                  {isOvul && <span style={{ width: 6, height: 6, borderRadius: '50%', border: `1.5px solid ${colors.accent}`, boxSizing: 'border-box' }} />}
+                  {logged && !isPeriod && !isOvul && <span style={{ width: 5, height: 5, borderRadius: '50%', background: colors.text.muted }} />}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: `${spacing.xs}px ${spacing.md}px`, justifyContent: 'center', borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.sm }}>
+        <LegendSwatch color={CAL_PERIOD_BG} label='Period' />
+        <LegendSwatch color={CAL_FERTILE_BG} label='Fertile' />
+        <LegendSwatch ring={colors.accent} label='Ovulation' />
+        <LegendSwatch color={colors.text.muted} label='Logged' />
+      </div>
     </div>
   )
 }
@@ -1092,17 +1215,20 @@ const NAV_TABS = [
   { key: 'about', label: 'About', Icon: Info },
 ]
 function BottomNav ({ active, onTab }) {
+  const activeIndex = Math.max(0, NAV_TABS.findIndex((t) => t.key === active))
   return (
     <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, display: 'flex', background: 'rgba(20,15,17,0.94)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderTop: `1px solid ${colors.border}`, paddingBottom: 'var(--pear-safe-bottom)' }}>
+      {/* A single accent that slides to the active tab. */}
+      <div style={{ position: 'absolute', top: 0, height: 2, width: 26, borderRadius: 2, background: colors.primary, left: `calc(${activeIndex * 25 + 12.5}% - 13px)`, transition: 'left 280ms cubic-bezier(0.4,0,0.2,1)' }} />
       {NAV_TABS.map((t) => {
         const on = active === t.key
-        const tint = on ? colors.primary : colors.text.muted
         const Icon = t.Icon
         return (
-          <button key={t.key} onClick={() => onTab(t.key)} aria-current={on ? 'page' : undefined} style={{ flex: 1, background: 'none', border: 'none', padding: `${spacing.sm}px 0 ${spacing.sm}px`, cursor: 'pointer', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-            <span style={{ position: 'absolute', top: 0, width: 26, height: 2, borderRadius: 2, background: on ? colors.primary : 'transparent' }} />
-            <Icon size={22} color={tint} weight={on ? 'fill' : 'regular'} />
-            <span style={{ fontSize: 11, fontWeight: on ? 600 : 400, color: tint }}>{t.label}</span>
+          <button key={t.key} onClick={() => onTab(t.key)} aria-current={on ? 'page' : undefined} style={{ flex: 1, background: 'none', border: 'none', padding: `${spacing.sm}px 0`, cursor: 'pointer', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, color: on ? colors.primary : colors.text.muted, transition: 'color 240ms' }}>
+            <span style={{ display: 'flex', transform: on ? 'scale(1.12)' : 'scale(1)', transition: 'transform 220ms cubic-bezier(0.2,0.8,0.2,1)' }}>
+              <Icon size={22} weight={on ? 'fill' : 'regular'} />
+            </span>
+            <span style={{ fontSize: 11, fontWeight: on ? 600 : 400 }}>{t.label}</span>
           </button>
         )
       })}
@@ -1121,6 +1247,12 @@ export default function App () {
   const [notice, setNotice] = useState('')
   const [donateReminder, setDonateReminder] = useState(false)
   const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
+  const [cycleView, setCycleView] = useState(() => { try { return localStorage.getItem('pearpetal:cycleView') === 'calendar' ? 'calendar' : 'dial' } catch { return 'dial' } })
+  const setView = (v) => { setCycleView(v); try { localStorage.setItem('pearpetal:cycleView', v) } catch {} }
+  const [calMonth, setCalMonth] = useState(() => monthStart(todayIso()))
+  const [calDir, setCalDir] = useState(1) // slide direction for the month transition
+  const goMonth = (n) => { setCalDir(n); setCalMonth((cur) => shiftMonthIso(cur, n)) }
+  const goToday = () => { const t = monthStart(todayIso()); setCalDir(t < calMonth ? -1 : 1); setCalMonth(t); setDate(todayIso()) }
 
   const refresh = useCallback(async () => {
     const [d, pr] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null)])
@@ -1179,14 +1311,27 @@ export default function App () {
   else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      {pred?.pregnancy?.active
-        ? <PregnancyView preg={pred.pregnancy} flower={flower} onSettings={() => setScreen('settings')} />
-        : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />}
+      {pred?.pregnancy?.active ? (
+        <PregnancyView preg={pred.pregnancy} flower={flower} onSettings={() => setScreen('settings')} />
+      ) : (
+        <>
+          <ViewToggle value={cycleView} onChange={setView} />
+          {/* key forces a remount so the fade replays on each toggle, softening the
+              height change between the (taller) dial and the calendar. */}
+          <div key={cycleView} style={{ animation: 'pearpetal-fade 220ms ease' }}>
+            {cycleView === 'calendar'
+              ? <MonthCalendar monthIso={calMonth} dir={calDir} pred={pred} daysByIso={Object.fromEntries(days.map((d) => [d.date, d]))} selected={date} today={todayIso()} onPick={setDate} onPrev={() => goMonth(-1)} onNext={() => goMonth(1)} onToday={goToday} />
+              : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />}
+          </div>
+        </>
+      )}
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
-      <div>
-        <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>
-        <RecentDays days={days} onPick={setDate} />
-      </div>
+      {(!pred?.pregnancy?.active && cycleView === 'calendar') ? null : (
+        <div>
+          <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>
+          <RecentDays days={days} onPick={setDate} />
+        </div>
+      )}
     </div>
   )
 
