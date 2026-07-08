@@ -117,9 +117,12 @@ because it demos the finished app).
      `/petal/link` + `/petal/join` landing page on peerloomllc.com (the # blob stays client-side).
 3. **Native QR scan + QR render** for link/share codes (currently paste/copy only; the
    "Scan" button is a stub - `shell:scanQr` returns null). Builds on the URL format in #2.
-4. **Safe-area top inset** (visual bug): screen titles ("PearPetal", "Partner's cycle") render
-   under the status/notification bar and clip behind the clock. Add a top safe-area inset.
-   Seen on TCL, Pixel 9 Pro, and iPhone SE.
+4. **Safe-area top inset** - DONE 2026-07-07 (branch feature/safe-area-inset). A shared
+   `screenPadTop` = `calc(xl + max(var(--pear-safe-top,0), env(safe-area-inset-top,0)))` now
+   pads the top of every title screen (PartnerView / Sharing / Devices / CycleSettings were
+   missing it; main + ViewerHome upgraded from the raw var). Uses the shell-injected inset OR
+   the CSS env() inset (WebView is viewport-fit=cover) so it holds even if the var lands late.
+   REMAINING: on-device confirm titles clear the status bar (TCL / Pixel / iPhone).
 5. **Petal dial in the partner view too; ring day-scrub** to log a past day by tapping its tick.
 6. **App logo / icon + notification-bar icons**: launcher icon, Android adaptive icon
    (foreground/background), and monochrome notification / status-bar icons. Needed before

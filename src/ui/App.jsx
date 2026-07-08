@@ -45,6 +45,12 @@ function useSynced (load) {
 
 // --- small styled primitives ------------------------------------------------
 const card = { background: colors.surface.card, borderRadius: radius.xl, padding: spacing.lg, border: `1px solid ${colors.border}` }
+// Top padding that clears the status / notification bar so screen titles never clip
+// under the clock. Prefers the shell-injected inset (--pear-safe-top from
+// react-native-safe-area-context) and falls back to the CSS env() inset (available
+// because the WebView viewport is viewport-fit=cover), so it holds even if the
+// injected var lands late.
+const screenPadTop = `calc(${spacing.xl}px + max(var(--pear-safe-top, 0px), env(safe-area-inset-top, 0px)))`
 function Btn ({ children, onClick, kind = 'primary', style }) {
   const base = { border: 'none', borderRadius: radius.lg, padding: `${spacing.md}px ${spacing.base}px`, fontSize: 15, fontWeight: 500 }
   const kinds = {
@@ -249,7 +255,7 @@ function Sharing ({ onClose, onOpenPartner }) {
   const copy = async (code) => { try { await navigator.clipboard.writeText(code); haptic('success') } catch { call('shell:share', { text: code }).catch(() => {}) } }
 
   return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 20, fontWeight: 600 }}>Sharing</div>
         <Btn kind='ghost' onClick={onClose}>Done</Btn>
@@ -330,7 +336,7 @@ function PartnerView ({ groupId, onClose, onLeft }) {
   const phase = data?.phase
   const predict = data?.predict
   return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 20, fontWeight: 600 }}>Partner's cycle</div>
         <Btn kind='ghost' onClick={onClose}>Back</Btn>
@@ -476,7 +482,7 @@ function Devices ({ onClose }) {
   const copy = async () => { try { await navigator.clipboard.writeText(inviteLink); haptic('success') } catch { share() } }
 
   return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 20, fontWeight: 600 }}>Your devices</div>
         <Btn kind='ghost' onClick={onClose}>Done</Btn>
@@ -508,7 +514,7 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   const load = useCallback(async () => setPartners(await call('partner:list').catch(() => [])), [])
   useSynced(load)
   return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: `calc(${spacing.xl}px + var(--pear-safe-top))`, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
       <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Shared with you</div>
       {partners.map((p) => (
@@ -603,7 +609,7 @@ function CycleSettings ({ onClose, onSaved, onFlower }) {
     </div>
   )
   return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 20, fontWeight: 600 }}>Cycle settings</div>
         <Btn kind='ghost' onClick={onClose}>Done</Btn>
@@ -708,7 +714,7 @@ export default function App () {
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
   else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} />
   else content = (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: `calc(${spacing.xl}px + var(--pear-safe-top))`, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
         <div style={{ display: 'flex', gap: spacing.sm }}>
