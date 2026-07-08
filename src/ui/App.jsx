@@ -604,7 +604,7 @@ function CycleSummary ({ pred, today, flower, onSettings, onScrub, selected }) {
   )
 }
 
-function CycleSettings ({ onClose, onSaved, onFlower, onAbout }) {
+function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState('')
   useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
@@ -692,18 +692,25 @@ function CycleSettings ({ onClose, onSaved, onFlower, onAbout }) {
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Export saves a plain file to your device. It is not encrypted and never leaves your device on its own, so keep it somewhere private. Import merges a backup into your log.</div>
         {dataMsg && <div style={{ color: colors.success, fontSize: 13 }}>{dataMsg}</div>}
       </div>
-      <Btn kind='ghost' onClick={onAbout}>About PearPetal</Btn>
+      <Btn kind='ghost' onClick={onDevices}>Your devices</Btn>
     </div>
   )
 }
 
 // --- root -------------------------------------------------------------------
 // --- About + Bitcoin donation -----------------------------------------------
-function AboutSection ({ title, children }) {
+// Collapsible card: centered title + caret, tap to expand. Accordion (one open at
+// a time) is managed by AboutScreen.
+function AboutSection ({ title, open, onToggle, children }) {
   return (
-    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-      <div style={{ fontSize: 15, fontWeight: 600 }}>{title}</div>
-      {children}
+    <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+      <button onClick={onToggle} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: `${spacing.base}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: colors.text.primary }}>
+        <span style={{ fontSize: 16, fontWeight: 400 }}>{title}</span>
+        <span style={{ color: colors.text.muted, fontSize: 16, lineHeight: 1, transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }}>›</span>
+      </button>
+      <div style={{ maxHeight: open ? 640 : 0, overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)' }}>
+        <div style={{ padding: `0 ${spacing.base}px ${spacing.base}px`, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>{children}</div>
+      </div>
     </div>
   )
 }
@@ -738,6 +745,8 @@ function WalletSheet ({ onClose }) {
 
 function AboutScreen ({ onClose }) {
   const [walletOpen, setWalletOpen] = useState(false)
+  const [open, setOpen] = useState(null)
+  const toggle = (id) => setOpen((o) => (o === id ? null : id))
   const ios = isIOS()
   const donateBTC = async () => {
     try { const r = await call('shell:canOpenURL', { url: 'lightning:test' }); if (r?.can) openUrl('lightning:' + LIGHTNING_ADDRESS); else setWalletOpen(true) } catch { setWalletOpen(true) }
@@ -754,13 +763,13 @@ function AboutScreen ({ onClose }) {
         <div style={{ color: colors.text.muted, fontSize: 14, marginTop: spacing.xs }}>Private cycle tracking. No account, no server.</div>
       </div>
 
-      <AboutSection title='How it works'>
+      <AboutSection title='How it works' open={open === 'how'} onToggle={() => toggle('how')}>
         <AboutText>PearPetal keeps your cycle on your own devices and syncs it peer-to-peer over the Hypercore Protocol - no account, no server, no cloud, no data collection. You choose exactly what a partner sees; your full log and notes never leave your devices.</AboutText>
         <AboutLink onClick={() => openUrl('https://pears.com/')}>Learn about P2P ↗</AboutLink>
       </AboutSection>
 
       {!ios && (
-        <AboutSection title='Support development'>
+        <AboutSection title='Support development' open={open === 'support'} onToggle={() => toggle('support')}>
           <AboutText>PearPetal is free and open source. If it brings you value, consider sending a little back.</AboutText>
           <div style={{ display: 'flex', gap: spacing.sm }}>
             <AboutLink primary onClick={donateBTC}>⚡ Bitcoin ⚡</AboutLink>
@@ -769,34 +778,55 @@ function AboutScreen ({ onClose }) {
         </AboutSection>
       )}
 
-      <AboutSection title='Learn about Bitcoin'>
+      <AboutSection title='Learn about Bitcoin' open={open === 'btc'} onToggle={() => toggle('btc')}>
         <AboutText>New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course on how it works and why it matters.</AboutText>
         <AboutLink onClick={() => openUrl('https://nakamotoinstitute.org/crash-course/')}>Bitcoin Crash Course ↗</AboutLink>
       </AboutSection>
 
-      <AboutSection title='Open source'>
+      <AboutSection title='Open source' open={open === 'oss'} onToggle={() => toggle('oss')}>
         <AboutText>PearPetal is open source under the MIT license. Read the code, file an issue, or contribute.</AboutText>
         <AboutLink onClick={() => openUrl('https://github.com/peerloomllc/pearpetal')}>View on GitHub ↗</AboutLink>
       </AboutSection>
 
-      <AboutSection title='Share the app'>
+      <AboutSection title='Share the app' open={open === 'share'} onToggle={() => toggle('share')}>
         <AboutText>Know someone who'd want a private, serverless cycle tracker? Share PearPetal.</AboutText>
         <AboutLink onClick={share}>Share PearPetal</AboutLink>
       </AboutSection>
 
-      <AboutSection title='Contact'>
+      <AboutSection title='Contact' open={open === 'contact'} onToggle={() => toggle('contact')}>
         <div style={{ display: 'flex', gap: spacing.sm }}>
           <AboutLink onClick={() => openUrl('mailto:peerloomllc@proton.me?subject=%5BPearPetal%5D%20Feedback')}>Email</AboutLink>
           <AboutLink onClick={() => openUrl('https://github.com/peerloomllc/pearpetal/issues')}>Issue</AboutLink>
         </div>
       </AboutSection>
 
-      <div style={{ textAlign: 'center', color: colors.text.muted, fontSize: 13 }}>
-        <div>No account. No server. Your data stays on your devices.</div>
-        <div style={{ marginTop: spacing.xs }}>v{APP_VERSION}</div>
-      </div>
+      <div style={{ textAlign: 'center', color: colors.text.muted, fontSize: 13 }}>v{APP_VERSION}</div>
 
       {walletOpen && <WalletSheet onClose={() => setWalletOpen(false)} />}
+    </div>
+  )
+}
+
+// Persistent bottom navigation (owner mode). Label-based, with a top accent line on
+// the active tab. Sits above the home-indicator via the safe-bottom inset.
+const NAV_TABS = [
+  { key: 'main', label: 'Cycle' },
+  { key: 'share', label: 'Share' },
+  { key: 'settings', label: 'Settings' },
+  { key: 'about', label: 'About' },
+]
+function BottomNav ({ active, onTab }) {
+  return (
+    <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, display: 'flex', background: 'rgba(20,15,17,0.94)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderTop: `1px solid ${colors.border}`, paddingBottom: 'var(--pear-safe-bottom)' }}>
+      {NAV_TABS.map((t) => {
+        const on = active === t.key
+        return (
+          <button key={t.key} onClick={() => onTab(t.key)} aria-current={on ? 'page' : undefined} style={{ flex: 1, background: 'none', border: 'none', padding: `${spacing.md}px 0 ${spacing.sm}px`, cursor: 'pointer', position: 'relative', display: 'flex', justifyContent: 'center' }}>
+            <span style={{ position: 'absolute', top: 0, width: 26, height: 2, borderRadius: 2, background: on ? colors.primary : 'transparent' }} />
+            <span style={{ fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? colors.primary : colors.text.muted }}>{t.label}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -852,17 +882,11 @@ export default function App () {
   else if (mode === 'viewer') content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); boot() }} />
   else if (screen === 'devices') content = <Devices onClose={() => setScreen('main')} />
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
-  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onAbout={() => setScreen('about')} />
-  else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('settings')} />
+  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onDevices={() => setScreen('devices')} />
+  else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
-        <div style={{ display: 'flex', gap: spacing.sm }}>
-          <Btn kind='ghost' onClick={() => setScreen('share')}>Share</Btn>
-          <Btn kind='ghost' onClick={() => setScreen('devices')}>Devices</Btn>
-        </div>
-      </div>
+      <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary, textAlign: 'center' }}>PearPetal</div>
       <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
       <div>
@@ -872,11 +896,14 @@ export default function App () {
     </div>
   )
 
+  const showNav = mode === 'owner' && !partnerGroup
+  const navActive = ['share', 'settings', 'about'].includes(screen) ? screen : 'main'
   return (
     <>
-      {content}
+      <div style={showNav ? { paddingBottom: 'calc(64px + var(--pear-safe-bottom))' } : undefined}>{content}</div>
+      {showNav && <BottomNav active={navActive} onTab={setScreen} />}
       {notice && (
-        <div onClick={() => setNotice('')} style={{ position: 'fixed', left: 12, right: 12, bottom: 'calc(16px + var(--pear-safe-bottom))', zIndex: 50, background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, color: colors.text.primary, fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
+        <div onClick={() => setNotice('')} style={{ position: 'fixed', left: 12, right: 12, bottom: `calc(16px + 64px + var(--pear-safe-bottom))`, zIndex: 50, background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, color: colors.text.primary, fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
           {notice}
         </div>
       )}
