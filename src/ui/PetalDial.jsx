@@ -79,7 +79,11 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
   const ovDay = known
     ? clamp(dayOfCycle + (pred.ovulationEst ? isoDiff(today, pred.ovulationEst) : (L - 14 - dayOfCycle)), 2, L - 1)
     : L - 14
-  const target = known ? bloomFor(dayOfCycle, ovDay, L) : 0.1
+  // The dial - marker AND bloom - reflects the SELECTED day (the one being viewed /
+  // edited), defaulting to today. So scrubbing the ring furls and blooms the flower
+  // across the cycle (peak bloom at ovulation), not just moving the marker.
+  const selDay = (known && selected) ? clamp(dayOfCycle + isoDiff(today, selected), 1, L) : dayOfCycle
+  const target = known ? bloomFor(selDay, ovDay, L) : 0.1
 
   const [bloom, setBloom] = useState(0.06)
   const raf = useRef(0)
@@ -101,9 +105,8 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
   const b = bloom
   const fl = buildFlower(flower, b)
   const glow = Math.max(0, (b - 0.55) / 0.45) * 0.9
-  // The prominent marker follows the SELECTED day (the one being viewed/edited),
-  // defaulting to today; a small pip stays at today when you have scrubbed away.
-  const selDay = (known && selected) ? clamp(dayOfCycle + isoDiff(today, selected), 1, L) : dayOfCycle
+  // The prominent marker sits on the selected day; a small pip stays at today once
+  // you have scrubbed away, to keep your bearings.
   const [px, py] = polar(R, dayDeg(selDay))
   const [tpx, tpy] = polar(R, dayDeg(dayOfCycle))
   const ticks = Array.from({ length: L }, (_, i) => i + 1)
