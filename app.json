@@ -9,11 +9,17 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.pearpetal",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used to scan an invite QR code to link a device or view a partner's cycle."
+      }
     },
     "android": {
       "package": "com.pearpetal",
       "versionCode": 100000,
+      "permissions": [
+        "CAMERA"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",

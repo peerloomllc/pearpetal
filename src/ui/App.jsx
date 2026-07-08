@@ -8,7 +8,9 @@
 // The petal dial and partner sharing are deliberately NOT here yet (later
 // slices). This proves the data path end to end: log on device A, see on B.
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import QRCode from 'qrcode'
+import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
 import { colors, spacing, radius } from './theme.js'
 import PetalDial, { FlowerThumb } from './PetalDial.jsx'
@@ -89,28 +91,101 @@ function parseInvite (text) {
 // pass it through and this is used only for deep links.
 const isLinkInvite = (text) => /(peerloomllc\.com\/petal|pearpetal)\/link(?![a-z])/i.test(String(text || ''))
 
+// --- QR (render + scan, all in the WebView) ---------------------------------
+// A QR of an invite link, always on a white quiet-zone box so it scans in dark mode.
+function QrImage ({ text, size = 190 }) {
+  const [url, setUrl] = useState(null)
+  useEffect(() => {
+    let alive = true
+    QRCode.toString(text || '', { type: 'svg', margin: 1, errorCorrectionLevel: 'M' })
+      .then((svg) => { if (alive) setUrl('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [text])
+  if (!text) return null
+  return (
+    <div style={{ alignSelf: 'center', width: size, height: size, background: '#fff', borderRadius: radius.md, padding: 8, boxSizing: 'content-box', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {url ? <img src={url} width={size} height={size} alt='Invite QR code' /> : null}
+    </div>
+  )
+}
+
+// In-WebView QR scanner: camera stream -> canvas frames -> jsQR decode. Works once
+// the shell grants the WebView camera permission (see app/index.tsx). onDecode gets
+// the raw decoded string; the caller runs it through parseInvite.
+function ScannerView ({ open, onClose, onDecode }) {
+  const videoRef = useRef(null)
+  const [error, setError] = useState(null)
+  useEffect(() => {
+    if (!open) return undefined
+    setError(null)
+    let stream = null; let raf = null; let cancelled = false
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const stop = () => { cancelled = true; if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach((t) => t.stop()) }
+    ;(async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera not available on this device')
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return }
+        const v = videoRef.current
+        v.srcObject = stream; await v.play()
+        const tick = () => {
+          if (cancelled) return
+          if (v.readyState >= 2 && v.videoWidth) {
+            canvas.width = v.videoWidth; canvas.height = v.videoHeight
+            ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
+            let img = null
+            try { img = ctx.getImageData(0, 0, canvas.width, canvas.height) } catch {}
+            if (img) {
+              const found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' })
+              if (found?.data) { stop(); haptic('success'); onDecode(found.data); return }
+            }
+          }
+          raf = requestAnimationFrame(tick)
+        }
+        tick()
+      } catch (e) { setError(e?.message || 'Could not open the camera') }
+    })()
+    return stop
+  }, [open])
+  if (!open) return null
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: '#000' }}>
+      <video ref={videoRef} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+        <div style={{ width: 240, height: 240, border: `3px solid ${colors.primary}`, borderRadius: radius.lg }} />
+      </div>
+      <button onClick={onClose} aria-label='Close scanner' style={{ position: 'absolute', top: spacing.base, right: spacing.base, width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 20, lineHeight: 1, cursor: 'pointer' }}>✕</button>
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, textAlign: 'center', color: '#fff', fontSize: 14, padding: `${spacing.xl}px ${spacing.base}px`, background: 'linear-gradient(transparent, rgba(0,0,0,0.7))' }}>
+        {error || 'Point the camera at an invite QR code'}
+      </div>
+    </div>
+  )
+}
+
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady }) {
   const [mode, setMode] = useState(null) // null | 'link' | 'partner'
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
+  const [scanning, setScanning] = useState(false)
 
   const start = async () => {
     setErr('')
     try { await call('cycle:create'); haptic('success'); onReady() } catch (e) { setErr(e.message) }
   }
-  const link = async () => {
+  const link = async (raw) => {
     setErr('')
-    try { await call('link:join', { inviteKey: parseInvite(code) }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
+    try { await call('link:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
   }
-  const joinPartner = async () => {
+  const joinPartner = async (raw) => {
     setErr('')
-    try { await call('partner:join', { inviteKey: parseInvite(code) }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
+    try { await call('partner:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
   }
-  const scan = async () => {
-    try { const r = await call('shell:scanQr'); if (r?.code) setCode(r.code) } catch {}
-  }
-  const back = () => { setMode(null); setErr(''); setCode('') }
+  const submit = () => (mode === 'link' ? link() : joinPartner())
+  const onScanned = (txt) => { setScanning(false); (mode === 'link' ? link : joinPartner)(txt) }
+  const back = () => { setMode(null); setErr(''); setCode(''); setScanning(false) }
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100%', justifyContent: 'center' }}>
@@ -135,13 +210,14 @@ function Onboarding ({ onReady, onViewerReady }) {
           <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder='Paste code' rows={3}
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
           <div style={{ display: 'flex', gap: spacing.sm }}>
-            <Btn onClick={mode === 'link' ? link : joinPartner} style={{ flex: 1 }}>{mode === 'link' ? 'Link this device' : 'View their cycle'}</Btn>
-            <Btn kind='ghost' onClick={scan}>Scan</Btn>
+            <Btn onClick={submit} style={{ flex: 1 }}>{mode === 'link' ? 'Link this device' : 'View their cycle'}</Btn>
+            <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }}>Scan QR</Btn>
           </div>
           <Btn kind='ghost' onClick={back}>Back</Btn>
         </div>
       )}
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
+      <ScannerView open={scanning} onClose={() => setScanning(false)} onDecode={onScanned} />
     </div>
   )
 }
@@ -159,6 +235,7 @@ function Sharing ({ onClose, onOpenPartner }) {
   const [shares, setShares] = useState([])
   const [partners, setPartners] = useState([])
   const [err, setErr] = useState('')
+  const [qrFor, setQrFor] = useState(null)
   const load = useCallback(async () => {
     setShares(await call('share:list').catch(() => []))
     setPartners(await call('partner:list').catch(() => []))
@@ -203,10 +280,12 @@ function Sharing ({ onClose, onOpenPartner }) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ color: colors.text.primary, fontWeight: 500, textTransform: 'capitalize' }}>{s.scope}</span>
                 <div style={{ display: 'flex', gap: spacing.sm }}>
+                  <Btn kind='ghost' onClick={() => setQrFor(qrFor === s.groupId ? null : s.groupId)} style={{ padding: '6px 10px', fontSize: 13 }}>{qrFor === s.groupId ? 'Hide QR' : 'QR'}</Btn>
                   <Btn kind='ghost' onClick={() => copy(shareUrl(s.inviteKey))} style={{ padding: '6px 10px', fontSize: 13 }}>Copy link</Btn>
                   <Btn kind='ghost' onClick={() => revoke(s.groupId)} style={{ padding: '6px 10px', fontSize: 13, color: colors.error }}>Revoke</Btn>
                 </div>
               </div>
+              {qrFor === s.groupId && <QrImage text={shareUrl(s.inviteKey)} />}
             </div>
           ))}
         </div>
@@ -411,7 +490,8 @@ function Devices ({ onClose }) {
         ))}
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ fontSize: 14, color: colors.text.secondary }}>Link another of your devices: open this link on it, or paste it into "Link another device".</div>
+        <div style={{ fontSize: 14, color: colors.text.secondary }}>Link another of your devices: scan this QR on it, open this link on it, or paste it into "Link another device".</div>
+        <QrImage text={inviteLink} />
         <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.text.secondary, wordBreak: 'break-all', maxHeight: 96, overflow: 'auto' }}>{inviteLink || '...'}</div>
         <div style={{ display: 'flex', gap: spacing.sm }}>
           <Btn onClick={copy} style={{ flex: 1 }}>Copy link</Btn>
