@@ -728,11 +728,11 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
 function ViewToggle ({ value, onChange }) {
   const opts = [['dial', 'Dial', Flower], ['calendar', 'Month', CalendarBlank]]
   return (
-    <div style={{ display: 'flex', alignSelf: 'center', background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
+    <div style={{ display: 'flex', alignSelf: 'center', width: 240, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
       {opts.map(([k, l, Icon]) => {
         const on = value === k
         return (
-          <button key={k} onClick={() => onChange(k)} style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: radius.full, padding: '7px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>
+          <button key={k} onClick={() => onChange(k)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', borderRadius: radius.full, padding: '7px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>
             <Icon size={16} weight={on ? 'fill' : 'regular'} />{l}
           </button>
         )
@@ -755,11 +755,12 @@ function LegendSwatch ({ color, ring, label }) {
     </span>
   )
 }
-function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, onPrev, onNext }) {
+function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, onPrev, onNext, onToday }) {
   const [y, m] = monthIso.split('-').map(Number)
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
   const startWeekday = new Date(Date.UTC(y, m - 1, 1)).getUTCDay()
   const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  const isCurrentMonth = monthIso.slice(0, 7) === today.slice(0, 7)
   const marks = projectCalendar(pred, `${monthIso.slice(0, 7)}-01`, `${monthIso.slice(0, 7)}-${pad2(daysInMonth)}`)
   const cells = []
   for (let i = 0; i < startWeekday; i++) cells.push(null)
@@ -769,7 +770,10 @@ function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, on
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <button onClick={onPrev} aria-label='Previous month' style={navBtn}><CaretLeft size={20} /></button>
-        <div style={{ fontSize: 16, fontWeight: 600 }}>{monthLabel}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>{monthLabel}</div>
+          {!isCurrentMonth && <button onClick={onToday} style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: '2px 12px', fontSize: 11, fontWeight: 500, color: colors.primary, cursor: 'pointer' }}>Today</button>}
+        </div>
         <button onClick={onNext} aria-label='Next month' style={navBtn}><CaretRight size={20} /></button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
@@ -1284,9 +1288,13 @@ export default function App () {
       ) : (
         <>
           <ViewToggle value={cycleView} onChange={setView} />
-          {cycleView === 'calendar'
-            ? <MonthCalendar monthIso={calMonth} pred={pred} daysByIso={Object.fromEntries(days.map((d) => [d.date, d]))} selected={date} today={todayIso()} onPick={setDate} onPrev={() => setCalMonth(shiftMonthIso(calMonth, -1))} onNext={() => setCalMonth(shiftMonthIso(calMonth, 1))} />
-            : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />}
+          {/* key forces a remount so the fade replays on each toggle, softening the
+              height change between the (taller) dial and the calendar. */}
+          <div key={cycleView} style={{ animation: 'pearpetal-fade 220ms ease' }}>
+            {cycleView === 'calendar'
+              ? <MonthCalendar monthIso={calMonth} pred={pred} daysByIso={Object.fromEntries(days.map((d) => [d.date, d]))} selected={date} today={todayIso()} onPick={setDate} onPrev={() => setCalMonth(shiftMonthIso(calMonth, -1))} onNext={() => setCalMonth(shiftMonthIso(calMonth, 1))} onToday={() => { setCalMonth(monthStart(todayIso())); setDate(todayIso()) }} />
+              : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />}
+          </div>
         </>
       )}
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
