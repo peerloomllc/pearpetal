@@ -43,6 +43,9 @@ const RESET = `
 *,*::before,*::after{box-sizing:border-box}
 *{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
 html,body,#root{height:100%;margin:0}
+/* scrollIntoView keeps clear of the status bar (top) and the fixed bottom nav
+   (bottom), so an expanded section is never tucked behind the nav bar. */
+html,body,#root{scroll-padding-top:calc(var(--pear-safe-top) + 8px);scroll-padding-bottom:calc(76px + var(--pear-safe-bottom))}
 body,#root{background:var(--color-surface-base)}
 body{color:var(--color-text-primary);font-family:${FONT};font-weight:300;-webkit-font-smoothing:antialiased}
 input,textarea{-webkit-user-select:text;user-select:text;font-size:16px;font-family:${FONT};font-weight:300}

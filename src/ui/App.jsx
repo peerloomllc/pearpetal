@@ -790,8 +790,17 @@ function PregnancySetup ({ prefs, save }) {
 // with a caret on the right, matching the About accordion's motion; independent
 // open/close (not one-at-a-time, unlike About) since you may adjust several.
 function CollapsibleCard ({ title, open, onToggle, children, id }) {
+  const ref = useRef(null)
+  // When a section opens, once the expand has finished, scroll it into view so its
+  // content clears the fixed bottom nav (block:'nearest' + the root's scroll-padding
+  // does the minimum needed; a no-op if it is already fully visible).
+  useEffect(() => {
+    if (!open || !ref.current) return undefined
+    const t = setTimeout(() => { ref.current && ref.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, 380)
+    return () => clearTimeout(t)
+  }, [open])
   return (
-    <div id={id} style={{ ...card, padding: 0, overflow: 'hidden', scrollMarginTop: screenPadTop }}>
+    <div id={id} ref={ref} style={{ ...card, padding: 0, overflow: 'hidden', scrollMarginTop: screenPadTop }}>
       <button onClick={onToggle} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: spacing.base, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer', color: colors.text.secondary }}>
         <span style={{ fontSize: 14, fontWeight: 500 }}>{title}</span>
         <CaretRight size={16} color={colors.text.muted} weight='regular' style={{ position: 'absolute', right: spacing.base, top: '50%', marginTop: -8, transition: 'transform 0.3s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
@@ -862,20 +871,24 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
       <ProfileCard />
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your flower</div>
-        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap', justifyContent: 'center' }}>
-          {FLOWER_KEYS.map((key) => {
-            const active = (prefs.flower || 'rose') === key
-            return (
-              <button key={key} onClick={() => pickFlower(key)} aria-pressed={active} style={{
-                flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 92,
-                background: active ? 'rgba(232,133,155,0.10)' : 'transparent',
-                border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.xs}px`,
-              }}>
-                <FlowerThumb flower={key} size={48} />
-                <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{flowerLabel(key)}</span>
-              </button>
-            )
-          })}
+        {/* Single horizontal row; a fade on the right edge hints there is more to scroll. */}
+        <div style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', paddingBottom: spacing.xs }}>
+            {FLOWER_KEYS.map((key) => {
+              const active = (prefs.flower || 'rose') === key
+              return (
+                <button key={key} onClick={() => pickFlower(key)} aria-pressed={active} style={{
+                  flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                  background: active ? 'rgba(232,133,155,0.10)' : 'transparent',
+                  border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.md}px`,
+                }}>
+                  <FlowerThumb flower={key} size={52} />
+                  <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{flowerLabel(key)}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ position: 'absolute', top: 0, bottom: spacing.xs, right: 0, width: 32, pointerEvents: 'none', background: `linear-gradient(to right, transparent, ${colors.surface.card})` }} />
         </div>
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
