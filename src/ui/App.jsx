@@ -99,16 +99,18 @@ function Avatar ({ src, name, size = 36 }) {
   )
 }
 
-// Turn a picked image file into an avatar data URL. Stills are downscaled to
-// <=256px (keeps them well under the blob cap); animated GIFs are kept as-is so
-// the animation survives (proposal 2026-07-08 open-Q3).
+// Turn a picked image file into an avatar data URL. Animated formats (GIF, WebP)
+// are kept RAW so the animation survives (matches PearList); static photos are
+// downscaled to <=256px and re-encoded to JPEG to stay small. NEVER re-encode an
+// animated file - that would flatten it to a single frame.
 function fileToAvatarDataUrl (file) {
+  const animated = file.type === 'image/gif' || file.type === 'image/webp'
   return new Promise((resolve, reject) => {
     const rd = new FileReader()
     rd.onerror = () => reject(new Error('Could not read that image'))
     rd.onload = () => {
       const dataUrl = String(rd.result)
-      if (file.type === 'image/gif') { resolve(dataUrl); return } // preserve animation
+      if (animated) { resolve(dataUrl); return } // keep raw base64, preserve animation
       const img = new Image()
       img.onload = () => {
         const max = 256
@@ -379,8 +381,11 @@ function PartnerView ({ groupId, onClose, onLeft }) {
   // that would refresh us can fire in the gap before this view mounts (it is then
   // consumed by the owner-mode listener without being buffered). Without this, the
   // view sits blank until the user leaves and re-enters. Poll until the projection
-  // lands, then stop and rely on the live group:updated subscription above.
-  const synced = !!(data && (data.ownerPubkey || data.phase || data.predict))
+  // lands, then stop and rely on the live group:updated subscription above. Keep
+  // polling a bit longer if an avatar is announced but its blob has not replicated
+  // yet (partner:view is non-blocking on the avatar), so the photo pops in.
+  const pendingAvatar = !!(data?.ownerHasAvatar && !data?.ownerAvatar)
+  const synced = !!(data && (data.ownerPubkey || data.phase || data.predict)) && !pendingAvatar
   useEffect(() => {
     if (synced) return undefined
     const t = setInterval(load, 2000)
@@ -674,21 +679,24 @@ function ProfileCard () {
   }
   const clearPhoto = async () => { try { const p = await call('profile:set', { displayName: name.trim(), avatar: null }); setProfile(p); haptic('light') } catch (e) { setMsg(e.message) } }
   return (
-    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.base }}>
-        <button onClick={() => fileRef.current?.click()} aria-label='Change your photo' style={{ padding: 0, border: 'none', background: 'none', borderRadius: '50%', position: 'relative' }}>
-          <Avatar src={profile.avatar} name={name} size={56} />
-          <span style={{ position: 'absolute', right: -2, bottom: -2, width: 20, height: 20, borderRadius: '50%', background: colors.primary, color: colors.text.onPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Camera size={12} weight='fill' />
-          </span>
-        </button>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: spacing.base }}>
+        {/* Avatar column: the picker, with Remove bounded directly beneath it. */}
+        <div style={{ width: 56, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.xs }}>
+          <button onClick={() => fileRef.current?.click()} aria-label='Change your photo' style={{ padding: 0, border: 'none', background: 'none', borderRadius: '50%', position: 'relative' }}>
+            <Avatar src={profile.avatar} name={name} size={56} />
+            <span style={{ position: 'absolute', right: -2, bottom: -2, width: 20, height: 20, borderRadius: '50%', background: colors.primary, color: colors.text.onPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Camera size={12} weight='fill' />
+            </span>
+          </button>
+          {profile.avatar && <button onClick={clearPhoto} style={{ background: 'none', border: 'none', color: colors.text.muted, fontSize: 11, padding: 0, textAlign: 'center', lineHeight: 1.2 }}>Remove</button>}
+        </div>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
           <input value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} placeholder='Your name' maxLength={64}
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `8px 10px`, fontSize: 15 }} />
           <span style={{ color: colors.text.muted, fontSize: 11 }}>Shown to partners you share with. Otherwise stays on your devices.</span>
         </div>
       </div>
-      {profile.avatar && <button onClick={clearPhoto} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: colors.text.muted, fontSize: 12, padding: 0 }}>Remove photo</button>}
       {msg && <div style={{ color: colors.error, fontSize: 12 }}>{msg}</div>}
       <input ref={fileRef} type='file' accept='image/*' onChange={onFile} style={{ display: 'none' }} />
     </div>

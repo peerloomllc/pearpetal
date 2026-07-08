@@ -215,6 +215,21 @@ throughout with the owner's chosen name.
   created-date / short fingerprint (e.g. last 6 chars of groupId) + let the user name a share
   or see who joined, so two "Phase" shares are tellable apart.
 
+- **Are "People you share with" rows 1:1 with a person, or reusable by many? (queued 2026-07-08)**
+  Today each `share:create` makes a NEW shared base with its own invite, but the invite is a
+  bearer link: ANYONE who has it can `partner:join` and become a writer on that base, so a single
+  share row is technically 1:many (multiple people could join the same code and all see the same
+  projection). Nothing binds a row to one individual. DECIDE the model:
+  - If shares should be **per-individual**: have the joiner publish their identity (name/avatar,
+    reusing the new profile blob-avatar pattern) into the shared base, gated so only the intended
+    joiner writes it, and show that name + avatar on the owner's share row ("Shared with Ada").
+    This needs the addWriter gating below (a partner is a writer and could admit a 3rd party), so
+    it is entangled with the "Shared-base addWriter gating" security item.
+  - If shares stay **reusable/bearer**: keep them code-based but make that explicit in copy, and
+    lean on the share label / fingerprint item above for disambiguation.
+  Cross-ref the owner-identity work just shipped (owner name/avatar already ride `share:meta`);
+  this is the mirror - the JOINER's identity back to the owner.
+
 ## UX / navigation (nice-to-have, found 2026-07-07 on-device)
 
 - **Android Back should navigate the stack, not exit the app.** The hardware/gesture Back

@@ -14,13 +14,18 @@ owner-write-only apply gate with no new apply branch, and replicate to the partn
 over the shared base with NO `@peerloom/core` change (the blob core is in the shared
 corestore that `store.replicate` serves). `partner:view`/`partner:list` return
 `ownerName` + `ownerAvatar`; the UI shows "{name}'s cycle" + avatar in PartnerView,
-Sharing, and ViewerHome. Stills downscale to 256px client-side; hard cap 512KB (GIFs
-kept as-is to preserve animation).
+Sharing, and ViewerHome. Stills downscale to 256px client-side; animated GIF/WebP
+kept RAW (never re-encoded, else a single frame). `partner:view` resolves the avatar
+NON-BLOCKING (cached + background fetch, `ownerHasAvatar` flag) so the name/phase are
+never gated on the up-to-8.5s blob fetch; PartnerView keeps polling until the avatar
+blob lands, then it pops in.
 Open-question resolutions (per proposal, all Tim-approved 2026-07-08):
 - Q1 blob-core key is device-global -> a partner's avatar pointer grants read to all
   blobs on it; ACCEPTED for v1 (avatar-only). Revisit if blobs ever hold private media.
 - Q2 identity shared on ALL scopes incl. phase (it is who, not what).
-- Q3 size cap 512KB + 256px still downscale.
+- Q3 size cap 2MB + 256px still downscale for STATIC images; animated GIF/WebP are
+  kept RAW (never re-encoded) so the animation survives, hence the 2MB cap (was
+  512KB in the proposal - raised to allow animated avatars, matching PearList).
 - Q4 keep `profile` separate from `deviceProfile.label`.
 Compat: additive optional fields, no migration/version bump; old<->new peers still
 talk (old ignores the fields, new falls back to "A partner"). Existing shares upgrade

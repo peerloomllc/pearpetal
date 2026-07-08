@@ -145,7 +145,7 @@ test('profile: clearing the avatar removes the pointer', async () => {
 test('profile: an oversized avatar is rejected', async () => {
   const { engine, call } = driver()
   await call('init', {})
-  const big = 'data:image/png;base64,' + 'A'.repeat(800 * 1024) // ~600KB decoded, over the 512KB cap
+  const big = 'data:image/png;base64,' + 'A'.repeat(3 * 1024 * 1024) // ~2.25MB decoded, over the 2MB cap
   await assert.rejects(() => call('profile:set', { displayName: 'Ada', avatar: big }))
   await engine.close()
 })

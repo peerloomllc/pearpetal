@@ -38,9 +38,10 @@ function pubkeyHex (ctx) { return b4a.toString(ctx.identity.publicKey, 'hex') }
 // replicates to a partner over the shared base (the blob core is in the same
 // corestore that store.replicate serves - no core change). Resolved back to a
 // data URL for the UI, cached by content hash so a poll does not refetch. Hard
-// cap bounds replication + storage (proposal 2026-07-08 open-Q3; stills are
-// downscaled to ~256px in the UI, so only animated GIFs approach this).
-const AVATAR_MAX_BYTES = 512 * 1024
+// cap bounds replication + storage (proposal 2026-07-08 open-Q3). Stills are
+// downscaled to ~256px in the UI (tiny); animated GIF/WebP are kept RAW so the
+// animation survives, so the cap is sized for them (matches PearList's 2MB).
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024
 const avatarCache = new Map()   // contentHash -> data URL
 const avatarPending = new Set()  // contentHash currently being fetched
 
@@ -649,8 +650,12 @@ const methods = {
     const summary = []
     for await (const { value } of base.view.createReadStream(SUMMARY_RANGE)) if (value) summary.push(value)
     summary.sort((a, b) => String(b.date).localeCompare(String(a.date)))
-    const ownerAvatar = await resolveAvatarAwait(ctx, meta)
-    return { scope: meta?.scope || null, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar, phase, predict, summary }
+    // Non-blocking: never gate the name/phase on the avatar blob fetch (it can
+    // take seconds to replicate). Returns the cached avatar or null + kicks off a
+    // background fetch; ownerHasAvatar tells the UI to keep polling until it lands.
+    const ownerAvatar = resolveAvatarCached(ctx, meta)
+    const ownerHasAvatar = !!(meta?.avatarBlob || meta?.avatar)
+    return { scope: meta?.scope || null, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar, ownerHasAvatar, phase, predict, summary }
   },
 
   'partner:leave': async ({ groupId }, ctx) => {
