@@ -286,10 +286,17 @@ Cross-checked against what already exists:
   the wire (not added to writeProjection). verify green (45 tests + 3 bundles); verified on the TCL
   (card renders; BC on -> fertile framing hidden on rows + dial; PCOS -> wider + "wider estimate"
   copy).
-- **Monthly calendar view.** NEW: a month grid alternative to the petal dial + recent-days
-  list - color-coded period / fertile / ovulation / logged days, tap a day to log (reuse the
-  day-scrub date mapping). A toggle between the dial ("today at a glance") and the calendar
-  ("the month"). Consider it for the partner view too (scoped).
+- **Monthly calendar view.** DONE 2026-07-08 (branch feature/monthly-calendar, blocker #13). A
+  Dial/Month toggle (persisted device-local in localStorage) on the owner Cycle screen; Month shows
+  a `MonthCalendar` (month grid, prev/next nav, weekday header, legend) color-coded for period /
+  fertile / ovulation / logged days. Predicted marks come from a pure `projectCalendar(pred, start,
+  end)` in prediction.js (repeats the cycle pattern by cycle length; period projected forward only,
+  fertile/ovulation both ways, birth-control suppresses fertile/ovulation); logged bleeding days are
+  period (log authoritative for the past). Tap a past/today cell to select+edit it (future dimmed +
+  non-tappable); the recent-days list is hidden in Month mode. verify green (47 tests + 3 bundles);
+  verified on the TCL (July: logged period 6-7, today ring + logged dot, ovulation ring; August:
+  projected period 3-7 + 31, fertile mid-month, ovulation 17). FOLLOW-UP (deferred): a scoped
+  calendar in the PARTNER view.
 
 ## Deferred - security / scale
 

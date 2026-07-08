@@ -2,6 +2,25 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-08 - Monthly calendar view (Stardust blocker #13)
+Tier: T1 (new owner UI over existing on-device prediction; NO wire change; the
+Dial/Month preference is device-local in localStorage).
+Context: the dial is "today at a glance"; users also want to see the whole month.
+Choice: a Dial/Month toggle on the Cycle screen. Month renders `MonthCalendar` - a
+month grid (nav + weekday header + legend) color-coded period / fertile / ovulation /
+logged. Predicted marks are a pure `projectCalendar(pred, start, end)` in
+prediction.js that repeats the current-cycle pattern by cycle length: PERIOD is
+projected forward only (past periods come from the actual log, which is
+authoritative), fertile + ovulation both ways, and birth control suppresses fertile /
+ovulation (matching the dial + summary). Tap a past/today cell to select it for the
+day editor; future days are dimmed and non-tappable; the recent-days list is hidden in
+Month mode. Reused the existing prediction (via cycle:prediction, now also returning
+periodLen) - no new IPC.
+Alternatives: a full server-style multi-cycle model (overkill); showing only the
+current cycle (too sparse when navigating months).
+Consequences: verify green (47 tests + 3 bundles; new projectCalendar tests);
+verified on the TCL. Deferred: a scoped calendar in the partner view.
+
 ## 2026-07-08 - Health conditions + birth-control toggle (Stardust blocker #12)
 Tier: T1 (device-local prefs feeding on-device prediction; NO wire change - the
 condition/BC flags are never written into the shared projection).

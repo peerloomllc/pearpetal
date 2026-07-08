@@ -9,11 +9,12 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, Camera } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
 import { colors, spacing, radius } from './theme.js'
+import { projectCalendar } from '../prediction.js'
 import PetalDial, { PregnancyDial, FlowerThumb, isoDiff, addDaysIso } from './PetalDial.jsx'
 import { FLOWER_KEYS, flowerLabel } from './flowers.js'
 
@@ -41,10 +42,18 @@ const LIGHTNING_WALLETS = [
 const isIOS = () => typeof window !== 'undefined' && window.__pearPlatform === 'ios'
 const openUrl = (url) => { try { const p = call('shell:openUrl', { url }); if (p && p.catch) p.catch(() => {}) } catch {} }
 
+const pad2 = (n) => String(n).padStart(2, '0')
+const BLEEDING = new Set(['light', 'medium', 'heavy'])
 function todayIso () {
   const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+// ISO of the first day of the month containing `iso`, and month-shift by n months.
+const monthStart = (iso) => `${iso.slice(0, 7)}-01`
+function shiftMonthIso (iso, n) {
+  const [y, m] = iso.split('-').map(Number)
+  const d = new Date(Date.UTC(y, m - 1 + n, 1))
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-01`
 }
 
 // Re-run a loader whenever synced data changes. Every base view update - a local
@@ -715,6 +724,94 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
   )
 }
 
+// Toggle between the dial ("today at a glance") and the calendar ("the month").
+function ViewToggle ({ value, onChange }) {
+  const opts = [['dial', 'Dial', Flower], ['calendar', 'Month', CalendarBlank]]
+  return (
+    <div style={{ display: 'flex', alignSelf: 'center', background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
+      {opts.map(([k, l, Icon]) => {
+        const on = value === k
+        return (
+          <button key={k} onClick={() => onChange(k)} style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: radius.full, padding: '7px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>
+            <Icon size={16} weight={on ? 'fill' : 'regular'} />{l}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Month grid: color-coded period / fertile / ovulation / logged days. Tap a past or
+// today cell to select it for the day editor. Predicted marks come from
+// projectCalendar; logged bleeding days are period too (the log is authoritative
+// for the past).
+const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+const CAL_PERIOD_BG = 'rgba(200,56,79,0.38)'
+const CAL_FERTILE_BG = 'rgba(232,133,155,0.20)'
+function LegendSwatch ({ color, ring, label }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: colors.text.muted, fontSize: 11 }}>
+      <span style={{ width: 11, height: 11, borderRadius: 3, background: color || 'transparent', border: ring ? `1.5px solid ${ring}` : 'none', boxSizing: 'border-box' }} />{label}
+    </span>
+  )
+}
+function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, onPrev, onNext }) {
+  const [y, m] = monthIso.split('-').map(Number)
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  const startWeekday = new Date(Date.UTC(y, m - 1, 1)).getUTCDay()
+  const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  const marks = projectCalendar(pred, `${monthIso.slice(0, 7)}-01`, `${monthIso.slice(0, 7)}-${pad2(daysInMonth)}`)
+  const cells = []
+  for (let i = 0; i < startWeekday; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  const navBtn = { background: 'none', border: 'none', color: colors.text.secondary, cursor: 'pointer', padding: spacing.xs, display: 'flex', alignItems: 'center' }
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <button onClick={onPrev} aria-label='Previous month' style={navBtn}><CaretLeft size={20} /></button>
+        <div style={{ fontSize: 16, fontWeight: 600 }}>{monthLabel}</div>
+        <button onClick={onNext} aria-label='Next month' style={navBtn}><CaretRight size={20} /></button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+        {WEEKDAYS.map((w, i) => <div key={i} style={{ textAlign: 'center', fontSize: 11, color: colors.text.muted, paddingBottom: 2 }}>{w}</div>)}
+        {cells.map((d, i) => {
+          if (d == null) return <div key={`b${i}`} />
+          const iso = `${y}-${pad2(m)}-${pad2(d)}`
+          const logged = daysByIso[iso]
+          const bleeding = logged && BLEEDING.has(logged.flow)
+          const isPeriod = marks.period.has(iso) || bleeding
+          const isFertile = !isPeriod && marks.fertile.has(iso)
+          const isOvul = marks.ovulation.has(iso)
+          const isToday = iso === today
+          const isSel = iso === selected
+          const isFuture = iso > today
+          const bg = isPeriod ? CAL_PERIOD_BG : isFertile ? CAL_FERTILE_BG : 'transparent'
+          const border = isSel ? `2px solid ${colors.primary}` : isToday ? `1px solid ${colors.text.secondary}` : '1px solid transparent'
+          return (
+            <button key={iso} onClick={() => { if (!isFuture) { haptic('light'); onPick(iso) } }} disabled={isFuture} style={{
+              position: 'relative', minHeight: 42, borderRadius: radius.md, background: bg, border, padding: 0,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+              color: isFuture ? colors.text.muted : colors.text.primary, opacity: isFuture ? 0.45 : 1, cursor: isFuture ? 'default' : 'pointer',
+            }}>
+              <span style={{ fontSize: 13, fontWeight: isToday || isSel ? 700 : 400 }}>{d}</span>
+              <span style={{ height: 6, display: 'flex', alignItems: 'center', gap: 3 }}>
+                {isOvul && <span style={{ width: 6, height: 6, borderRadius: '50%', border: `1.5px solid ${colors.accent}`, boxSizing: 'border-box' }} />}
+                {logged && !isPeriod && !isOvul && <span style={{ width: 5, height: 5, borderRadius: '50%', background: colors.text.muted }} />}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: `${spacing.xs}px ${spacing.md}px`, justifyContent: 'center', borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.sm }}>
+        <LegendSwatch color={CAL_PERIOD_BG} label='Period' />
+        <LegendSwatch color={CAL_FERTILE_BG} label='Fertile' />
+        <LegendSwatch ring={colors.accent} label='Ovulation' />
+        <LegendSwatch color={colors.text.muted} label='Logged' />
+      </div>
+    </div>
+  )
+}
+
 // Profile card (top of Cycle settings): name + avatar. The name and avatar are
 // shown to partners you share with (owner-written into share:meta); otherwise
 // they stay on your devices. See proposals/2026-07-08-user-profile.md.
@@ -1121,6 +1218,9 @@ export default function App () {
   const [notice, setNotice] = useState('')
   const [donateReminder, setDonateReminder] = useState(false)
   const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
+  const [cycleView, setCycleView] = useState(() => { try { return localStorage.getItem('pearpetal:cycleView') === 'calendar' ? 'calendar' : 'dial' } catch { return 'dial' } })
+  const setView = (v) => { setCycleView(v); try { localStorage.setItem('pearpetal:cycleView', v) } catch {} }
+  const [calMonth, setCalMonth] = useState(() => monthStart(todayIso()))
 
   const refresh = useCallback(async () => {
     const [d, pr] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null)])
@@ -1179,14 +1279,23 @@ export default function App () {
   else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      {pred?.pregnancy?.active
-        ? <PregnancyView preg={pred.pregnancy} flower={flower} onSettings={() => setScreen('settings')} />
-        : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />}
+      {pred?.pregnancy?.active ? (
+        <PregnancyView preg={pred.pregnancy} flower={flower} onSettings={() => setScreen('settings')} />
+      ) : (
+        <>
+          <ViewToggle value={cycleView} onChange={setView} />
+          {cycleView === 'calendar'
+            ? <MonthCalendar monthIso={calMonth} pred={pred} daysByIso={Object.fromEntries(days.map((d) => [d.date, d]))} selected={date} today={todayIso()} onPick={setDate} onPrev={() => setCalMonth(shiftMonthIso(calMonth, -1))} onNext={() => setCalMonth(shiftMonthIso(calMonth, 1))} />
+            : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />}
+        </>
+      )}
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
-      <div>
-        <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>
-        <RecentDays days={days} onPick={setDate} />
-      </div>
+      {(!pred?.pregnancy?.active && cycleView === 'calendar') ? null : (
+        <div>
+          <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>
+          <RecentDays days={days} onPick={setDate} />
+        </div>
+      )}
     </div>
   )
 
