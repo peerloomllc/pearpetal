@@ -604,7 +604,7 @@ function CycleSummary ({ pred, today, flower, onSettings, onScrub, selected }) {
   )
 }
 
-function CycleSettings ({ onClose, onSaved, onFlower, onAbout }) {
+function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState('')
   useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
@@ -692,7 +692,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onAbout }) {
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Export saves a plain file to your device. It is not encrypted and never leaves your device on its own, so keep it somewhere private. Import merges a backup into your log.</div>
         {dataMsg && <div style={{ color: colors.success, fontSize: 13 }}>{dataMsg}</div>}
       </div>
-      <Btn kind='ghost' onClick={onAbout}>About PearPetal</Btn>
+      <Btn kind='ghost' onClick={onDevices}>Your devices</Btn>
     </div>
   )
 }
@@ -706,9 +706,11 @@ function AboutSection ({ title, open, onToggle, children }) {
     <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
       <button onClick={onToggle} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: `${spacing.md}px`, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, cursor: 'pointer', color: colors.text.primary }}>
         <span style={{ fontSize: 15, fontWeight: 600 }}>{title}</span>
-        <span style={{ color: colors.text.muted, fontSize: 11, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }}>▼</span>
+        <span style={{ color: colors.text.muted, fontSize: 11, transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }}>▼</span>
       </button>
-      {open && <div style={{ padding: `0 ${spacing.md}px ${spacing.md}px`, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>{children}</div>}
+      <div style={{ maxHeight: open ? 640 : 0, overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)' }}>
+        <div style={{ padding: `0 ${spacing.md}px ${spacing.md}px`, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>{children}</div>
+      </div>
     </div>
   )
 }
@@ -810,8 +812,8 @@ function AboutScreen ({ onClose }) {
 const NAV_TABS = [
   { key: 'main', label: 'Cycle' },
   { key: 'share', label: 'Share' },
-  { key: 'devices', label: 'Devices' },
   { key: 'settings', label: 'Settings' },
+  { key: 'about', label: 'About' },
 ]
 function BottomNav ({ active, onTab }) {
   return (
@@ -880,8 +882,8 @@ export default function App () {
   else if (mode === 'viewer') content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); boot() }} />
   else if (screen === 'devices') content = <Devices onClose={() => setScreen('main')} />
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
-  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onAbout={() => setScreen('about')} />
-  else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('settings')} />
+  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onDevices={() => setScreen('devices')} />
+  else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary, textAlign: 'center' }}>PearPetal</div>
@@ -894,8 +896,8 @@ export default function App () {
     </div>
   )
 
-  const showNav = mode === 'owner' && !partnerGroup && screen !== 'about'
-  const navActive = ['share', 'devices', 'settings'].includes(screen) ? screen : 'main'
+  const showNav = mode === 'owner' && !partnerGroup
+  const navActive = ['share', 'settings', 'about'].includes(screen) ? screen : 'main'
   return (
     <>
       <div style={showNav ? { paddingBottom: 'calc(64px + var(--pear-safe-bottom))' } : undefined}>{content}</div>
