@@ -17,6 +17,10 @@
         "NSBonjourServices": [
           "_hyperswarm._udp",
           "_pearpetallan._tcp"
+        ],
+        "LSApplicationQueriesSchemes": [
+          "lightning",
+          "bitcoin"
         ]
       }
     },
@@ -95,7 +99,8 @@
           "resizeMode": "contain"
         }
       ],
-      "./plugins/with-android-debug-standalone"
+      "./plugins/with-android-debug-standalone",
+      "./plugins/with-android-queries"
     ],
     "assets": [
       "./assets/bare-universal.bundle",
