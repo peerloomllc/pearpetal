@@ -76,13 +76,14 @@ function Btn ({ children, onClick, kind = 'primary', style }) {
   }
   return <button onClick={onClick} style={{ ...base, ...kinds[kind], ...style }}>{children}</button>
 }
-function Chip ({ active, onClick, children, color }) {
+function Chip ({ active, onClick, children, color, style }) {
   return (
     <button onClick={onClick} style={{
       border: `1px solid ${active ? (color || colors.primary) : colors.border}`,
       background: active ? (color || colors.primary) : 'transparent',
       color: active ? colors.text.onPrimary : colors.text.secondary,
       borderRadius: radius.full, padding: `6px 12px`, fontSize: 13, fontWeight: 500,
+      ...style,
     }}>{children}</button>
   )
 }
@@ -102,6 +103,21 @@ const CONDITION_OPTS = [
   ['irregular', 'Irregular cycles', 'Cycles that vary a lot in length make the fertile window and next-period date rougher estimates, so they are widened.'],
   ['thyroid', 'Thyroid condition', 'Thyroid conditions can lengthen, shorten, or skip cycles, so predictions are treated as less certain.'],
 ]
+// Goal chips + a one-line explainer of what each mode does for the estimates.
+const GOAL_OPTS = [
+  ['track', 'General', 'Keeping an eye on your cycle. PearPetal shows your phase, next period, and fertile window.'],
+  ['conceive', 'Trying to conceive', 'Your fertile window is highlighted as the best time to try.'],
+  ['avoid', 'Avoiding pregnancy', 'The fertile window shows when pregnancy is most likely. PearPetal is not contraception - do not rely on it to avoid pregnancy.'],
+  ['pregnant', 'Pregnant', ''], // reveals the pregnancy date setup instead of a one-liner
+]
+// A short explainer line (accent left border) used under the goal + health sections.
+function Explainer ({ title, children }) {
+  return (
+    <div style={{ color: colors.text.muted, fontSize: 12, lineHeight: 1.45, borderLeft: `2px solid ${colors.primary}`, paddingLeft: spacing.md }}>
+      {title && <span style={{ color: colors.text.secondary, fontWeight: 500 }}>{title} </span>}{children}
+    </div>
+  )
+}
 // Inline text link (e.g. "tracked conditions" -> the Settings health section).
 function LinkSpan ({ onClick, children }) {
   return <button onClick={onClick} style={{ background: 'none', border: 'none', padding: 0, margin: 0, color: colors.primary, textDecoration: 'underline', fontSize: 'inherit', fontWeight: 'inherit', cursor: 'pointer' }}>{children}</button>
@@ -823,16 +839,16 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
       <ProfileCard />
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your flower</div>
-        <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', paddingBottom: spacing.xs }}>
+        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap', justifyContent: 'center' }}>
           {FLOWER_KEYS.map((key) => {
             const active = (prefs.flower || 'rose') === key
             return (
               <button key={key} onClick={() => pickFlower(key)} aria-pressed={active} style={{
-                flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 92,
                 background: active ? 'rgba(232,133,155,0.10)' : 'transparent',
-                border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.md}px`,
+                border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.xs}px`,
               }}>
-                <FlowerThumb flower={key} size={52} />
+                <FlowerThumb flower={key} size={48} />
                 <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{flowerLabel(key)}</span>
               </button>
             )
@@ -840,6 +856,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
         </div>
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
+        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Cycle lengths</div>
         <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
         <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />
         <Stepper label='Luteal phase length' value={prefs.lutealLength} def={14} min={9} max={18} field='lutealLength' />
@@ -847,34 +864,32 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>What are you tracking for?</div>
-        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-          {[['track', 'General'], ['conceive', 'Trying to conceive'], ['avoid', 'Avoiding pregnancy'], ['pregnant', 'Pregnant']].map(([k, l]) => (
-            <Chip key={k} active={(prefs.goal || 'track') === k} onClick={() => save({ goal: k })}>{l}</Chip>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
+          {GOAL_OPTS.map(([k, l]) => (
+            <Chip key={k} active={(prefs.goal || 'track') === k} onClick={() => save({ goal: k })} style={{ width: '100%' }}>{l}</Chip>
           ))}
         </div>
         {prefs.goal === 'pregnant'
           ? <PregnancySetup prefs={prefs} save={save} />
-          : <div style={{ color: colors.text.muted, fontSize: 11 }}>PearPetal is not contraception. Do not rely on it to avoid pregnancy.</div>}
+          : <Explainer>{(GOAL_OPTS.find(([k]) => k === (prefs.goal || 'track')) || [])[2]}</Explainer>}
       </div>
       <div id='health-section' style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, scrollMarginTop: screenPadTop }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Health &amp; birth control</div>
         <div style={{ color: colors.text.muted, fontSize: 12 }}>Conditions that affect your cycle. These stay on your device and are never shared. They widen prediction estimates and tailor the guidance you see. Tap one to see how it changes your estimates.</div>
-        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
           {CONDITION_OPTS.map(([k, l]) => {
             const on = (prefs.conditions || []).includes(k)
-            return <Chip key={k} active={on} onClick={() => { const cur = prefs.conditions || []; save({ conditions: on ? cur.filter((x) => x !== k) : [...cur, k] }) }}>{l}</Chip>
+            return <Chip key={k} active={on} onClick={() => { const cur = prefs.conditions || []; save({ conditions: on ? cur.filter((x) => x !== k) : [...cur, k] }) }} style={{ width: '100%' }}>{l}</Chip>
           })}
         </div>
         {CONDITION_OPTS.filter(([k]) => (prefs.conditions || []).includes(k)).map(([k, l, explain]) => (
-          <div key={k} style={{ color: colors.text.muted, fontSize: 12, lineHeight: 1.45, borderLeft: `2px solid ${colors.primary}`, paddingLeft: spacing.md }}>
-            <span style={{ color: colors.text.secondary, fontWeight: 500 }}>{l}.</span> {explain}
-          </div>
+          <Explainer key={k} title={`${l}.`}>{explain}</Explainer>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
           <span style={{ color: colors.text.secondary, fontSize: 14 }}>On hormonal birth control</span>
           <Toggle on={!!prefs.birthControl} label='On hormonal birth control' onClick={() => save({ birthControl: !prefs.birthControl })} />
         </div>
-        {prefs.birthControl && <div style={{ color: colors.text.muted, fontSize: 12, lineHeight: 1.45, borderLeft: `2px solid ${colors.primary}`, paddingLeft: spacing.md }}>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal hides them and leads with your period dates.</div>}
+        {prefs.birthControl && <Explainer>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal hides them and leads with your period dates.</Explainer>}
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your data</div>
