@@ -552,13 +552,13 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
 const PHASE_COLOR = { menstrual: '#c8384f', follicular: '#c9a0d8', fertile: '#e8859b', luteal: '#8f8288' }
 function fmtDate (iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }) } catch { return iso } }
 
-function CycleSummary ({ pred, today, flower, onSettings, onScrub }) {
+function CycleSummary ({ pred, today, flower, onSettings, onScrub, selected }) {
   if (!pred) return null
   const days = pred.daysUntilNextPeriod
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
-      <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} />
+      <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} />
       {!pred.known ? (
         <>
           <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Learning your cycle</div>
@@ -742,7 +742,7 @@ export default function App () {
           <Btn kind='ghost' onClick={() => setScreen('devices')}>Devices</Btn>
         </div>
       </div>
-      <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} />
+      <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
       <div>
         <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>

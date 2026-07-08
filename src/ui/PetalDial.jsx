@@ -29,7 +29,7 @@ function arcPath (r, degA, degB) {
   return `M${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`
 }
 
-export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayTap }) {
+export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayTap, selected }) {
   const known = !!pred?.known
   const L = known ? (pred.cycleLen || 28) : 28
   const dayOfCycle = known ? (pred.dayOfCycle || 1) : 1
@@ -82,7 +82,11 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
   const b = bloom
   const fl = buildFlower(flower, b)
   const glow = Math.max(0, (b - 0.55) / 0.45) * 0.9
-  const [px, py] = polar(R, dayDeg(dayOfCycle))
+  // The prominent marker follows the SELECTED day (the one being viewed/edited),
+  // defaulting to today; a small pip stays at today when you have scrubbed away.
+  const selDay = (known && selected) ? clamp(dayOfCycle + isoDiff(today, selected), 1, L) : dayOfCycle
+  const [px, py] = polar(R, dayDeg(selDay))
+  const [tpx, tpy] = polar(R, dayDeg(dayOfCycle))
   const ticks = Array.from({ length: L }, (_, i) => i + 1)
 
   return (
@@ -102,7 +106,7 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
         <g>
           {ticks.map((d) => {
             const [x1, y1] = polar(R - 6, dayDeg(d)), [x2, y2] = polar(R + 6, dayDeg(d))
-            return <line key={d} x1={x1} y1={y1} x2={x2} y2={y2} stroke='rgba(255,255,255,0.06)' strokeWidth={(d - 1) % 7 === 0 ? 1.4 : 0.7} />
+            return <line key={d} x1={x1} y1={y1} x2={x2} y2={y2} stroke={(d - 1) % 7 === 0 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.18)'} strokeWidth={(d - 1) % 7 === 0 ? 1.6 : 0.9} />
           })}
         </g>
         <g transform={`translate(${CX},${CY})`}>
@@ -112,6 +116,7 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
           <circle cx={0} cy={0} r={fl.center.r} fill={fl.center.fill} />
           <circle cx={0} cy={-2} r={fl.centerHi.r} fill='rgba(255,255,255,0.25)' />
         </g>
+        {known && selDay !== dayOfCycle && <circle cx={tpx} cy={tpy} r={3.5} fill={colors.primary} />}
         {known && <circle cx={px} cy={py} r={7} fill={colors.surface.base} stroke={colors.accent} strokeWidth={2.5} />}
       </svg>
     </div>
