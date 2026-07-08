@@ -2,6 +2,32 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-08 - User profile (name + avatar) implemented
+Tier: T2 (implements the approved proposal `proposals/2026-07-08-user-profile.md`).
+Context: partner views said "A partner"; owners had no identity.
+Choice: device-local `profile` localDb row { displayName, avatarBlob?, avatarHash?,
+avatarType?, updatedAt } (distinct from `deviceProfile.label`). Avatar bytes go in
+the core blob store (`ctx.blobs`), the row keeps only a `{key,id}` pointer + hash +
+type; deduped by content hash via `blobref:{hash}`. Name + avatar are projected into
+the existing owner-signed `share:meta` (new OPTIONAL fields) so they inherit the
+owner-write-only apply gate with no new apply branch, and replicate to the partner
+over the shared base with NO `@peerloom/core` change (the blob core is in the shared
+corestore that `store.replicate` serves). `partner:view`/`partner:list` return
+`ownerName` + `ownerAvatar`; the UI shows "{name}'s cycle" + avatar in PartnerView,
+Sharing, and ViewerHome. Stills downscale to 256px client-side; hard cap 512KB (GIFs
+kept as-is to preserve animation).
+Open-question resolutions (per proposal, all Tim-approved 2026-07-08):
+- Q1 blob-core key is device-global -> a partner's avatar pointer grants read to all
+  blobs on it; ACCEPTED for v1 (avatar-only). Revisit if blobs ever hold private media.
+- Q2 identity shared on ALL scopes incl. phase (it is who, not what).
+- Q3 size cap 512KB + 256px still downscale.
+- Q4 keep `profile` separate from `deviceProfile.label`.
+Compat: additive optional fields, no migration/version bump; old<->new peers still
+talk (old ignores the fields, new falls back to "A partner"). Existing shares upgrade
+on the next `share:meta` write (fanned out by `profile:set`). Forward-only.
+Verify: `npm run verify` green (40 tests incl. new wire + profile tests + 3 bundles).
+On-device (TCL): profile card renders, name saves + persists, initial-fallback avatar.
+
 ## 2026-07-08 - Two-week donation nudge (release blocker #8)
 Tier: T0 (device-local reminder; no wire, data model, or cross-peer effect).
 Context: the suite shows a one-time gentle donation nudge after ~2 weeks of use.

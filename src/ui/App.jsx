@@ -9,7 +9,7 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Flower, ShareNetwork, Gear, Info, CaretRight } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, Camera } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -87,6 +87,44 @@ function Chip ({ active, onClick, children, color }) {
   )
 }
 function flowColor (k) { return colors.flow[k] || colors.track }
+
+// Round avatar with an initial fallback. `src` is a data URL (own or a partner's
+// replicated avatar), `name` supplies the fallback letter.
+function Avatar ({ src, name, size = 36 }) {
+  const initial = ((name || '').trim()[0] || '♥').toUpperCase()
+  return (
+    <span style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: colors.surface.elevated, color: colors.primary, fontSize: Math.round(size * 0.42), fontWeight: 600 }}>
+      {src ? <img src={src} width={size} height={size} alt='' style={{ objectFit: 'cover', width: size, height: size }} /> : initial}
+    </span>
+  )
+}
+
+// Turn a picked image file into an avatar data URL. Stills are downscaled to
+// <=256px (keeps them well under the blob cap); animated GIFs are kept as-is so
+// the animation survives (proposal 2026-07-08 open-Q3).
+function fileToAvatarDataUrl (file) {
+  return new Promise((resolve, reject) => {
+    const rd = new FileReader()
+    rd.onerror = () => reject(new Error('Could not read that image'))
+    rd.onload = () => {
+      const dataUrl = String(rd.result)
+      if (file.type === 'image/gif') { resolve(dataUrl); return } // preserve animation
+      const img = new Image()
+      img.onload = () => {
+        const max = 256
+        const scale = Math.min(1, max / Math.max(img.width, img.height))
+        const w = Math.max(1, Math.round(img.width * scale))
+        const h = Math.max(1, Math.round(img.height * scale))
+        const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        try { resolve(canvas.toDataURL('image/jpeg', 0.85)) } catch { resolve(dataUrl) }
+      }
+      img.onerror = () => resolve(dataUrl)
+      img.src = dataUrl
+    }
+    rd.readAsDataURL(file)
+  })
+}
 
 // --- invite links -----------------------------------------------------------
 // Wrap the engine's base64 invite blob as a universal link matching the rest of
@@ -315,9 +353,12 @@ function Sharing ({ onClose, onOpenPartner }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
           <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Shared with you</div>
           {partners.map((p) => (
-            <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: colors.text.primary, fontWeight: 500 }}>A partner's cycle</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12 }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
+            <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md, minWidth: 0 }}>
+                <Avatar src={p.ownerAvatar} name={p.ownerName} size={32} />
+                <span style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.ownerName ? `${p.ownerName}'s cycle` : "A partner's cycle"}</span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12, flexShrink: 0 }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
             </button>
           ))}
         </div>
@@ -366,8 +407,11 @@ function PartnerView ({ groupId, onClose, onLeft }) {
   } : { known: false }
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 20, fontWeight: 600 }}>Partner's cycle</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, minWidth: 0 }}>
+          <Avatar src={data?.ownerAvatar} name={data?.ownerName} size={32} />
+          <div style={{ fontSize: 20, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data?.ownerName ? `${data.ownerName}'s cycle` : "Partner's cycle"}</div>
+        </div>
         <Btn kind='ghost' onClick={onClose}>Back</Btn>
       </div>
       {!data && !err && <div style={{ color: colors.text.muted, textAlign: 'center', padding: spacing.lg }}>Waiting for their device to sync...</div>}
@@ -552,9 +596,12 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
       <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
       <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Shared with you</div>
       {partners.map((p) => (
-        <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: colors.text.primary, fontWeight: 500 }}>A partner's cycle</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12 }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
+        <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md, minWidth: 0 }}>
+            <Avatar src={p.ownerAvatar} name={p.ownerName} size={32} />
+            <span style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.ownerName ? `${p.ownerName}'s cycle` : "A partner's cycle"}</span>
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12, flexShrink: 0 }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
         </button>
       ))}
       <Btn kind='ghost' onClick={onBecomeOwner}>Start tracking my own cycle</Btn>
@@ -602,6 +649,52 @@ function CycleSummary ({ pred, today, flower, onSettings, onScrub, selected }) {
   )
 }
 
+// Profile card (top of Cycle settings): name + avatar. The name and avatar are
+// shown to partners you share with (owner-written into share:meta); otherwise
+// they stay on your devices. See proposals/2026-07-08-user-profile.md.
+function ProfileCard () {
+  const [profile, setProfile] = useState(null)
+  const [name, setName] = useState('')
+  const [msg, setMsg] = useState('')
+  const fileRef = useRef(null)
+  useEffect(() => { call('profile:get').then((p) => { setProfile(p || {}); setName(p?.displayName || '') }).catch(() => setProfile({})) }, [])
+  if (!profile) return null
+  const saveName = async () => {
+    const dn = name.trim(); if (dn === (profile.displayName || '')) return
+    try { const p = await call('profile:set', { displayName: dn }); setProfile(p); haptic('light') } catch (e) { setMsg(e.message) }
+  }
+  const onFile = async (e) => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ''
+    if (!f) return
+    setMsg('')
+    try {
+      const dataUrl = await fileToAvatarDataUrl(f)
+      const p = await call('profile:set', { displayName: name.trim(), avatar: dataUrl }); setProfile(p); haptic('success')
+    } catch (err) { setMsg(err?.message || 'Could not set that photo') }
+  }
+  const clearPhoto = async () => { try { const p = await call('profile:set', { displayName: name.trim(), avatar: null }); setProfile(p); haptic('light') } catch (e) { setMsg(e.message) } }
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.base }}>
+        <button onClick={() => fileRef.current?.click()} aria-label='Change your photo' style={{ padding: 0, border: 'none', background: 'none', borderRadius: '50%', position: 'relative' }}>
+          <Avatar src={profile.avatar} name={name} size={56} />
+          <span style={{ position: 'absolute', right: -2, bottom: -2, width: 20, height: 20, borderRadius: '50%', background: colors.primary, color: colors.text.onPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Camera size={12} weight='fill' />
+          </span>
+        </button>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} placeholder='Your name' maxLength={64}
+            style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `8px 10px`, fontSize: 15 }} />
+          <span style={{ color: colors.text.muted, fontSize: 11 }}>Shown to partners you share with. Otherwise stays on your devices.</span>
+        </div>
+      </div>
+      {profile.avatar && <button onClick={clearPhoto} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: colors.text.muted, fontSize: 12, padding: 0 }}>Remove photo</button>}
+      {msg && <div style={{ color: colors.error, fontSize: 12 }}>{msg}</div>}
+      <input ref={fileRef} type='file' accept='image/*' onChange={onFile} style={{ display: 'none' }} />
+    </div>
+  )
+}
+
 function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState('')
@@ -645,6 +738,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices }) {
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Cycle settings</div>
+      <ProfileCard />
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ color: colors.text.secondary, fontSize: 14 }}>Your flower</div>
         <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', paddingBottom: spacing.xs }}>

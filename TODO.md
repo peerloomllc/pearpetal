@@ -165,11 +165,17 @@ because it demos the finished app).
     creation, a walkthrough of the menus + petal dial, how to log a day, how partner sharing
     works. An interactive tour or short skippable demo, not dropping users onto the day editor.
 
-## User profile - name + avatar (queued 2026-07-08)
+## User profile - name + avatar - DONE 2026-07-08 (branch feature/user-profile)
 
-**PROPOSAL WRITTEN** 2026-07-08: `proposals/2026-07-08-user-profile.md` (T2, awaiting
-Tim's approval per Constitution SS3). The detail below is the summary; the proposal is
-the spec.
+**IMPLEMENTED** per the approved proposal `proposals/2026-07-08-user-profile.md`
+(T2, all 4 open questions resolved as recommended). Backend: `profile` localDb row +
+`profile:get`/`profile:set` (avatar in the core blob store, deduped by hash), name +
+avatar projected into `share:meta`, `partner:view`/`list` return `ownerName`/
+`ownerAvatar`. UI: profile card atop Cycle Settings; "{name}'s cycle" + avatar in
+PartnerView / Sharing / ViewerHome. verify green (40 tests + 3 bundles); owner side
+on-device on the TCL. REMAINING: live two-phone owner->partner name display (needs the
+Pixel as partner = Tim's phone) - propagation is unit-covered. The summary below is the
+original spec.
 
 Add a user profile (display name + avatar) at the TOP of the Settings page, following
 PearList's proven pattern. Replaces the generic "partner" / "A partner's cycle" strings

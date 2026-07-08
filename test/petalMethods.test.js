@@ -88,3 +88,64 @@ test('donation reminder: due once 14 days have elapsed, then dismiss stops it', 
   assert.equal(after.due, false)
   await engine.close()
 })
+
+// A 1x1 transparent PNG / GIF as base64 data URLs (enough to exercise the blob path).
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+const GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
+test('profile: set + get round-trips name and a blob-stored avatar', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  const set = await call('profile:set', { displayName: '  Ada  ', avatar: PNG })
+  assert.equal(set.displayName, 'Ada') // trimmed
+  assert.ok(set.avatar && set.avatar.startsWith('data:image/'))
+  const got = await call('profile:get', {})
+  assert.equal(got.displayName, 'Ada')
+  assert.ok(got.avatar && got.avatar.startsWith('data:image/')) // resolved back from the blob store
+  await engine.close()
+})
+
+test('profile: a GIF avatar keeps its type (animated avatars survive)', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  const set = await call('profile:set', { displayName: 'Bea', avatar: GIF })
+  assert.ok(set.avatar.startsWith('data:image/gif'))
+  // name-only edit preserves the avatar (no re-append needed)
+  const after = await call('profile:set', { displayName: 'Bea B' })
+  assert.ok(after.avatar && after.avatar.startsWith('data:image/gif'))
+  await engine.close()
+})
+
+test('profile: name + avatar are projected into the share:meta claim', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  await call('profile:set', { displayName: 'Ada', avatar: PNG })
+  const { groupId } = await call('share:create', { scope: 'phase' })
+  const base = engine.bases.get(groupId)
+  await base.update()
+  const meta = (await base.view.get('share:meta'))?.value
+  assert.equal(meta.displayName, 'Ada')
+  assert.ok(meta.avatarBlob && meta.avatarBlob.key && meta.avatarBlob.id) // id is a hyperblobs id object
+  assert.equal(typeof meta.avatarHash, 'string')
+  assert.equal(meta.avatarType, 'image/png')
+  assert.ok(meta.ownerPubkey) // owner recorded -> owner-write-only still holds
+  await engine.close()
+})
+
+test('profile: clearing the avatar removes the pointer', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('profile:set', { displayName: 'Ada', avatar: PNG })
+  const cleared = await call('profile:set', { displayName: 'Ada', avatar: null })
+  assert.equal(cleared.avatar, undefined)
+  await engine.close()
+})
+
+test('profile: an oversized avatar is rejected', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  const big = 'data:image/png;base64,' + 'A'.repeat(800 * 1024) // ~600KB decoded, over the 512KB cap
+  await assert.rejects(() => call('profile:set', { displayName: 'Ada', avatar: big }))
+  await engine.close()
+})

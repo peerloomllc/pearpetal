@@ -133,6 +133,17 @@ test('share:meta update: only the established owner may change it', () => {
   assert.equal(rowSharedDecision('share:meta', shareMeta(PARTNER, PARTNERPUB, PARTNERPUB, { updatedAt: 3000 }), existing), 'reject')
 })
 
+test('share:meta identity fields ride the owner-only gate (name/avatar)', () => {
+  // The owner may add displayName + an avatar pointer; it is still owner-signed so
+  // it applies. (proposal 2026-07-08 user-profile: additive optional fields.)
+  const existing = shareMeta()
+  const withId = shareMeta(OWNER, OWNERPUB, OWNERPUB, { updatedAt: 3000, displayName: 'Ada', avatarBlob: { key: 'abc', id: 1 }, avatarHash: 'deadbeef', avatarType: 'image/gif' })
+  assert.equal(rowSharedDecision('share:meta', withId, existing), 'accept')
+  // A partner cannot forge identity fields onto the owner's meta.
+  const forged = shareMeta(PARTNER, PARTNERPUB, PARTNERPUB, { updatedAt: 3000, displayName: 'Ada' })
+  assert.equal(rowSharedDecision('share:meta', forged, existing), 'reject')
+})
+
 test('phase:current accepted from the owner, rejected from the partner', () => {
   assert.equal(rowSharedDecision(phaseKey(), phaseRow(OWNER, OWNERPUB), null, OWNERPUB), 'accept')
   // Same key, validly self-signed by the partner, but not the owner -> reject.
