@@ -887,6 +887,8 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
                 </button>
               )
             })}
+            {/* Trailing spacer so the last flower can scroll clear of the right fade. */}
+            <div aria-hidden style={{ flex: '0 0 32px' }} />
           </div>
           <div style={{ position: 'absolute', top: 0, bottom: spacing.xs, right: 0, width: 32, pointerEvents: 'none', background: `linear-gradient(to right, transparent, ${colors.surface.card})` }} />
         </div>
