@@ -53,6 +53,8 @@ button{font-family:${FONT};cursor:pointer;transition:transform 120ms cubic-bezie
 button:active{transform:scale(0.97)}
 @keyframes pearpetal-spin{to{transform:rotate(360deg)}}
 @keyframes pearpetal-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes pearpetal-slide-r{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+@keyframes pearpetal-slide-l{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
 `
 
 export function injectGlobalStyles () {
