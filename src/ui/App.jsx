@@ -786,6 +786,40 @@ function PregnancySetup ({ prefs, save }) {
   )
 }
 
+// Horizontal flower picker with edge fades that appear only when there is content
+// scrolled off that side, so a fade never covers the first or last flower.
+function FlowerPicker ({ value, onPick }) {
+  const scrollRef = useRef(null)
+  const [edges, setEdges] = useState({ left: false, right: false })
+  const update = () => {
+    const el = scrollRef.current; if (!el) return
+    setEdges({ left: el.scrollLeft > 2, right: el.scrollLeft < el.scrollWidth - el.clientWidth - 2 })
+  }
+  useEffect(() => { update() }, [])
+  const fade = { position: 'absolute', top: 0, bottom: spacing.xs, width: 32, pointerEvents: 'none', transition: 'opacity 150ms' }
+  return (
+    <div style={{ position: 'relative' }}>
+      <div ref={scrollRef} onScroll={update} style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', paddingBottom: spacing.xs }}>
+        {FLOWER_KEYS.map((key) => {
+          const active = (value || 'rose') === key
+          return (
+            <button key={key} onClick={() => onPick(key)} aria-pressed={active} style={{
+              flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              background: active ? 'rgba(232,133,155,0.10)' : 'transparent',
+              border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.md}px`,
+            }}>
+              <FlowerThumb flower={key} size={52} />
+              <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{flowerLabel(key)}</span>
+            </button>
+          )
+        })}
+      </div>
+      <div style={{ ...fade, left: 0, opacity: edges.left ? 1 : 0, background: `linear-gradient(to left, transparent, ${colors.surface.card})` }} />
+      <div style={{ ...fade, right: 0, opacity: edges.right ? 1 : 0, background: `linear-gradient(to right, transparent, ${colors.surface.card})` }} />
+    </div>
+  )
+}
+
 // Collapsible settings card for the occasional / advanced sections. Centered title
 // with a caret on the right, matching the About accordion's motion; independent
 // open/close (not one-at-a-time, unlike About) since you may adjust several.
@@ -871,27 +905,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
       <ProfileCard />
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your flower</div>
-        {/* Single horizontal row; a fade on the right edge hints there is more to scroll. */}
-        <div style={{ position: 'relative' }}>
-          <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', paddingBottom: spacing.xs }}>
-            {FLOWER_KEYS.map((key) => {
-              const active = (prefs.flower || 'rose') === key
-              return (
-                <button key={key} onClick={() => pickFlower(key)} aria-pressed={active} style={{
-                  flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                  background: active ? 'rgba(232,133,155,0.10)' : 'transparent',
-                  border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.md}px`,
-                }}>
-                  <FlowerThumb flower={key} size={52} />
-                  <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{flowerLabel(key)}</span>
-                </button>
-              )
-            })}
-            {/* Trailing spacer so the last flower can scroll clear of the right fade. */}
-            <div aria-hidden style={{ flex: '0 0 32px' }} />
-          </div>
-          <div style={{ position: 'absolute', top: 0, bottom: spacing.xs, right: 0, width: 32, pointerEvents: 'none', background: `linear-gradient(to right, transparent, ${colors.surface.card})` }} />
-        </div>
+        <FlowerPicker value={prefs.flower} onPick={pickFlower} />
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>What are you tracking for?</div>
