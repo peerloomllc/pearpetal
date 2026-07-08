@@ -123,7 +123,15 @@ because it demos the finished app).
    missing it; main + ViewerHome upgraded from the raw var). Uses the shell-injected inset OR
    the CSS env() inset (WebView is viewport-fit=cover) so it holds even if the var lands late.
    REMAINING: on-device confirm titles clear the status bar (TCL / Pixel / iPhone).
-5. **Petal dial in the partner view too; ring day-scrub** to log a past day by tapping its tick.
+5. **Petal dial in the partner view + ring day-scrub** - CODE DONE 2026-07-07 (branch
+   feature/partner-dial-dayscrub). PartnerView now shows the PetalDial as its hero, driven by a
+   `pred` derived from the scoped projection (cycleLen from the shared next-period date; fertile/
+   ovulation estimated when the scope withholds them; default flower since the species pref is
+   device-local). PetalDial gained `onDayTap(dateIso)`: a tap's angle -> cycle day -> calendar
+   date (center = today); the owner main dial uses it to open a past day in the editor (future
+   taps ignored). Outer element is now a div + clickable svg (was a single button). verify green.
+   REMAINING: on-device confirm (owner taps a past tick -> editor jumps to that day; partner sees
+   the dial).
 6. **App logo / icon + notification-bar icons**: launcher icon, Android adaptive icon
    (foreground/background), and monochrome notification / status-bar icons. Needed before
    any store submission (expo prebuild already warns "no icon").

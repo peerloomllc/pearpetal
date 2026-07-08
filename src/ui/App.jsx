@@ -13,7 +13,7 @@ import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
 import { colors, spacing, radius } from './theme.js'
-import PetalDial, { FlowerThumb } from './PetalDial.jsx'
+import PetalDial, { FlowerThumb, isoDiff } from './PetalDial.jsx'
 import { FLOWER_KEYS, flowerLabel } from './flowers.js'
 
 const FLOWS = [
@@ -335,6 +335,21 @@ function PartnerView ({ groupId, onClose, onLeft }) {
 
   const phase = data?.phase
   const predict = data?.predict
+  // Build a dial projection from the partner's scoped view. cycleLen is derived
+  // from the shared next-period date (partner never receives it directly). Fertile
+  // window / ovulation only arrive on fertility/full scope; the dial estimates them
+  // when absent. The owner's flower species is a device-local pref (never shared),
+  // so the partner dial uses the default.
+  const partnerPred = phase ? {
+    known: true,
+    phase: phase.phase,
+    dayOfCycle: phase.dayOfCycle,
+    cycleLen: (phase.dayOfCycle || 1) + (predict?.nextPeriodStart ? isoDiff(todayIso(), predict.nextPeriodStart) : 14),
+    ovulationEst: predict?.ovulationEst,
+    nextPeriodStart: predict?.nextPeriodStart,
+    fertileStart: predict?.fertileStart,
+    fertileEnd: predict?.fertileEnd,
+  } : { known: false }
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -344,6 +359,11 @@ function PartnerView ({ groupId, onClose, onLeft }) {
       {!data && !err && <div style={{ color: colors.text.muted, textAlign: 'center', padding: spacing.lg }}>Waiting for their device to sync...</div>}
       {data && (
         <>
+          {phase && (
+            <div style={{ ...card, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+              <PetalDial pred={partnerPred} today={todayIso()} flower='rose' />
+            </div>
+          )}
           <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
             <div style={{ fontSize: 13, color: colors.text.muted }}>Current phase</div>
             <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>{phase ? (PHASE_LABEL[phase.phase] || phase.phase) : 'Not shared yet'}</div>
@@ -532,13 +552,13 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
 const PHASE_COLOR = { menstrual: '#c8384f', follicular: '#c9a0d8', fertile: '#e8859b', luteal: '#8f8288' }
 function fmtDate (iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }) } catch { return iso } }
 
-function CycleSummary ({ pred, today, flower, onSettings, onTapDial }) {
+function CycleSummary ({ pred, today, flower, onSettings, onScrub }) {
   if (!pred) return null
   const days = pred.daysUntilNextPeriod
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
-      <PetalDial pred={pred} today={today} flower={flower} onTap={onTapDial} />
+      <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} />
       {!pred.known ? (
         <>
           <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Learning your cycle</div>
@@ -722,7 +742,7 @@ export default function App () {
           <Btn kind='ghost' onClick={() => setScreen('devices')}>Devices</Btn>
         </div>
       </div>
-      <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onTapDial={() => setDate(todayIso())} />
+      <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} />
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
       <div>
         <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>
