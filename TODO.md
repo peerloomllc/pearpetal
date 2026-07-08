@@ -165,6 +165,33 @@ because it demos the finished app).
     creation, a walkthrough of the menus + petal dial, how to log a day, how partner sharing
     works. An interactive tour or short skippable demo, not dropping users onto the day editor.
 
+## User profile - name + avatar (queued 2026-07-08)
+
+Add a user profile (display name + avatar) at the TOP of the Settings page, following
+PearList's proven pattern. Replaces the generic "partner" / "A partner's cycle" strings
+throughout with the owner's chosen name.
+- **Storage (PearList pattern, see `pearlist/src/listMethods.js` ~L19-55, L232-):** avatar
+  bytes live in the content BLOB store (`ctx.blobs`), NOT inline in any row. The profile /
+  roster row carries only a tiny pointer `{ avatarBlob:{key,id}, avatarHash, avatarType }`;
+  it is resolved back to a `data:<type>;base64,<...>` URL on read and cached by
+  `avatarHash`. This keeps the append-only log lean (the avatar is a separate, referenceable
+  item, appended once and pointed at - not re-appended on every name change) and, because it
+  is a raw blob + type, supports animated GIFs (store `image/gif` bytes, render the data
+  URL). Keep back-compat for any legacy inline `avatar` data URL. Profile itself stored
+  device-local in `localDb` as `{ displayName, avatarBlob?, avatarHash?, avatarType?,
+  updatedAt }` (cf. PearList `profile:get` / `profile:set`).
+- **Name replaces "partner":** the owner's display name must reach a partner so their view
+  reads e.g. "Ada's cycle" instead of "A partner's cycle". Carry `displayName` (+ optional
+  avatar pointer) in the shared base's `share:meta` projection (owner-written, already the
+  channel for `ownerPubkey`/`scope`) so it rides the existing consent-scoped path. NOTE:
+  adding a field the partner replicates is a wire change -> **T2, needs a proposal**
+  (Constitution SS3) with a back-compat note (older peers just miss the name -> fall back to
+  "A partner"). Update `PartnerView` ("Partner's cycle" title + "A partner's cycle" rows in
+  Sharing/ViewerHome) and the day/roster UI to show the name + avatar.
+- **UI:** profile card at the top of Cycle Settings (name text field + avatar picker with a
+  live thumbnail, reusing the flower-picker layout idiom); feeds the first-run onboarding
+  name/avatar step (blocker #10).
+
 ## UX / sharing polish (nice-to-have, found 2026-07-07 on-device)
 
 - **Flower picker is buried in Cycle Settings.** Confirmed present + working on-device, but
