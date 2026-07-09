@@ -1213,14 +1213,16 @@ function AboutLink ({ onClick, children, primary }) {
 // choosing a flower is not buried in Settings. Same picker widget as Settings.
 function FlowerPickerSheet ({ value, onPick, onClose }) {
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 auto', background: colors.surface.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, border: `1px solid ${colors.border}`, padding: spacing.lg, paddingBottom: `calc(${spacing.lg}px + var(--pear-safe-bottom))`, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Your flower</div>
-        <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>The species that blooms on your dial. Private to this device.</div>
-        <FlowerPicker value={value} onPick={onPick} />
-        <Btn kind='ghost' onClick={onClose}>Done</Btn>
-      </div>
-    </div>
+    <BottomSheet onClose={onClose}>
+      {(close) => (
+        <>
+          <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Your flower</div>
+          <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>The species that blooms on your dial. Private to this device.</div>
+          <FlowerPicker value={value} onPick={onPick} />
+          <Btn kind='ghost' onClick={close}>Done</Btn>
+        </>
+      )}
+    </BottomSheet>
   )
 }
 
