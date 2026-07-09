@@ -417,7 +417,7 @@ function Sharing ({ onClose, onOpenPartner }) {
           ))}
         </div>
         <Btn onClick={create}>Create a share link</Btn>
-        <div style={{ color: colors.text.muted, fontSize: 12 }}>Anyone you send a link to can view it until you revoke. Your full log and notes never leave your devices. Revoking stops future updates but cannot unsend what a partner already received.</div>
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>Anyone with the link can view what you choose to share, so send it only to people you trust. They can view but never edit, and cannot re-share access to anyone else. Your full log and notes never leave your devices. Revoking stops future updates, but cannot unsend what was already received.</div>
       </div>
 
       {shares.length > 0 && (
