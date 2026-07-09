@@ -38,8 +38,8 @@ const FLOWERS = {
     layers: [{ count: 8, len: 1, wid: 0.92 }, { count: 8, len: 0.68, wid: 0.7, off: 0.5 }],
   },
   poppy: {
-    label: 'Poppy', shape: 'broad', open: [226, 66, 66], closed: [120, 18, 20], center: [26, 18, 22], centerFixed: true, centerScale: 0.85,
-    layers: [{ count: 4, len: 1, wid: 1.5 }],
+    label: 'Poppy', shape: 'broad', open: [235, 92, 84], center: [74, 22, 34], centerScale: 0.55,
+    layers: [{ count: 6, len: 1, wid: 1.14 }, { count: 6, len: 0.72, wid: 0.9, off: 0.5 }],
   },
   dahlia: {
     label: 'Dahlia', shape: 'pointed', open: [214, 96, 142], center: [190, 60, 112], centerScale: 0.7,
