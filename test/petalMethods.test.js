@@ -239,6 +239,42 @@ test('share:list includes an empty joiners list until someone joins', async () =
   const row = (await call('share:list', {})).find((s) => s.groupId === groupId)
   assert.ok(row)
   assert.deepEqual(row.joiners, [])
+  assert.equal(row.revoked, false)
+  await engine.close()
+})
+
+// share:revoke SOFT-CLOSES: writes the tombstone into the owner-signed share:meta
+// and flags the membership, but KEEPS the base (so the partner can still learn it
+// ended). share:remove is the hard teardown.
+test('share:revoke soft-closes: meta tombstoned, base kept, no more projection; share:remove destroys', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  // enough history that a projection exists to (not) push
+  for (const back of [56, 28]) { const start = addDays(todayIso(), -back); await call('period:log', { start, end: addDays(start, 4) }) }
+  const { groupId } = await call('share:create', { scope: 'fertility' })
+
+  const r = await call('share:revoke', { groupId })
+  assert.equal(r.revoked, true)
+  // share:list still shows it, now flagged revoked with a timestamp.
+  const listed = (await call('share:list', {})).find((s) => s.groupId === groupId)
+  assert.ok(listed, 'revoked share still listed (base kept alive)')
+  assert.equal(listed.revoked, true)
+  assert.ok(typeof listed.revokedAt === 'number' && listed.revokedAt > 0)
+
+  // Idempotent.
+  assert.equal((await call('share:revoke', { groupId })).already, true)
+
+  // A later log change must NOT resurrect/re-project the revoked share (refreshShares
+  // skips it) - the share stays revoked.
+  const day = addDays(todayIso(), -1)
+  await call('day:set', { date: day, flow: 'medium' })
+  const stillRevoked = (await call('share:list', {})).find((s) => s.groupId === groupId)
+  assert.equal(stillRevoked.revoked, true, 'a log change does not un-revoke the share')
+
+  // Remove permanently: base is destroyed + membership forgotten.
+  await call('share:remove', { groupId })
+  assert.equal((await call('share:list', {})).find((s) => s.groupId === groupId), undefined)
   await engine.close()
 })
 

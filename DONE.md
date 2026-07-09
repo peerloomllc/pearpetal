@@ -6,6 +6,17 @@ work lives in `TODO.md`.
 
 ## 2026-07-09
 
+- **Sharing ended (revoke tombstone)** (T2, proposal 2026-07-09-sharing-ended,
+  DECISIONS 2026-07-09): when an owner revokes, the partner now sees a calm "sharing
+  ended" state on next open instead of silently frozen data. `share:revoke` SOFT-CLOSES
+  - writes `revoked:true`+`revokedAt` into the owner-signed `share:meta` (inherits the
+  owner-write-only gate, no apply change; distinct `revoked` field, not `deleted`) and
+  flags the membership, but keeps the base + swarm alive so the tombstone reaches an
+  offline partner on reconnect; `refreshShares`/`refreshShareMeta` skip revoked shares.
+  New `share:remove` is the owner "Remove permanently" (old hard teardown). Partner UI:
+  a "sharing ended" banner over the dimmed last-known view + Remove; ViewerHome/Sharing
+  show "Sharing ended"; owner Sharing gets an "Ended" section. Additive + back-compat.
+  Verify green (85 tests + 3 bundles). ON-DEVICE VERIFIED (TCL owner -> Pixel partner, Full scope): join + live sync, revoke soft-close -> partner "sharing ended" banner over dimmed data (live, no reload), partner Remove + owner Remove-permanently clear.
 - **Notification tray glyph confirmed monochrome (Android)** (docs/verification only):
   the tray icon had been the colored launcher icon because the built `android/` predated
   the expo-notifications icon config. A fresh `expo prebuild -p android --clean` wired

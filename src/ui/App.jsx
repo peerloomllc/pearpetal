@@ -417,6 +417,13 @@ function Sharing ({ onClose, onOpenPartner }) {
     setBusyRevoke(groupId)
     try { await call('share:revoke', { groupId }); haptic('warn'); await load() } catch (e) { setErr(e.message) } finally { setBusyRevoke(null) }
   }
+  const remove = async (groupId) => {
+    if (busyRevoke) return
+    setBusyRevoke(groupId)
+    try { await call('share:remove', { groupId }); haptic('warn'); await load() } catch (e) { setErr(e.message) } finally { setBusyRevoke(null) }
+  }
+  const activeShares = shares.filter((s) => !s.revoked)
+  const endedShares = shares.filter((s) => s.revoked)
   const copy = async (code) => { try { await navigator.clipboard.writeText(code); haptic('success') } catch { call('shell:share', { text: code }).catch(() => {}) } }
 
   return (
@@ -440,10 +447,10 @@ function Sharing ({ onClose, onOpenPartner }) {
         <div style={{ color: colors.text.muted, fontSize: 12 }}>Anyone with the link can view what you choose to share, so send it only to people you trust. They can view but never edit, and cannot re-share access to anyone else. Your full log and notes never leave your devices. Revoking stops future updates, but cannot unsend what was already received.</div>
       </div>
 
-      {shares.length > 0 && (
+      {activeShares.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
           <div style={{ fontSize: 13, color: colors.text.muted, textAlign: 'center' }}>People you share with</div>
-          {shares.map((s) => {
+          {activeShares.map((s) => {
             const joiners = s.joiners || []
             const named = joiners.map((j) => j.name).filter(Boolean)
             // Just the joiner name(s): the section header ("People you share with")
@@ -476,6 +483,27 @@ function Sharing ({ onClose, onOpenPartner }) {
         </div>
       )}
 
+      {endedShares.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+          <div style={{ fontSize: 13, color: colors.text.muted, textAlign: 'center' }}>Sharing ended</div>
+          {endedShares.map((s) => {
+            const named = (s.joiners || []).map((j) => j.name).filter(Boolean)
+            const who = named.length ? named.join(', ') : 'This share'
+            return (
+              <div key={s.groupId} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.md }}>
+                <span style={{ width: 32, height: 32, borderRadius: radius.full, background: colors.surface.elevated, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: colors.text.muted, flexShrink: 0 }}><ShareNetwork size={16} /></span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ color: colors.text.secondary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{who}</div>
+                  <div style={{ color: colors.text.muted, fontSize: 12 }}>Ended{s.revokedAt ? ` ${sharedOn(s.revokedAt)}` : ''} · no longer updating</div>
+                </div>
+                <IconBtn label='Remove permanently' onClick={() => remove(s.groupId)} disabled={busyRevoke === s.groupId} color={colors.error}><Trash size={18} /></IconBtn>
+              </div>
+            )
+          })}
+          <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center' }}>They keep the last update they received. Remove permanently once they have opened the app to see the change.</div>
+        </div>
+      )}
+
       {/* Always available - an existing owner can also view a partner's cycle (paste
           / scan a share code), not only on a fresh install. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
@@ -486,7 +514,7 @@ function Sharing ({ onClose, onOpenPartner }) {
               <Avatar src={p.ownerAvatar} name={p.ownerName} size={32} />
               <span style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.ownerName ? `${p.ownerName}'s cycle` : "A partner's cycle"}</span>
             </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12, flexShrink: 0, textTransform: 'capitalize' }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12, flexShrink: 0, textTransform: p.revoked ? 'none' : 'capitalize' }}>{p.revoked ? 'Sharing ended' : (p.scope || '...')}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
           </button>
         ))}
         <Btn kind='ghost' onClick={() => setJoinOpen(true)}>View a partner's cycle</Btn>
@@ -552,7 +580,8 @@ function PartnerView ({ groupId, onClose, onLeft }) {
   // polling a bit longer if an avatar is announced but its blob has not replicated
   // yet (partner:view is non-blocking on the avatar), so the photo pops in.
   const pendingAvatar = !!(data?.ownerHasAvatar && !data?.ownerAvatar)
-  const synced = !!(data && (data.ownerPubkey || data.phase || data.predict)) && !pendingAvatar
+  // Once the share is revoked, no more updates are coming - stop polling.
+  const synced = !!data?.revoked || (!!(data && (data.ownerPubkey || data.phase || data.predict)) && !pendingAvatar)
   useEffect(() => {
     if (synced) return undefined
     const t = setInterval(load, 2000)
@@ -587,8 +616,17 @@ function PartnerView ({ groupId, onClose, onLeft }) {
         <Btn kind='ghost' onClick={onClose}>Back</Btn>
       </div>
       {!data && !err && <div style={{ color: colors.text.muted, textAlign: 'center', padding: spacing.lg }}>Waiting for their device to sync...</div>}
+      {data?.revoked && (
+        <div style={{ ...card, borderLeft: `3px solid ${colors.primary}`, display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>Sharing ended</div>
+          <div style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 1.45 }}>
+            {data.ownerName ? `${data.ownerName} stopped sharing their cycle` : 'This person stopped sharing their cycle'}{data.revokedAt ? ` on ${sharedOn(data.revokedAt)}` : ''}. What you see below is the last update you received.
+          </div>
+          <Btn kind='ghost' onClick={leave} style={{ color: colors.error, marginTop: spacing.xs }}>Remove</Btn>
+        </div>
+      )}
       {data && (
-        <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg, opacity: data.revoked ? 0.5 : 1 }}>
           {phase && (
             <div style={{ ...card, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
               <PetalDial pred={partnerPred} today={todayIso()} flower='rose' />
@@ -619,8 +657,8 @@ function PartnerView ({ groupId, onClose, onLeft }) {
             </div>
           )}
           <div style={{ color: colors.text.muted, fontSize: 12, textAlign: 'center' }}>They chose to share {data.scope || 'this'}. You cannot see their full log.</div>
-          <Btn kind='ghost' onClick={leave} style={{ color: colors.error }}>Stop viewing</Btn>
-        </>
+          {!data.revoked && <Btn kind='ghost' onClick={leave} style={{ color: colors.error }}>Stop viewing</Btn>}
+        </div>
       )}
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
     </div>
@@ -773,7 +811,7 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
             <Avatar src={p.ownerAvatar} name={p.ownerName} size={32} />
             <span style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.ownerName ? `${p.ownerName}'s cycle` : "A partner's cycle"}</span>
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12, flexShrink: 0 }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: p.revoked ? colors.text.secondary : colors.text.muted, fontSize: 12, flexShrink: 0 }}>{p.revoked ? 'Sharing ended' : (p.scope || '...')}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
         </button>
       ))}
       <Btn kind='ghost' onClick={onBecomeOwner}>Start tracking my own cycle</Btn>
