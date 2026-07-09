@@ -6,6 +6,18 @@ work lives in `TODO.md`.
 
 ## 2026-07-09
 
+- **Notification tray glyph confirmed monochrome (Android)** (docs/verification only):
+  the tray icon had been the colored launcher icon because the built `android/` predated
+  the expo-notifications icon config. A fresh `expo prebuild -p android --clean` wired
+  `@drawable/notification_icon` (the white silhouette from `monochrome-icon.png`) + the
+  `expo.modules.notifications.default_notification_icon` manifest meta-data + tint color
+  `#f2789f`; the rebuilt APK shows a correct WHITE monochrome glyph on the TCL (small-icon
+  resource is now a drawable, not the mipmap launcher icon). NO source change needed - the
+  app.json config was already correct. Also verified the `.debug` standalone config
+  survives a clean prebuild (it lives in `with-android-debug-standalone`), retiring the
+  "durable debug config" dev-infra item. iOS notifications always use the app icon, so
+  there is no monochrome-glyph work there.
+
 - **To-self local notifications v1** (proposal 2026-07-09-notifications, DECISIONS
   2026-07-09): opt-in cycle reminders (period due day-before + day-of; fertile
   window + ovulation), goal-aware + confidence-gated + birth-control-suppressed,
