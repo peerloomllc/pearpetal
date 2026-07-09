@@ -214,10 +214,12 @@ throughout with the owner's chosen name.
 - **Share model DECIDED 2026-07-09: per-individual (who joined).** Tim chose per-person over
   bearer+labels. **Part A shipped** (proposal 2026-07-09-per-person-shares, DECISIONS 2026-07-09):
   a joiner self-publishes a `member:{pubkey}` name row into the shared base; the owner renders it.
-  **Part B still deferred** = `@peerloom/core` addWriter gating so a partner cannot admit a 3rd
-  party (a separate suite-wide proposal; = the "Shared-base addWriter gating" security item below).
-  Until Part B, the joiner name is SELF-ATTESTED and the bearer-link caveat holds (UI copy says so).
-  Joiner AVATAR also deferred (needs cross-base blob replication check; initials avatar for now).
+  **Part B DONE 2026-07-09** = `@peerloom/core` addWriter gating (owner-signed admission) so a
+  partner cannot admit a 3rd party. The joiner name is now owner-gated (not just self-attested),
+  so the "Shared with X" row is trustworthy. Bearer-link caveat softens once shipped. REMAINING:
+  update the Sharing copy (still says "anyone with a link"; with gating, a partner can no longer
+  re-share write access, though the link still grants READ to whoever holds it). Joiner AVATAR
+  still deferred (needs cross-base blob replication check; initials avatar for now).
 
 ## UX / navigation (nice-to-have, found 2026-07-07 on-device)
 
@@ -289,10 +291,12 @@ Cross-checked against what already exists:
 
 ## Deferred - security / scale
 
-- **Shared-base addWriter gating** (security): a partner is an Autobase writer, so they could
-  `addWriter` a third party to the SHARED base (bounded leak: only the consented projection,
-  not the private log). Needs apply-level addWriter gating in `@peerloom/core`. DECISIONS
-  2026-07-06 slice 2.
+- **Shared-base addWriter gating** (security): DONE 2026-07-09 (per-person shares Part B;
+  proposal 2026-07-09-addwriter-gating, DECISIONS 2026-07-09). Two @peerloom/core engine
+  hooks (mintAddWriter / authorizeWriter, default legacy so other suite apps are untouched);
+  PearPetal's `src/admission.js` requires an owner signature to admit on a shared base, so a
+  partner can no longer add a third party. Enforced no-back-compat (pre-release). REMAINING:
+  on-device re-pair confirm (owner still admits partner; "Shared with X" still shows).
 - Migrate `day:`/`period:` retention/paging once logs get long.
 
 ## Dev infra / build durability (for clean, repeatable release builds)

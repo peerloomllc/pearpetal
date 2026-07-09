@@ -7,11 +7,17 @@
 const { createGroupEngine } = require('@peerloom/core/engine')
 const { applyPetalOp } = require('./petalWire')
 const petalMethods = require('./petalMethods')
+const { mintAddWriter, authorizeWriter } = require('./admission')
 
 const engine = createGroupEngine({
   appId: 'pearpetal',
   applyOps: applyPetalOp,
   methods: petalMethods,
+  // Shared-base writer-admission gating (per-person shares Part B): only the
+  // owner admits partners; a partner cannot admit a third party. Private-base
+  // device linking is unaffected. See src/admission.js.
+  mintAddWriter,
+  authorizeWriter,
   // Auto-prune old already-applied blocks every 30 min, keeping a generous
   // recent buffer so small logs are untouched.
   retentionInterval: 30 * 60 * 1000,

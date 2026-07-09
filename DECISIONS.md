@@ -2,6 +2,30 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-09 - Shared-base addWriter gating (per-person shares Part B) - IMPLEMENTED
+Tier: T3 (writer admission / pairing; @peerloom/core, suite-wide).
+Context: on a shared base the joiner is an Autobase writer, and a writer can
+addWriter - so a partner could admit a third party to the owner's projection,
+making Part A's "Shared with Ada" untrustworthy. See proposal 2026-07-09-addwriter-gating.
+Choice: two OPTIONAL @peerloom/core engine hooks (default = legacy behaviour, so
+PearList/PearGuard/PearCircle are untouched):
+  - mintAddWriter (append side): the owner signs an admission bound to the joiner's
+    writer key + groupId; a partner mints null (never admits).
+  - authorizeWriter (apply side, deterministic): a shared-base addWriter is honoured
+    only if signed by share:meta.ownerPubkey over that exact key+group.
+PearPetal wires both in `src/admission.js`. The PRIVATE base has no share:meta, so
+both hooks fall through to legacy - own-device linking is unchanged.
+Alternatives: owner-only-online admission (breaks async) rejected; capped/single-use
+invite (proposal Option B) rejected in favour of the signature (works offline-owner
+since the owner is the one online during pairing anyway).
+Consequences: this is the capability approach from the proposal (Option C), simplified
+because the owner IS the admitting writer during pairing, so it signs the joiner's key
+directly (no pre-minted invite token). **Enforced with no back-compat/grandfather path
+because PearPetal is PRE-RELEASE** (no external peers; wipe test installs). A shipped app
+would gate this behind a flag + migration. Verify: core two-peer tests (apply-veto blocks
+writing not reading; mint-null declines) + PearPetal admission unit tests (owner-signed
+honoured; partner self-sign / unsigned / replayed-key / wrong-group all rejected).
+
 ## 2026-07-09 - Per-person shares (who joined)
 Tier: T3 (new shared-base row type on the consent/pairing surface).
 Context: two shares of the same scope were indistinguishable ("Phase" / "Phase").
