@@ -115,6 +115,8 @@ const mockMethods = {
   },
   'prefs:get': async () => ({ avgCycleLength: mock.prefs?.avgCycleLength ?? null, avgPeriodLength: mock.prefs?.avgPeriodLength ?? null, lutealLength: mock.prefs?.lutealLength ?? null, goal: mock.prefs?.goal || 'track', flower: mock.prefs?.flower || 'rose' }),
   'prefs:set': async (patch) => { mock.prefs = { ...(mock.prefs || {}), ...patch }; return { ok: true } },
+  'profile:get': async () => ({ displayName: mock.profile?.displayName || '', avatar: mock.profile?.avatar || null }),
+  'profile:set': async ({ displayName, avatar }) => { mock.profile = { displayName: displayName || '', avatar: avatar === undefined ? (mock.profile?.avatar || null) : avatar }; return mock.profile },
   'day:get': async ({ date }) => { const r = mock.days.get(date); return r && !r.deleted ? r : null },
   'day:getAll': async () => [...mock.days.values()].filter((d) => !d.deleted).sort((a, b) => b.date.localeCompare(a.date)),
   'day:delete': async ({ date }) => { const r = mock.days.get(date); if (!r) throw new Error('day not found'); r.deleted = true; return { ok: true } },

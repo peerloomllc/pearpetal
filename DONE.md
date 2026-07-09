@@ -6,6 +6,22 @@ work lives in `TODO.md`.
 
 ## 2026-07-09
 
+- **First-run onboarding wizard** (release blocker #3; T1, UI-only, no wire change):
+  "Start tracking" now creates the private base and hands off to a short, fully
+  skippable `SetupWizard` (new root mode `setup`) instead of dropping onto an empty
+  "Learning your cycle" dial. Steps: welcome (a decorative blooming dial to show the
+  hero) -> name + optional photo (`profile:set`) -> goal incl. pregnancy (`prefs:set`,
+  reuses PregnancySetup) -> log your last period (`period:log`, so the dial is
+  immediately meaningful) -> reminders opt-in (the folded-in notifications item;
+  `shell:notifications:set`, OS prompt only on enable) -> "you're all set" with
+  log-a-day + Share-tab tips. Step dots, Back steps through, every step skippable.
+  Reuses the existing Settings controls; a viewer who starts their own cycle also
+  goes through it. Shape agreed with Tim (guided setup wizard over a coach-mark tour).
+  Verify green (85 tests + 3 bundles). ON-DEVICE VERIFIED on the TCL: full walk-through
+  (name Maya, goal conceive, period Jun 25, reminders allowed) lands on a POPULATED,
+  goal-aware dial (Menstrual day 15, "best chance to conceive", next period Jul 23);
+  name + goal confirmed persisted in Settings. Deferred: a deeper interactive
+  coach-mark tour of the live menus (deliberately out of scope for v1).
 - **Sharing ended (revoke tombstone)** (T2, proposal 2026-07-09-sharing-ended,
   DECISIONS 2026-07-09): when an owner revokes, the partner now sees a calm "sharing
   ended" state on next open instead of silently frozen data. `share:revoke` SOFT-CLOSES

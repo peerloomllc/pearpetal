@@ -13,10 +13,12 @@ Not yet built:
 2. **Store assets, release scripts, privacy page, listing copy** (the publish
    mechanics). The privacy page is an App Store requirement. Port PearList/PearGuard
    release scripts.
-3. **First-run onboarding / guided demo** (build LAST - it demos the finished app):
-   name/avatar creation, a walkthrough of the menus + petal dial, how to log a day,
-   how partner sharing works. Interactive tour / short skippable demo, not dropping
-   users onto the day editor. Also surface the pregnancy goal here.
+3. ~~**First-run onboarding / guided demo**~~ BUILT + on-device VERIFIED 2026-07-09
+   (see DONE): a skippable `SetupWizard` after "Start tracking" - welcome (hero dial) ->
+   name/photo -> goal (incl. pregnancy) -> log last period (dial no longer empty) ->
+   reminders opt-in -> "all set" with log-a-day + Share tips. Lands on a populated
+   goal-aware dial. REMAINING (optional, deferred): a deeper interactive coach-mark tour
+   of the live menus/sharing was scoped out of v1 - revisit only if wanted.
 
 Code done, need **on-device confirmation** (bundle these into a hardware pass):
 - **iOS Local Network prompt**: install on the iPhone (`scripts/ios-dev-install.sh`),
