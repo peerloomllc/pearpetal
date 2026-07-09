@@ -9,7 +9,7 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, CaretDown, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -786,7 +786,7 @@ function PregnancyView ({ preg, flower, onSettings }) {
   )
 }
 
-function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub, selected, onEditPeriod, onInfo }) {
+function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub, selected, onEditPeriod, onInfo, onFlowerTap }) {
   if (!pred) return null
   const days = pred.daysUntilNextPeriod
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
@@ -794,6 +794,11 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
     <div style={{ ...card, position: 'relative', display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
       <button onClick={onInfo} aria-label='How to read the dial' style={{ position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, color: colors.text.muted, cursor: 'pointer', display: 'flex' }}><Info size={20} /></button>
       <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} hideFertile={pred.birthControl} />
+      <button onClick={onFlowerTap} aria-label='Change flower' style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: spacing.sm, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: '4px 12px 4px 6px', cursor: 'pointer' }}>
+        <FlowerThumb flower={flower} size={24} />
+        <span style={{ fontSize: 13, color: colors.text.secondary }}>{flowerLabel(flower)}</span>
+        <CaretDown size={12} color={colors.text.muted} />
+      </button>
       {!pred.known ? (
         <>
           <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Learning your cycle</div>
@@ -1204,6 +1209,23 @@ function AboutLink ({ onClick, children, primary }) {
   return <Btn kind={primary ? 'primary' : 'ghost'} onClick={onClick} style={{ flex: 1, fontSize: 14 }}>{children}</Btn>
 }
 
+// Flower species picker as a bottom sheet, reached from the pill under the dial so
+// choosing a flower is not buried in Settings. Same picker widget as Settings.
+function FlowerPickerSheet ({ value, onPick, onClose }) {
+  return (
+    <BottomSheet onClose={onClose}>
+      {(close) => (
+        <>
+          <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Your flower</div>
+          <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>The species that blooms on your dial. Private to this device.</div>
+          <FlowerPicker value={value} onPick={onPick} />
+          <Btn kind='ghost' onClick={close}>Done</Btn>
+        </>
+      )}
+    </BottomSheet>
+  )
+}
+
 // Explains what the petal dial represents. The dial is a single-cycle, forward-
 // looking view (not a whole-history scrubber), which is not self-evident; this is
 // reached from a small info icon on the dial card.
@@ -1419,6 +1441,7 @@ export default function App () {
   const [donateReminder, setDonateReminder] = useState(false)
   const [periodSheet, setPeriodSheet] = useState(false)
   const [dialInfo, setDialInfo] = useState(false)
+  const [flowerSheet, setFlowerSheet] = useState(false)
   const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
   const [cycleView, setCycleView] = useState(() => { try { return localStorage.getItem('pearpetal:cycleView') === 'calendar' ? 'calendar' : 'dial' } catch { return 'dial' } })
   const setView = (v) => { setCycleView(v); try { localStorage.setItem('pearpetal:cycleView', v) } catch {} }
@@ -1494,7 +1517,7 @@ export default function App () {
           <div key={cycleView} style={{ animation: 'pearpetal-fade 220ms ease' }}>
             {cycleView === 'calendar'
               ? <MonthCalendar monthIso={calMonth} dir={calDir} pred={pred} daysByIso={Object.fromEntries(days.map((d) => [d.date, d]))} selected={date} today={todayIso()} onPick={setDate} onPrev={() => goMonth(-1)} onNext={() => goMonth(1)} onToday={goToday} />
-              : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} onEditPeriod={() => setPeriodSheet(true)} onInfo={() => setDialInfo(true)} />}
+              : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} onEditPeriod={() => setPeriodSheet(true)} onInfo={() => setDialInfo(true)} onFlowerTap={() => setFlowerSheet(true)} />}
           </div>
         </>
       )}
@@ -1517,6 +1540,7 @@ export default function App () {
       <DonationReminderModal open={donateReminder} onDonate={() => { setDonateReminder(false); setScreen('about') }} onDismiss={() => setDonateReminder(false)} />
       {periodSheet && <PeriodSheet defaultStart={pred?.known ? addDaysIso(todayIso(), -((pred.dayOfCycle || 1) - 1)) : todayIso()} onClose={() => setPeriodSheet(false)} onSaved={(start) => { setView('dial'); setDate(start <= todayIso() ? start : todayIso()); refresh() }} />}
       {dialInfo && <DialInfoSheet onClose={() => setDialInfo(false)} />}
+      {flowerSheet && <FlowerPickerSheet value={flower} onPick={(key) => { setFlower(key); call('prefs:set', { flower: key }).catch(() => {}); haptic('light') }} onClose={() => setFlowerSheet(false)} />}
       {notice && (
         <div onClick={() => setNotice('')} style={{ position: 'fixed', left: 12, right: 12, bottom: `calc(16px + 64px + var(--pear-safe-bottom))`, zIndex: 50, background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, color: colors.text.primary, fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
           {notice}
