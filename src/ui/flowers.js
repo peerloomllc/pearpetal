@@ -5,7 +5,10 @@
 // each flower's natural hue, so the dial keeps encoding the phase. Which flower
 // is a device-local pref (prefs.flower); it never crosses the wire.
 
-const CLOSED = [122, 16, 36] // shared "furled / menstrual" crimson
+const CLOSED = [122, 16, 36] // shared "furled / menstrual" crimson (dark theme)
+// On a white card the dark crimson furls read as a near-black blob; a warmer,
+// lighter crimson keeps the "deep red / menstrual" meaning but stays legible.
+const LIGHT_CLOSED = [168, 52, 72]
 
 const lerp = (a, b, t) => a + (b - a) * t
 const rgb = (c) => `rgb(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])})`
@@ -31,17 +34,17 @@ const FLOWERS = {
   // furled CLOSED crimson reads fine on both.
   rose: {
     label: 'Rose', shape: 'round', open: [236, 139, 163], center: [201, 56, 79],
-    light: { open: [222, 116, 143] },
+    light: { open: [214, 104, 130] },
     layers: [{ count: 8, len: 1, wid: 1 }, { count: 8, len: 0.72, wid: 0.78, off: 0.5 }, { count: 6, len: 0.5, wid: 0.62, off: 0.25 }],
   },
   sakura: {
     label: 'Cherry blossom', shape: 'notched', open: [245, 194, 209], center: [232, 150, 172], centerScale: 0.7,
-    light: { open: [230, 138, 165], center: [206, 106, 136] },
+    light: { open: [233, 146, 172], center: [212, 114, 144] },
     layers: [{ count: 5, len: 1, wid: 1.05 }],
   },
   lotus: {
     label: 'Lotus', shape: 'pointed', open: [236, 168, 200], center: [236, 120, 152],
-    light: { open: [214, 118, 168], center: [200, 88, 140] },
+    light: { open: [210, 112, 164], center: [194, 82, 138] },
     layers: [{ count: 8, len: 1, wid: 0.92 }, { count: 8, len: 0.68, wid: 0.7, off: 0.5 }],
   },
   poppy: {
@@ -65,7 +68,7 @@ function buildFlower (key, b, base = 1, theme = 'dark') {
   const lite = theme === 'light' && f.light ? f.light : null
   const openC = (lite && lite.open) || f.open
   const centerC = (lite && lite.center) || f.center
-  const closed = (lite && lite.closed) || f.closed || CLOSED
+  const closed = (lite && lite.closed) || f.closed || (theme === 'light' ? LIGHT_CLOSED : CLOSED)
   const innerTint = lighten(openC, 0.18)
   const shape = SHAPES[f.shape] || SHAPES.round
   const spin = b * 10
