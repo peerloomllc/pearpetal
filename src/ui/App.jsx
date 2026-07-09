@@ -8,7 +8,7 @@
 // The petal dial and partner sharing are deliberately NOT here yet (later
 // slices). This proves the data path end to end: log on device A, see on B.
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
@@ -62,6 +62,20 @@ function shiftMonthIso (iso, n) {
 // event, so any screen showing synced data refreshes in real time (no manual
 // reload, no leave-and-return). `load` must be stable (useCallback) so the
 // subscription is registered once and torn down on unmount.
+// Android Back registry: any transient overlay (a bottom sheet, the QR scanner,
+// an onboarding sub-mode) registers a dismiss handler while it is open; the App's
+// 'back' handler calls the most-recently-registered one first (LIFO), so Back pops
+// the deepest overlay rather than the whole screen. register() returns unregister.
+const BackContext = createContext(null)
+function useBackHandler (active, onBack) {
+  const ctx = useContext(BackContext)
+  const ref = useRef(onBack); ref.current = onBack
+  useEffect(() => {
+    if (!active || !ctx) return undefined
+    return ctx.register(() => { const f = ref.current; if (f) { f(); return true } return false })
+  }, [active, ctx])
+}
+
 function useSynced (load) {
   useEffect(() => {
     load()
@@ -97,6 +111,7 @@ function BottomSheet ({ onClose, children, maxWidth = 460 }) {
     setClosing(true)
     setTimeout(onClose, 190)
   }, [onClose])
+  useBackHandler(true, close) // Android Back animates the sheet closed
   return (
     <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', animation: `pearpetal-overlay-${closing ? 'out' : 'in'} 200ms ease forwards` }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth, margin: '0 auto', background: colors.surface.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, border: `1px solid ${colors.border}`, padding: spacing.lg, paddingBottom: `calc(${spacing.lg}px + var(--pear-safe-bottom))`, display: 'flex', flexDirection: 'column', gap: spacing.md, animation: `pearpetal-sheet-${closing ? 'down' : 'up'} ${closing ? 190 : 260}ms cubic-bezier(0.32,0.72,0,1) forwards` }}>
@@ -259,6 +274,7 @@ function QrImage ({ text, size = 190 }) {
 function ScannerView ({ open, onClose, onDecode }) {
   const videoRef = useRef(null)
   const [error, setError] = useState(null)
+  useBackHandler(open, onClose) // Android Back closes the camera first
   useEffect(() => {
     if (!open) return undefined
     setError(null)
@@ -329,6 +345,7 @@ function Onboarding ({ onReady, onViewerReady }) {
   const submit = () => (mode === 'link' ? link() : joinPartner())
   const onScanned = (txt) => { setScanning(false); (mode === 'link' ? link : joinPartner)(txt) }
   const back = () => { setMode(null); setErr(''); setCode(''); setScanning(false) }
+  useBackHandler(mode !== null, back) // Android Back leaves a link/partner sub-mode
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
@@ -1331,6 +1348,7 @@ function WalletSheet ({ onClose }) {
 // Two-week donation nudge (suite pattern). Shown once ever; the caller gates it
 // off on iOS (App Store 3.1.1) and marks it shown as soon as it surfaces.
 function DonationReminderModal ({ open, onDonate, onDismiss }) {
+  useBackHandler(open, onDismiss)
   if (!open) return null
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
@@ -1466,6 +1484,26 @@ export default function App () {
     if (themePref !== 'system') return undefined
     return onSystemThemeChange((resolved) => setThemeResolved(resolved))
   }, [themePref])
+  // Android hardware/gesture Back: pop the in-app stack instead of exiting. The
+  // shell consumes Back only while canBack is true (shell:navState) and emits a
+  // 'back' event we handle here, closing the topmost overlay / walking screens ->
+  // main; at the root (main, nothing open) canBack is false so Back exits normally.
+  // Overlays (bottom sheets, scanner, onboarding sub-mode) self-register a dismiss
+  // handler; App handles the rest (partner view, owner sub-screen -> main).
+  const backHandlers = useRef([])
+  const [backCount, setBackCount] = useState(0)
+  const registerBack = useCallback((fn) => {
+    backHandlers.current.push(fn); setBackCount(backHandlers.current.length)
+    return () => { const i = backHandlers.current.indexOf(fn); if (i >= 0) backHandlers.current.splice(i, 1); setBackCount(backHandlers.current.length) }
+  }, [])
+  const backCtx = useMemo(() => ({ register: registerBack }), [registerBack])
+  const canBack = !!(backCount > 0 || partnerGroup || (mode === 'owner' && screen !== 'main'))
+  useEffect(() => { call('shell:navState', { canBack }).catch(() => {}) }, [canBack])
+  useEffect(() => on('back', () => {
+    for (let i = backHandlers.current.length - 1; i >= 0; i--) { if (backHandlers.current[i]()) return } // deepest overlay first
+    if (partnerGroup) return setPartnerGroup(null)
+    if (mode === 'owner' && screen !== 'main') return setScreen('main')
+  }), [partnerGroup, mode, screen])
   const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
   const [cycleView, setCycleView] = useState(() => { try { return localStorage.getItem('pearpetal:cycleView') === 'calendar' ? 'calendar' : 'dial' } catch { return 'dial' } })
   const setView = (v) => { setCycleView(v); try { localStorage.setItem('pearpetal:cycleView', v) } catch {} }
@@ -1558,6 +1596,7 @@ export default function App () {
   const navActive = ['share', 'settings', 'about'].includes(screen) ? screen : 'main'
   return (
     <ThemeContext.Provider value={theme}>
+     <BackContext.Provider value={backCtx}>
       <div style={showNav ? { paddingBottom: 'calc(64px + var(--pear-safe-bottom))' } : undefined}>{content}</div>
       {showNav && <BottomNav active={navActive} onTab={setScreen} />}
       <DonationReminderModal open={donateReminder} onDonate={() => { setDonateReminder(false); setScreen('about') }} onDismiss={() => setDonateReminder(false)} />
@@ -1569,6 +1608,7 @@ export default function App () {
           {notice}
         </div>
       )}
+     </BackContext.Provider>
     </ThemeContext.Provider>
   )
 }
