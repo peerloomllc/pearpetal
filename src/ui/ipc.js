@@ -146,7 +146,8 @@ const mockMethods = {
     mock.shares.set(groupId, { groupId, scope, inviteKey, createdAt: Date.now() })
     return { groupId, inviteKey, scope }
   },
-  'share:list': async () => [...mock.shares.values()].sort((a, b) => a.createdAt - b.createdAt),
+  'share:list': async () => [...mock.shares.values()].map((s) => ({ ...s, joiners: s.joiners || [] })).sort((a, b) => a.createdAt - b.createdAt),
+  'member:publish': async () => ({ published: 0 }),
   'share:revoke': async ({ groupId }) => { mock.shares.delete(groupId); return { ok: true } },
   'partner:join': async ({ inviteKey }) => {
     if (!inviteKey) throw new Error('inviteKey required')

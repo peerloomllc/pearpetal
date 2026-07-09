@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const b4a = require('b4a')
 const { generateKeypair } = require('@peerloom/core/identity')
 const { signValue } = require('@peerloom/core/records')
-const { rowApplyDecision, rowSharedDecision, applyPetalOp, deviceKey, dayKey, periodKey, phaseKey, predictKey } = require('../src/petalWire')
+const { rowApplyDecision, rowSharedDecision, applyPetalOp, deviceKey, dayKey, periodKey, phaseKey, predictKey, memberKey } = require('../src/petalWire')
 
 const KP = generateKeypair()
 const PUB = b4a.toString(KP.publicKey, 'hex')
@@ -162,4 +162,36 @@ test('applyPetalOp end to end: owner projection lands, partner forgery dropped',
   // A partner tries to overwrite the phase with a validly self-signed row.
   await applyPetalOp({ type: 'put', key: phaseKey(), value: phaseRow(PARTNER, PARTNERPUB, { phase: 'menstrual', updatedAt: 9000 }) }, { view })
   assert.equal(view._map.get(phaseKey()).phase, 'fertile') // unchanged - forgery rejected
+})
+
+// --- shared base: member:{pubkey} joiner identity (per-person shares) ---------
+
+const memberRow = (kp, pub, extra = {}) => signValue({ pubkey: pub, updatedAt: 1500, displayName: 'Ada', ...extra }, kp.secretKey)
+
+test('member row: a joiner may self-publish only their OWN member:{pubkey}', () => {
+  // A partner writes their own member row -> accept (self-write; no owner needed,
+  // this is the one shared row a non-owner may write).
+  assert.equal(rowSharedDecision(memberKey(PARTNERPUB), memberRow(PARTNER, PARTNERPUB), null, OWNERPUB), 'accept')
+  // A partner tries to write SOMEONE ELSE's member row (key names another pubkey) -> reject.
+  assert.equal(rowSharedDecision(memberKey(OWNERPUB), memberRow(PARTNER, PARTNERPUB), null, OWNERPUB), 'reject')
+})
+
+test('member row: rejected if the signature does not verify', () => {
+  const r = memberRow(PARTNER, PARTNERPUB); r.displayName = 'Mallory' // tamper after signing
+  assert.equal(rowSharedDecision(memberKey(PARTNERPUB), r, null, OWNERPUB), 'reject')
+})
+
+test('member row does not open a hole: a projection key is still owner-only', () => {
+  // The member branch only applies to member: keys; a partner-signed projection row
+  // is rejected exactly as before.
+  assert.equal(rowSharedDecision(phaseKey(), phaseRow(PARTNER, PARTNERPUB), null, OWNERPUB), 'reject')
+})
+
+test('applyPetalOp: a joiner member row lands, their projection forgery is dropped', async () => {
+  const view = mockView()
+  await applyPetalOp({ type: 'put', key: 'share:meta', value: shareMeta() }, { view })
+  await applyPetalOp({ type: 'put', key: memberKey(PARTNERPUB), value: memberRow(PARTNER, PARTNERPUB) }, { view })
+  assert.equal(view._map.get(memberKey(PARTNERPUB)).displayName, 'Ada') // joiner identity applied
+  await applyPetalOp({ type: 'put', key: phaseKey(), value: phaseRow(PARTNER, PARTNERPUB, { updatedAt: 9000 }) }, { view })
+  assert.equal(view._map.has(phaseKey()), false) // projection forgery still dropped
 })

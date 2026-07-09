@@ -185,6 +185,25 @@ test('period:log preserves a day that already has a chosen flow', async () => {
   await engine.close()
 })
 
+test('share:list includes an empty joiners list until someone joins', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const { groupId } = await call('share:create', { scope: 'phase' })
+  const row = (await call('share:list', {})).find((s) => s.groupId === groupId)
+  assert.ok(row)
+  assert.deepEqual(row.joiners, [])
+  await engine.close()
+})
+
+test('member:publish is a no-op when this device has joined no shares', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  const r = await call('member:publish', {})
+  assert.equal(r.published, 0)
+  await engine.close()
+})
+
 test('period:log with no end marks through today (ongoing period)', async () => {
   const { engine, call } = driver()
   await call('init', {})

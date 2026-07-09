@@ -14,7 +14,7 @@ const { defaultEncodeInvite } = require('@peerloom/core/engine')
 const b4a = require('b4a')
 const sodium = require('sodium-universal')
 
-const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE } = require('./petalWire')
+const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, memberKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE, MEMBER_RANGE } = require('./petalWire')
 const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FLOW_VALUES } = require('./prediction')
 
 // Consent scopes (see DECISIONS.md 2026-07-06). Each governs which projection
@@ -219,6 +219,29 @@ async function refreshShareMeta (ctx) {
   }
 }
 
+// A JOINER (viewer) self-publishes their display name into a shared-IN base's
+// member:{ownPubkey} row, so the OWNER's Sharing screen can show who joined. Only
+// when the base is writable (we were admitted as a writer); best-effort otherwise.
+// Name only for now - the joiner avatar is a follow-up (proposal 2026-07-09).
+async function publishMember (ctx, groupId) {
+  const base = ctx.bases.get(groupId)
+  if (!base || !base.writable) return false
+  const prof = await getProfile(ctx)
+  const val = {}
+  if (prof?.displayName) val.displayName = String(prof.displayName).slice(0, 64)
+  await putRow(ctx, groupId, memberKey(pubkeyHex(ctx)), val)
+  return true
+}
+// Re-publish our member identity into every shared-in base (after a profile change,
+// or opportunistically once a freshly-joined base has become writable).
+async function refreshMemberIdentity (ctx) {
+  let n = 0
+  for (const m of await membershipsByKind(ctx, 'shared-in')) {
+    try { if (await publishMember(ctx, m.groupId)) n++ } catch {}
+  }
+  return n
+}
+
 async function computeProjection (ctx) {
   const base = viewFor(ctx, await privateGroupId(ctx))
   await base.update()
@@ -356,7 +379,8 @@ const methods = {
       }
     }
     await ctx.localDb.put('profile', profile)
-    await refreshShareMeta(ctx).catch(() => {}) // push the new name/avatar to current partners
+    await refreshShareMeta(ctx).catch(() => {}) // push the new name/avatar to partners we share WITH
+    await refreshMemberIdentity(ctx).catch(() => {}) // update our name on shares we JOINED
     const out = { displayName: profile.displayName || '', updatedAt: profile.updatedAt }
     const avatar = await resolveAvatarAwait(ctx, profile)
     if (avatar) out.avatar = avatar
@@ -661,9 +685,25 @@ const methods = {
   },
 
   'share:list': async (_args, ctx) => {
+    const self = pubkeyHex(ctx)
     const out = []
     for (const m of await membershipsByKind(ctx, 'shared-out')) {
-      out.push({ groupId: m.groupId, scope: m.scope || 'phase', inviteKey: reencodeInvite(m), createdAt: m.joinedAt || 0 })
+      // Who has joined this share? Read the base's member:{pubkey} rows (self-signed
+      // by each joiner); skip our own. Names are self-attested until the core
+      // addWriter gating (proposal 2026-07-09 Part B) lands.
+      const joiners = []
+      const base = ctx.bases.get(m.groupId)
+      if (base) {
+        try {
+          await base.update()
+          for await (const { value } of base.view.createReadStream(MEMBER_RANGE)) {
+            if (value && value.pubkey && value.pubkey !== self && !value.deleted) {
+              joiners.push({ pubkey: value.pubkey, name: value.displayName || null })
+            }
+          }
+        } catch {}
+      }
+      out.push({ groupId: m.groupId, scope: m.scope || 'phase', inviteKey: reencodeInvite(m), createdAt: m.joinedAt || 0, joiners })
     }
     out.sort((a, b) => a.createdAt - b.createdAt)
     return out
@@ -688,8 +728,16 @@ const methods = {
     if (typeof inviteKey !== 'string' || !inviteKey.trim()) throw new Error('inviteKey required')
     const r = await ctx.joinGroup({ inviteKey: inviteKey.trim() })
     await tagKind(ctx, r.groupId, 'shared-in')
+    // Tell the owner who joined (best-effort; may be too early if we are not yet a
+    // writer - partner:view + member:publish re-attempt once writable).
+    await publishMember(ctx, r.groupId).catch(() => {})
     return { groupId: r.groupId }
   },
+
+  // Re-publish this viewer's member identity into every shared-in base. The UI
+  // calls this on group:updated / when opening a partner view, so a join that was
+  // not yet writable at partner:join time still reaches the owner once it is.
+  'member:publish': async (_args, ctx) => ({ published: await refreshMemberIdentity(ctx) }),
 
   'partner:list': async (_args, ctx) => {
     const out = []
@@ -707,6 +755,9 @@ const methods = {
   'partner:view': async ({ groupId }, ctx) => {
     const m = (await membershipsByKind(ctx, 'shared-in')).find((x) => x.groupId === groupId)
     if (!m) throw new Error('partner share not found')
+    // Opportunistically (re)publish our identity now that we are likely writable, so
+    // the owner sees who joined. Non-blocking - never gate the view on it.
+    publishMember(ctx, groupId).catch(() => {})
     const base = viewFor(ctx, groupId)
     await base.update()
     const meta = (await base.view.get('share:meta'))?.value || null
