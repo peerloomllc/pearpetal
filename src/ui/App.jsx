@@ -325,6 +325,7 @@ function ScannerView ({ open, onClose, onDecode }) {
 
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
+  const [intro, setIntro] = useState(true) // the blooming-dial welcome, shown before the chooser
   const [mode, setMode] = useState(null) // null | 'link' | 'partner'
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
@@ -347,13 +348,33 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
   const submit = () => (mode === 'link' ? link() : joinPartner())
   const onScanned = (txt) => { setScanning(false); (mode === 'link' ? link : joinPartner)(txt) }
   const back = () => { setMode(null); setErr(''); setCode(''); setScanning(false) }
-  useBackHandler(mode !== null, back) // Android Back leaves a link/partner sub-mode
+  // Android Back: from a paste sub-mode -> the chooser; from the chooser -> the intro.
+  useBackHandler(!intro || mode !== null, () => { if (mode !== null) back(); else setIntro(true) })
+
+  // First-run intro: the blooming-dial welcome shown BEFORE the Start / Link / View
+  // chooser, so the app introduces itself first. "Get started" reveals the chooser.
+  const t0 = todayIso()
+  const samplePred = { known: true, phase: 'fertile', dayOfCycle: 14, cycleLen: 28, ovulationEst: t0, nextPeriodStart: addDaysIso(t0, 14), fertileStart: addDaysIso(t0, -4), fertileEnd: addDaysIso(t0, 1) }
+  if (intro) {
+    return (
+      <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+          <PetalDial pred={samplePred} today={t0} flower='rose' />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
+          <div style={{ color: colors.text.secondary, marginTop: spacing.sm, lineHeight: 1.5 }}>Your flower furls and blooms across your cycle, so a glance shows your phase. Private tracking - no account, no server, your data stays on your devices.</div>
+        </div>
+        <Btn onClick={() => setIntro(false)}>Get started</Btn>
+      </div>
+    )
+  }
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
-        <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>Private cycle tracking. No account, no server. Your data stays on your devices.</div>
+        {mode === null && <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>How would you like to begin?</div>}
       </div>
       {mode === null && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
@@ -389,7 +410,7 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
 // fully skippable sequence sets up the essentials - name/photo, goal, last period,
 // reminders - so the user lands on a MEANINGFUL dial instead of an empty "Learning
 // your cycle". Reuses the same controls as Settings; T1, no wire change.
-const SETUP_STEPS = ['welcome', 'name', 'goal', 'period', 'reminders', 'done']
+const SETUP_STEPS = ['name', 'goal', 'period', 'reminders', 'done']
 
 function StepDots ({ n, i }) {
   return (
@@ -431,9 +452,6 @@ function SetupWizard ({ onDone }) {
     setBusy(false); go(1)
   }
 
-  // Decorative bloom for the welcome step (shows the hero; not the user's data).
-  const t0 = todayIso()
-  const samplePred = { known: true, phase: 'fertile', dayOfCycle: 14, cycleLen: 28, ovulationEst: t0, nextPeriodStart: addDaysIso(t0, 14), fertileStart: addDaysIso(t0, -4), fertileEnd: addDaysIso(t0, 1) }
   const field = { background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '10px 12px', fontSize: 15 }
 
   const title = (t, sub) => (
@@ -450,18 +468,7 @@ function SetupWizard ({ onDone }) {
   )
 
   let body
-  if (s === 'welcome') {
-    body = (
-      <>
-        <div style={{ ...card, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-          <PetalDial pred={samplePred} today={t0} flower='rose' />
-        </div>
-        {title('Welcome to PearPetal', 'Your flower furls and blooms across your cycle, so a glance shows your phase. Everything stays on your device - no account, no server.')}
-        <Btn onClick={() => go(1)}>Get started</Btn>
-        <Btn kind='ghost' onClick={onDone}>Skip setup</Btn>
-      </>
-    )
-  } else if (s === 'name') {
+  if (s === 'name') {
     body = (
       <>
         {title('What should we call you?', 'Shown to partners you share with; otherwise it stays on your device. Optional.')}
