@@ -426,7 +426,10 @@ function Sharing ({ onClose, onOpenPartner }) {
           {shares.map((s) => {
             const joiners = s.joiners || []
             const named = joiners.map((j) => j.name).filter(Boolean)
-            const title = named.length ? `Shared with ${named.join(', ')}`
+            // Just the joiner name(s): the section header ("People you share with")
+            // already supplies "shared with", and dropping the prefix stops long
+            // names from being truncated on narrow screens.
+            const title = named.length ? named.join(', ')
               : joiners.length ? (joiners.length === 1 ? 'Someone joined' : `${joiners.length} people joined`)
                 : 'Not joined yet'
             const on = qrFor === s.groupId
@@ -437,8 +440,8 @@ function Sharing ({ onClose, onOpenPartner }) {
                     ? <Avatar name={named[0] || '?'} size={32} />
                     : <span style={{ width: 32, height: 32, borderRadius: radius.full, background: colors.surface.elevated, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: colors.text.muted, flexShrink: 0 }}><ShareNetwork size={16} /></span>}
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
-                    <div style={{ color: colors.text.muted, fontSize: 12, textTransform: 'capitalize' }}>{s.scope} · shared {sharedOn(s.createdAt)}</div>
+                    <div style={{ color: colors.text.primary, fontWeight: 500, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }}>{title}</div>
+                    <div style={{ color: colors.text.muted, fontSize: 12, textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.scope} · shared {sharedOn(s.createdAt)}</div>
                   </div>
                   <div style={{ display: 'flex', gap: spacing.xs, flexShrink: 0 }}>
                     <IconBtn label={on ? 'Hide QR' : 'Show QR'} onClick={() => setQrFor(on ? null : s.groupId)} active={on}><QrCode size={18} weight={on ? 'fill' : 'regular'} /></IconBtn>
