@@ -1484,6 +1484,9 @@ export default function App () {
     if (themePref !== 'system') return undefined
     return onSystemThemeChange((resolved) => setThemeResolved(resolved))
   }, [themePref])
+  // Tell the shell our resolved theme so it persists it and paints the pre-JS
+  // background to match on the next cold start (no dark flash for light users).
+  useEffect(() => { call('shell:theme', { theme }).catch(() => {}) }, [theme])
   // Android hardware/gesture Back: pop the in-app stack instead of exiting. The
   // shell consumes Back only while canBack is true (shell:navState) and emits a
   // 'back' event we handle here, closing the topmost overlay / walking screens ->
