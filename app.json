@@ -99,6 +99,14 @@
           "resizeMode": "contain"
         }
       ],
+      "./plugins/with-ios-no-aps",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/monochrome-icon.png",
+          "color": "#f2789f"
+        }
+      ],
       "./plugins/with-android-debug-standalone",
       "./plugins/with-android-queries"
     ],

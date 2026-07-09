@@ -2,6 +2,55 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-09 - To-self local notifications (v1) - IMPLEMENTED
+Tier: T1 (device-local prefs feeding OS-scheduled local notifications over the
+existing on-device prediction; NO wire change, no new Autobase row, nothing
+crosses to a partner). Design proposal `proposals/2026-07-09-notifications.md`.
+Context: notifications were an open "design decision to make before building"
+(TODO). Resolved with Tim 2026-07-09.
+Choice (four decisions):
+  - v1 reminder set = period due (day-before + day-of) + fertile window / ovulation
+    ONLY. No daily "log today", no BBT reminder (revisit later). Goal-aware
+    (conceive leads with fertility; avoid uses a not-contraception caution;
+    pregnant suppresses all; birth control suppresses the fertility reminders,
+    matching the dial/summary) and confidence-gated (nothing while confidence is
+    none/low - never nag on a guess).
+  - Discretion is USER-CONFIGURABLE: descriptive by default, a "Discreet" toggle
+    swaps every notification to neutral wording ("PearPetal") so a lock-screen
+    glance reveals nothing. This is the app-specific call (PearPetal is
+    deliberately discreet on a home screen); a generic reminder feature would skip
+    it.
+  - OPT-IN: default OFF; the OS permission prompt fires only when the user turns
+    it on (Settings today; folds into the guided-onboarding blocker for first-run
+    surfacing).
+  - Partner notifications: passive "sharing ended" only, DEFERRED to a separate
+    T2 proposal (revoke writes no signal today; needs a tombstone). NOT in this
+    change.
+Architecture: the WORKLET owns the prefs (`notifications` localDb row, like
+`prefs`) and the pure, goal/confidence/BC/discreet event computation
+(`src/notifications.js` -> `notifications:schedule`). The RN shell is a thin
+scheduler: it fetches the events and hands them to expo-notifications (one-off
+DATE triggers), which the OS delivers even when the app is closed - so NO
+background execution is needed for to-self reminders. The shell reschedules on
+boot + every app foreground; the UI also fires `shell:notifications:sync` after
+any prediction-changing mutation (day/period/prefs/import/link). Ids are prefixed
+`pp:` so only PearPetal's notifications are cancelled on a reschedule.
+Alternatives: react-to-peer immediate notifications (PearList's model - wrong
+shape here; cycle events are future-dated); on-by-default (rejected - too
+presumptuous for a sensitive health app); neutral-always or descriptive-always
+wording (rejected in favour of the user toggle).
+Compat: additive, device-local, no migration; a device with no `notifications`
+row defaults to disabled. Verify: `npm run verify` green (83 tests incl. 15
+pure-event tests + 3 method tests + 3 bundles). ON-DEVICE VERIFIED on the TCL
+(seeded ovulation=today, medium confidence): opt-in shows the OS prompt + grant
+persists; AlarmManager schedules the right dates at the chosen time across a
+2-cycle horizon; reminders FIRE while backgrounded with both descriptive
+("Ovulation predicted") and discreet ("PearPetal") content; changing the time
+reschedules; disabling cancels every alarm (18 -> 0). One on-device fix: scheduled
+(DATE-trigger) notifications need `channelId` on the TRIGGER (not just content) or
+Android routes them to expo's fallback channel - confirmed the fix lands them on the
+custom "reminders" channel.
+
 ## 2026-07-09 - Shared-base addWriter gating (per-person shares Part B) - IMPLEMENTED
 Tier: T3 (writer admission / pairing; @peerloom/core, suite-wide).
 Context: on a shared base the joiner is an Autobase writer, and a writer can

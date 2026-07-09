@@ -1097,6 +1097,63 @@ function CollapsibleCard ({ title, open, onToggle, children, id }) {
   )
 }
 
+// One reminder-category row (label + description + toggle).
+function NotifRow ({ label, desc, on, onClick }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ color: colors.text.secondary, fontSize: 14 }}>{label}</div>
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>{desc}</div>
+      </div>
+      <Toggle on={on} label={label} onClick={onClick} />
+    </div>
+  )
+}
+
+// Opt-in to-self cycle reminders (period due + fertile window / ovulation). The
+// prefs + scheduling live in the shell/worklet (proposals/2026-07-09-notifications.md);
+// this card drives shell:notifications:get/set. Enabling prompts the OS once; the
+// OS then delivers the reminders even when the app is closed. Inert in a browser
+// preview. Default OFF (opt-in). Discreet mode hides cycle wording on the lock
+// screen; period/fertility are goal-aware + confidence-gated downstream.
+function NotificationsCard () {
+  const [n, setN] = useState(null)
+  useEffect(() => { call('shell:notifications:get').then(setN).catch(() => setN({ enabled: false })) }, [])
+  if (!n) return null
+  const set = async (patch) => {
+    setN((p) => ({ ...p, ...patch })) // optimistic
+    const next = await call('shell:notifications:set', patch).catch(() => null)
+    if (next) setN(next)
+    haptic('light')
+  }
+  const denied = n.enabled && n.osGranted === false
+  const input = { background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '6px 10px', fontSize: 15 }
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ color: colors.text.primary, fontSize: 15, fontWeight: 500 }}>Reminders</div>
+          <div style={{ color: colors.text.muted, fontSize: 12 }}>Gentle nudges on your own phone. Private to this device, never sent to anyone.</div>
+        </div>
+        <Toggle on={!!n.enabled} label='Reminders' onClick={() => set({ enabled: !n.enabled })} />
+      </div>
+      {denied && <Explainer title='Notifications are off in system settings.'>Turn notifications on for PearPetal in your phone settings to start receiving reminders.</Explainer>}
+      {n.enabled && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+          <NotifRow label='Period approaching' desc='The day before and the day your period is predicted.' on={n.period !== false} onClick={() => set({ period: !(n.period !== false) })} />
+          <NotifRow label='Fertile window' desc='When your fertile window opens and on your predicted ovulation day.' on={n.fertility !== false} onClick={() => set({ fertility: !(n.fertility !== false) })} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
+            <span style={{ color: colors.text.secondary, fontSize: 14 }}>Time of day</span>
+            <input type='time' value={n.time || '09:00'} onChange={(e) => set({ time: e.target.value })} style={input} />
+          </div>
+          <NotifRow label='Discreet' desc='Hide cycle details on the lock screen - reminders just read "PearPetal".' on={!!n.discreet} onClick={() => set({ discreet: !n.discreet })} />
+          <div style={{ color: colors.text.muted, fontSize: 11 }}>Reminders only appear once PearPetal is confident in your prediction, and pause while you are pregnant or on birth control.</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState('')
@@ -1180,6 +1237,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
           ? <PregnancySetup prefs={prefs} save={save} />
           : <Explainer>{(GOAL_OPTS.find(([k]) => k === (prefs.goal || 'track')) || [])[2]}</Explainer>}
       </div>
+      <NotificationsCard />
       <CollapsibleCard title='Cycle lengths' open={openSection.lengths} onToggle={() => toggleSection('lengths')}>
         <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
         <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />

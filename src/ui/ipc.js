@@ -26,10 +26,20 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// Methods that change the on-device prediction. After one lands, ask the shell to
+// re-arm the scheduled cycle reminders so they track the fresh projection without
+// waiting for the next app foreground (a no-op unless notifications are on).
+const RESCHEDULE_AFTER = new Set(['day:set', 'period:log', 'prefs:set', 'import:data', 'cycle:create', 'link:join'])
+let _resyncTimer = null
+function scheduleNotifResync () {
+  if (_resyncTimer) return
+  _resyncTimer = setTimeout(() => { _resyncTimer = null; realCall('shell:notifications:sync', {}).catch(() => {}) }, 400)
+}
+
 function realCall (method, args) {
   return new Promise((resolve, reject) => {
     const id = nextId++
-    pending.set(id, { resolve, reject })
+    pending.set(id, { resolve: (r) => { if (RESCHEDULE_AFTER.has(method)) scheduleNotifResync(); resolve(r) }, reject })
     window.ReactNativeWebView.postMessage(JSON.stringify({ id, method, args: args || {} }))
   })
 }
@@ -52,7 +62,7 @@ export function haptic (kind = 'light') {
 // a browser preview. index.html?seed lands on a populated log.
 const rid = (n = 22) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('')
 const MOCK_SELF = 'ab'.repeat(32)
-const mock = { base: null, days: new Map(), periods: new Map(), devices: new Map(), deviceLabel: 'This device', shares: new Map(), partners: new Map(), prefs: null }
+const mock = { base: null, days: new Map(), periods: new Map(), devices: new Map(), deviceLabel: 'This device', shares: new Map(), partners: new Map(), prefs: null, notif: { enabled: false, discreet: false, period: true, fertility: true, time: '09:00' } }
 const mockProjection = () => {
   const starts = [...mock.periods.keys(), ...[...mock.days.values()].filter((d) => ['light', 'medium', 'heavy'].includes(d.flow)).map((d) => d.date)].sort()
   if (!starts.length) return { known: false, phase: 'follicular' }
@@ -172,6 +182,11 @@ const mockMethods = {
   'shell:share': async ({ text }) => { try { if (navigator.share) await navigator.share({ text }); else alert('Share:\n\n' + text) } catch {} return { ok: true } },
   'shell:openUrl': async ({ url }) => { try { window.open(url, '_blank', 'noopener') } catch {} return { ok: true } },
   'shell:scanQr': async () => { const code = window.prompt ? window.prompt('Paste an invite code (camera scan on device):') : null; return { code: code || null } },
+  // Notifications are inert in the browser preview; keep the prefs so the Settings
+  // card is fully clickable (on device the shell owns scheduling + OS permission).
+  'shell:notifications:get': async () => ({ ...mock.notif, osGranted: true }),
+  'shell:notifications:set': async (patch) => { mock.notif = { ...mock.notif, ...patch }; return { ...mock.notif, osGranted: true, permissionDenied: false } },
+  'shell:notifications:sync': async () => ({ ok: true }),
 }
 
 let seeded = false

@@ -21,8 +21,11 @@ Not yet built:
 Code done, need **on-device confirmation** (bundle these into a hardware pass):
 - **iOS Local Network prompt**: install on the iPhone (`scripts/ios-dev-install.sh`),
   confirm the LN prompt appears + partner sync takes the LAN path.
-- **App icon / notification icons**: confirm on-device (needs `expo prebuild`, which
-  wipes the .debug config - pair with the durable-debug-config dev-infra item).
+- **App icon / notification icons**: iOS HOME-SCREEN icon CONFIRMED 2026-07-09 (was a
+  stale blank `ios/` from before the art landed; regenerated `ios/` -> real cherry-blossom
+  icon on the iPhone SE). STILL TODO: the notification-tray glyph shows the colored app
+  icon, not the monochrome one (Android + iOS); needs the icon-asset wiring confirmed on a
+  fresh prebuild (pair with the durable-debug-config dev-infra item).
 - **Invite/share URL**: copy a link on one phone, open/paste on another.
 - **Petal dial in the partner view + ring day-scrub**: owner taps a past tick ->
   editor jumps; partner sees the dial.
@@ -52,13 +55,19 @@ Website-side (not in-app):
 
 ## Design decisions to make (before building)
 
-- **Notifications - to self and/or to partner?** To-self local reminders (period-due /
-  fertile-window / "log today" / BBT) are pure local scheduling. To-partner
-  notifications must respect the consent scope + the no-push-server P2P model.
-  Specific case: notify a partner when the owner revokes? Recommendation: yes but
-  gently - a passive "sharing ended" state on their next open, not a push alert.
-  Background sync ties in (may need a background wake). Build only if a real use case
-  needs it.
+- ~~**Notifications (v1 to-self)**~~ BUILT 2026-07-09 (proposal
+  2026-07-09-notifications, DECISIONS 2026-07-09): opt-in period-due + fertile/ovulation
+  reminders, goal-aware + confidence-gated, user-configurable discreet mode; Settings
+  Reminders card; OS-scheduled local notifications (no wire change, no background exec).
+  ON-DEVICE VERIFIED on the TCL (opt-in prompt + grant persist, scheduling across a
+  2-cycle horizon, backgrounded fire for both descriptive + discreet content, reschedule
+  on change, disable-cancels; fixed channelId-on-trigger so scheduled notifications use the
+  custom "reminders" channel not expo's fallback). REMAINING: (a) first-run opt-in prompt
+  folds into the guided-onboarding blocker; (b) confirm on iOS next hardware pass; (c) the
+  notification status-bar icon shows the colored app icon, not a monochrome glyph - needs
+  the `expo prebuild` notification-icon item (pair with durable-debug-config). Partner-facing
+  "sharing ended" is still a DEFERRED T2 (needs a revoke tombstone - revoke writes no signal
+  today).
 - **JSON export encryption - optional passphrase?** Slice 4 shipped plain JSON
   deliberately (recovery-first). Revisit an OPTIONAL passphrase-encrypted export (KDF
   -> XChaCha20-Poly1305) so backups aren't plaintext at rest, keeping plain export the
@@ -107,3 +116,9 @@ may need an app reopen to finish syncing its first edits."
   Mac mini, then install from this linux box via `ideviceinstaller install <ipa>` over
   USB (devicectl install fails "Authorization required" over the wireless CoreDevice
   link; screenshot/launch need a mounted Developer Disk Image).
+- **`ios-dev-install.sh` only prebuilds when `ios/` is MISSING** - a stale `ios/` (e.g.
+  generated before an icon / plugin / entitlement change) silently ships old assets
+  (this is exactly how the blank iOS icon shipped for days). Make it detect staleness or
+  always prebuild (ios/ is gitignored + has no custom native code, so `rm -rf ios` before
+  a build is safe). Until fixed, `rm -rf ios` before a build after any app.json/icon
+  change.

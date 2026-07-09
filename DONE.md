@@ -6,6 +6,39 @@ work lives in `TODO.md`.
 
 ## 2026-07-09
 
+- **To-self local notifications v1** (proposal 2026-07-09-notifications, DECISIONS
+  2026-07-09): opt-in cycle reminders (period due day-before + day-of; fertile
+  window + ovulation), goal-aware + confidence-gated + birth-control-suppressed,
+  with a user-configurable "Discreet" mode that hides cycle wording on the lock
+  screen. Pure `src/notifications.js` computes the events; worklet
+  `notifications:get/set/schedule` own the device-local prefs; the RN shell hands
+  the events to expo-notifications as OS-scheduled DATE triggers (delivered even
+  when the app is closed - no background execution), rescheduling on boot / app
+  foreground / after any prediction-changing edit. Settings "Reminders" card;
+  default OFF, OS prompt only on opt-in. No wire change (T1). Verify green (83
+  tests + 3 bundles). ON-DEVICE VERIFIED on the TCL (seeded ovulation=today,
+  medium confidence): opt-in shows the OS prompt + grant persists (re-enable
+  needs no re-prompt); AlarmManager schedules the right dates at the chosen time
+  across a 2-cycle horizon; a reminder FIRES while the app is backgrounded with
+  the correct descriptive goal-aware content ("Ovulation predicted") AND with the
+  discreet wording ("PearPetal") when discreet is on; changing the time reschedules
+  all alarms; disabling cancels every scheduled alarm (18 -> 0). Fixed during the
+  pass: scheduled (DATE-trigger) notifications need `channelId` on the TRIGGER, not
+  just content, else Android routes them to expo's fallback channel - confirmed the
+  fix lands them on the custom "reminders" channel. Partner-facing "sharing ended"
+  deferred to a T2 proposal.
+- **iOS: strip the push entitlement + fix the app icon** (same notifications work):
+  the expo-notifications config plugin adds `aps-environment` (Push Notifications) to
+  the iOS entitlements, which the wildcard dev provisioning profile cannot sign - a
+  fresh `expo prebuild` + Release archive FAILED. PearPetal is local-notifications-only
+  (no remote push), so new config plugin `plugins/with-ios-no-aps.js` removes it.
+  GOTCHA: iOS entitlements mods run in REVERSE app.json `plugins` order, so this plugin
+  is listed BEFORE "expo-notifications" to run after it. Separately fixed a STALE blank
+  iOS app icon: `ios/` was generated 2026-07-07 (before the cherry-blossom `icon.png`
+  landed 2026-07-08) and `ios-dev-install.sh` only prebuilds when `ios/` is missing, so
+  the blank placeholder kept shipping; regenerating `ios/` rebuilds the AppIcon from the
+  current art. Both verified on hardware: archive SUCCEEDED + installed on the iPhone SE
+  over USB, real icon on the home screen.
 - **Pre-paint dark flash fix** (#42): the RN shell reads the WebView's persisted
   resolved theme (AsyncStorage) at boot and paints the loading view / WebView /
   HTML wrapper / status bar to match, so light-theme users no longer flash dark on
