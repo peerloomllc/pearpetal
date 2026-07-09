@@ -115,7 +115,13 @@ async function syncNotifications (opts: { request?: boolean } = {}): Promise<{ e
           title: e.title, body: e.body, data: { tag: 'pearpetal', category: e.category },
           ...(Platform.OS === 'android' ? { channelId: NOTIF_CHANNEL } : {}),
         },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
+        // For a DATE (scheduled) trigger, Android takes the channel from the
+        // TRIGGER, not content - content.channelId is only honoured for immediate
+        // notifications. Without this the OS routes it to expo's fallback channel.
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE, date: when,
+          ...(Platform.OS === 'android' ? { channelId: NOTIF_CHANNEL } : {}),
+        },
       })
       scheduled++
     } catch {}

@@ -16,8 +16,17 @@ work lives in `TODO.md`.
   when the app is closed - no background execution), rescheduling on boot / app
   foreground / after any prediction-changing edit. Settings "Reminders" card;
   default OFF, OS prompt only on opt-in. No wire change (T1). Verify green (83
-  tests + 3 bundles). On-device confirm still pending; partner-facing "sharing
-  ended" deferred to a T2 proposal.
+  tests + 3 bundles). ON-DEVICE VERIFIED on the TCL (seeded ovulation=today,
+  medium confidence): opt-in shows the OS prompt + grant persists (re-enable
+  needs no re-prompt); AlarmManager schedules the right dates at the chosen time
+  across a 2-cycle horizon; a reminder FIRES while the app is backgrounded with
+  the correct descriptive goal-aware content ("Ovulation predicted") AND with the
+  discreet wording ("PearPetal") when discreet is on; changing the time reschedules
+  all alarms; disabling cancels every scheduled alarm (18 -> 0). Fixed during the
+  pass: scheduled (DATE-trigger) notifications need `channelId` on the TRIGGER, not
+  just content, else Android routes them to expo's fallback channel - confirmed the
+  fix lands them on the custom "reminders" channel. Partner-facing "sharing ended"
+  deferred to a T2 proposal.
 - **Pre-paint dark flash fix** (#42): the RN shell reads the WebView's persisted
   resolved theme (AsyncStorage) at boot and paints the loading view / WebView /
   HTML wrapper / status bar to match, so light-theme users no longer flash dark on

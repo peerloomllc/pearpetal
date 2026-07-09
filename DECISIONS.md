@@ -41,9 +41,15 @@ presumptuous for a sensitive health app); neutral-always or descriptive-always
 wording (rejected in favour of the user toggle).
 Compat: additive, device-local, no migration; a device with no `notifications`
 row defaults to disabled. Verify: `npm run verify` green (83 tests incl. 15
-pure-event tests + 3 method tests + 3 bundles). ON-DEVICE confirmation still
-pending (opt-in prompt, a seeded near-future fire while backgrounded, discreet
-wording, disable-cancels).
+pure-event tests + 3 method tests + 3 bundles). ON-DEVICE VERIFIED on the TCL
+(seeded ovulation=today, medium confidence): opt-in shows the OS prompt + grant
+persists; AlarmManager schedules the right dates at the chosen time across a
+2-cycle horizon; reminders FIRE while backgrounded with both descriptive
+("Ovulation predicted") and discreet ("PearPetal") content; changing the time
+reschedules; disabling cancels every alarm (18 -> 0). One on-device fix: scheduled
+(DATE-trigger) notifications need `channelId` on the TRIGGER (not just content) or
+Android routes them to expo's fallback channel - confirmed the fix lands them on the
+custom "reminders" channel.
 
 ## 2026-07-09 - Shared-base addWriter gating (per-person shares Part B) - IMPLEMENTED
 Tier: T3 (writer admission / pairing; @peerloom/core, suite-wide).
