@@ -70,14 +70,39 @@ export function injectGlobalStyles () {
   document.head.appendChild(el)
 }
 
+// The stored value is a PREFERENCE: 'dark' | 'light' | 'system'. 'system' follows
+// the OS via matchMedia; dark is the default. resolveTheme collapses a pref to the
+// concrete 'dark'/'light' that drives the data-theme attribute (and the flowers).
 const THEME_KEY = 'pearpetal:theme'
-export function setTheme (mode) {
-  if (typeof document === 'undefined') return
-  const m = mode === 'light' ? 'light' : 'dark'
-  document.documentElement.setAttribute('data-theme', m)
-  try { localStorage.setItem(THEME_KEY, m) } catch {}
+function systemIsDark () {
+  try { return typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches } catch { return true }
 }
-export function loadTheme () {
-  try { const s = localStorage.getItem(THEME_KEY); if (s === 'light' || s === 'dark') return s } catch {}
+export function resolveTheme (pref) {
+  if (pref === 'system') return systemIsDark() ? 'dark' : 'light'
+  return pref === 'light' ? 'light' : 'dark'
+}
+export function loadThemePref () {
+  try { const s = localStorage.getItem(THEME_KEY); if (s === 'light' || s === 'dark' || s === 'system') return s } catch {}
   return 'dark'
 }
+// Apply a preference: stamp the resolved theme on <html> and persist the pref.
+// Returns the resolved 'dark'/'light'.
+export function applyThemePref (pref) {
+  const resolved = resolveTheme(pref)
+  if (typeof document !== 'undefined') document.documentElement.setAttribute('data-theme', resolved)
+  try { localStorage.setItem(THEME_KEY, pref) } catch {}
+  return resolved
+}
+// Subscribe to OS light/dark changes (only meaningful while the pref is 'system').
+// Returns an unsubscribe fn.
+export function onSystemThemeChange (cb) {
+  try {
+    const mq = matchMedia('(prefers-color-scheme: dark)')
+    const h = () => cb(mq.matches ? 'dark' : 'light')
+    mq.addEventListener ? mq.addEventListener('change', h) : mq.addListener(h)
+    return () => { mq.removeEventListener ? mq.removeEventListener('change', h) : mq.removeListener(h) }
+  } catch { return () => {} }
+}
+// Back-compat helpers (pre-paint boot + any direct callers).
+export function setTheme (mode) { applyThemePref(mode === 'light' ? 'light' : 'dark') }
+export function loadTheme () { return resolveTheme(loadThemePref()) }

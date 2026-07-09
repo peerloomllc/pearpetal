@@ -5,9 +5,13 @@
 //
 // Pure geometry, no deps. Bloom-in animates on mount (respects reduced motion).
 
-import { useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { colors } from './theme.js'
 import { buildFlower } from './flowers.js'
+
+// Current 'dark' | 'light' theme, so the flower SVG fills (computed, not CSS vars)
+// can pick their theme-appropriate palette and re-render when the theme changes.
+export const ThemeContext = createContext('dark')
 
 const CX = 160, CY = 160, R = 132, PERIOD_LEN = 5
 
@@ -30,6 +34,7 @@ function arcPath (r, degA, degB) {
 }
 
 export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayTap, selected, hideFertile = false }) {
+  const theme = useContext(ThemeContext)
   const known = !!pred?.known
   const L = known ? (pred.cycleLen || 28) : 28
   const dayOfCycle = known ? (pred.dayOfCycle || 1) : 1
@@ -103,7 +108,7 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
   }, [target])
 
   const b = bloom
-  const fl = buildFlower(flower, b)
+  const fl = buildFlower(flower, b, 1, theme)
   const glow = Math.max(0, (b - 0.55) / 0.45) * 0.9
   // The prominent marker sits on the selected day; a small pip stays at today once
   // you have scrubbed away, to keep your bearings.
@@ -128,7 +133,8 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
         <g>
           {ticks.map((d) => {
             const [x1, y1] = polar(R - 6, dayDeg(d)), [x2, y2] = polar(R + 6, dayDeg(d))
-            return <line key={d} x1={x1} y1={y1} x2={x2} y2={y2} stroke={(d - 1) % 7 === 0 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.18)'} strokeWidth={(d - 1) % 7 === 0 ? 1.6 : 0.9} />
+            const tc = theme === 'light' ? '20,15,17' : '255,255,255' // dark ticks on a light card
+            return <line key={d} x1={x1} y1={y1} x2={x2} y2={y2} stroke={(d - 1) % 7 === 0 ? `rgba(${tc},0.45)` : `rgba(${tc},0.18)`} strokeWidth={(d - 1) % 7 === 0 ? 1.6 : 0.9} />
           })}
         </g>
         <g transform={`translate(${CX},${CY})`}>
@@ -149,6 +155,7 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
 // blooming as the pregnancy advances (full bloom near term), plus trimester marks.
 // Display-only. Reuses the same geometry + species flowers as the cycle dial.
 export function PregnancyDial ({ progress = 0, weeks = 0, days = 0, flower = 'rose' }) {
+  const theme = useContext(ThemeContext)
   const p = clamp(progress, 0, 1)
   const bloom = 0.12 + 0.88 * p
   const [bl, setBl] = useState(0.06)
@@ -163,7 +170,7 @@ export function PregnancyDial ({ progress = 0, weeks = 0, days = 0, flower = 'ro
     return () => cancelAnimationFrame(raf.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bloom])
-  const fl = buildFlower(flower, bl)
+  const fl = buildFlower(flower, bl, 1, theme)
   const glow = Math.max(0, (bl - 0.55) / 0.45) * 0.9
   const arcEnd = -90 + Math.min(0.9999, p) * 360
   const triDeg = (wk) => -90 + (wk / 40) * 360
@@ -194,7 +201,8 @@ export function PregnancyDial ({ progress = 0, weeks = 0, days = 0, flower = 'ro
 
 // A small static thumbnail of a species at a fixed bloom, for the flower picker.
 export function FlowerThumb ({ flower, size = 56, bloom = 0.85 }) {
-  const fl = buildFlower(flower, bloom, 0.62)
+  const theme = useContext(ThemeContext)
+  const fl = buildFlower(flower, bloom, 0.62, theme)
   return (
     <svg viewBox='0 0 100 100' width={size} height={size} aria-hidden='true'>
       <g transform='translate(50,50)'>
