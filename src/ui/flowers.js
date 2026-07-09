@@ -5,7 +5,10 @@
 // each flower's natural hue, so the dial keeps encoding the phase. Which flower
 // is a device-local pref (prefs.flower); it never crosses the wire.
 
-const CLOSED = [122, 16, 36] // shared "furled / menstrual" crimson
+const CLOSED = [122, 16, 36] // shared "furled / menstrual" crimson (dark theme)
+// On a white card the dark crimson furls read as a near-black blob; a warmer,
+// lighter crimson keeps the "deep red / menstrual" meaning but stays legible.
+const LIGHT_CLOSED = [168, 52, 72]
 
 const lerp = (a, b, t) => a + (b - a) * t
 const rgb = (c) => `rgb(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])})`
@@ -25,16 +28,23 @@ const SHAPES = {
 // angular offset), the open-state color, and center styling. Curated to the
 // warm pink-to-red family so the phase color-gradient still reads.
 const FLOWERS = {
+  // `light` overrides deepen the open (and center) colours for the LIGHT theme,
+  // where the default pale pinks (tuned for a dark card) wash out on white. Only
+  // species whose default would be low-contrast carry an override; the shared
+  // furled CLOSED crimson reads fine on both.
   rose: {
     label: 'Rose', shape: 'round', open: [236, 139, 163], center: [201, 56, 79],
+    light: { open: [214, 104, 130] },
     layers: [{ count: 8, len: 1, wid: 1 }, { count: 8, len: 0.72, wid: 0.78, off: 0.5 }, { count: 6, len: 0.5, wid: 0.62, off: 0.25 }],
   },
   sakura: {
     label: 'Cherry blossom', shape: 'notched', open: [245, 194, 209], center: [232, 150, 172], centerScale: 0.7,
+    light: { open: [233, 146, 172], center: [212, 114, 144] },
     layers: [{ count: 5, len: 1, wid: 1.05 }],
   },
   lotus: {
     label: 'Lotus', shape: 'pointed', open: [236, 168, 200], center: [236, 120, 152],
+    light: { open: [210, 112, 164], center: [194, 82, 138] },
     layers: [{ count: 8, len: 1, wid: 0.92 }, { count: 8, len: 0.68, wid: 0.7, off: 0.5 }],
   },
   poppy: {
@@ -53,10 +63,13 @@ const flowerLabel = (key) => (FLOWERS[key] || FLOWERS[DEFAULT_FLOWER]).label
 
 // Build the flower's render data at a given bloom (0..1). `base` scales the whole
 // flower (petal length/width baseline) so thumbnails can render smaller.
-function buildFlower (key, b, base = 1) {
+function buildFlower (key, b, base = 1, theme = 'dark') {
   const f = FLOWERS[key] || FLOWERS[DEFAULT_FLOWER]
-  const closed = f.closed || CLOSED
-  const innerTint = lighten(f.open, 0.18)
+  const lite = theme === 'light' && f.light ? f.light : null
+  const openC = (lite && lite.open) || f.open
+  const centerC = (lite && lite.center) || f.center
+  const closed = (lite && lite.closed) || f.closed || (theme === 'light' ? LIGHT_CLOSED : CLOSED)
+  const innerTint = lighten(openC, 0.18)
   const shape = SHAPES[f.shape] || SHAPES.round
   const spin = b * 10
   const petals = []
@@ -66,7 +79,7 @@ function buildFlower (key, b, base = 1) {
     const wid = (8 + 27 * b) * (L.wid ?? 1) * base
     const d = shape(len, wid)
     const isInner = li > 0
-    const fill = mix(closed, isInner ? innerTint : f.open, b)
+    const fill = mix(closed, isInner ? innerTint : openC, b)
     const opacity = isInner ? Number((0.35 + 0.65 * b).toFixed(2)) : 1
     for (let i = 0; i < L.count; i++) {
       const ang = i * step + (L.off || 0) * step + (isInner ? -spin : spin)
@@ -75,7 +88,7 @@ function buildFlower (key, b, base = 1) {
   })
   const center = {
     r: Number(((19 - 9 * b) * (f.centerScale || 1) * base).toFixed(1)),
-    fill: f.centerFixed ? rgb(f.center) : mix([90, 12, 28], f.center, b),
+    fill: f.centerFixed ? rgb(centerC) : mix([90, 12, 28], centerC, b),
   }
   const centerHi = { r: Number(((7 - 4 * b) * base).toFixed(1)) }
   return { petals, center, centerHi }

@@ -1,10 +1,10 @@
 import { createRoot } from 'react-dom/client'
-import { injectGlobalStyles, setTheme, loadTheme } from './theme.js'
+import { injectGlobalStyles, applyThemePref, loadThemePref } from './theme.js'
 import App from './App.jsx'
 
-// Inject theme variables and apply the saved theme before first paint so there
-// is no flash (matches the suite's boot order).
+// Inject theme variables and apply the saved theme preference (resolving 'system'
+// via matchMedia) before first paint so there is no flash.
 injectGlobalStyles()
-setTheme(loadTheme())
+applyThemePref(loadThemePref())
 
 createRoot(document.getElementById('root')).render(<App />)

@@ -9,13 +9,13 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, CaretDown, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
-import { colors, spacing, radius } from './theme.js'
+import { colors, spacing, radius, applyThemePref, loadThemePref, resolveTheme, onSystemThemeChange } from './theme.js'
 import { projectCalendar } from '../prediction.js'
-import PetalDial, { PregnancyDial, FlowerThumb, isoDiff, addDaysIso } from './PetalDial.jsx'
+import PetalDial, { PregnancyDial, FlowerThumb, ThemeContext, isoDiff, addDaysIso } from './PetalDial.jsx'
 import { FLOWER_KEYS, flowerLabel } from './flowers.js'
 
 const FLOWS = [
@@ -130,6 +130,9 @@ function IconBtn ({ children, onClick, label, color, active, disabled }) {
   )
 }
 function flowColor (k) { return colors.flow[k] || colors.track }
+// Width (in ch) of the longest flower name, so the picker tiles + the dial pill
+// are all uniform (sized to the longest label) instead of varying by text length.
+const FLOWER_NAME_CH = `${Math.max(...FLOWER_KEYS.map((k) => flowerLabel(k).length))}ch`
 // A small on/off switch (for the birth-control toggle).
 function Toggle ({ on, onClick, label }) {
   return (
@@ -795,13 +798,9 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
     <div style={{ ...card, position: 'relative', display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
+      <button onClick={onFlowerTap} aria-label='Change flower' style={{ position: 'absolute', top: spacing.md, left: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, cursor: 'pointer', display: 'flex', alignItems: 'center' }}><FlowerThumb flower={flower} size={26} /></button>
       <button onClick={onInfo} aria-label='How to read the dial' style={{ position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, color: colors.text.muted, cursor: 'pointer', display: 'flex' }}><Info size={20} /></button>
       <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} hideFertile={pred.birthControl} />
-      <button onClick={onFlowerTap} aria-label='Change flower' style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: spacing.sm, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: '4px 12px 4px 6px', cursor: 'pointer' }}>
-        <FlowerThumb flower={flower} size={24} />
-        <span style={{ fontSize: 13, color: colors.text.secondary }}>{flowerLabel(flower)}</span>
-        <CaretDown size={12} color={colors.text.muted} />
-      </button>
       {!pred.known ? (
         <>
           <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Learning your cycle</div>
@@ -1044,7 +1043,7 @@ function FlowerPicker ({ value, onPick }) {
               border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.md}px`,
             }}>
               <FlowerThumb flower={key} size={52} />
-              <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{flowerLabel(key)}</span>
+              <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap', width: FLOWER_NAME_CH, textAlign: 'center' }}>{flowerLabel(key)}</span>
             </button>
           )
         })}
@@ -1081,7 +1080,7 @@ function CollapsibleCard ({ title, open, onToggle, children, id }) {
   )
 }
 
-function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled }) {
+function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState('')
   // The advanced/occasional sections collapse independently (collapsed by default).
@@ -1141,6 +1140,17 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your flower</div>
         <FlowerPicker value={prefs.flower} onPick={pickFlower} />
+      </div>
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Appearance</div>
+        <div style={{ display: 'flex', background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
+          {[['dark', 'Dark'], ['light', 'Light'], ['system', 'System']].map(([k, l]) => {
+            const on = (themePref || 'dark') === k
+            return (
+              <button key={k} onClick={() => onTheme && onTheme(k)} aria-pressed={on} style={{ flex: 1, border: 'none', borderRadius: radius.full, padding: '8px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>{l}</button>
+            )
+          })}
+        </div>
       </div>
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>What are you tracking for?</div>
@@ -1445,6 +1455,17 @@ export default function App () {
   const [periodSheet, setPeriodSheet] = useState(false)
   const [dialInfo, setDialInfo] = useState(false)
   const [flowerSheet, setFlowerSheet] = useState(false)
+  const [recentsOpen, setRecentsOpen] = useState(false) // Recents is collapsed by default (declutter the main page)
+  // Theme: `themePref` is the user's choice (dark/light/system), `theme` the
+  // resolved dark|light that drives CSS + the flower palette. main.jsx already
+  // applied the saved pref pre-paint; keep React in sync so flowers re-render.
+  const [themePref, setThemePref] = useState(() => loadThemePref())
+  const [theme, setThemeResolved] = useState(() => resolveTheme(loadThemePref()))
+  const changeTheme = (pref) => { setThemePref(pref); setThemeResolved(applyThemePref(pref)); haptic('light') }
+  useEffect(() => {
+    if (themePref !== 'system') return undefined
+    return onSystemThemeChange((resolved) => setThemeResolved(resolved))
+  }, [themePref])
   const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
   const [cycleView, setCycleView] = useState(() => { try { return localStorage.getItem('pearpetal:cycleView') === 'calendar' ? 'calendar' : 'dial' } catch { return 'dial' } })
   const setView = (v) => { setCycleView(v); try { localStorage.setItem('pearpetal:cycleView', v) } catch {} }
@@ -1506,7 +1527,7 @@ export default function App () {
   else if (mode === 'viewer') content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); boot() }} />
   else if (screen === 'devices') content = <Devices onClose={() => setScreen('main')} />
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
-  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onDevices={() => setScreen('devices')} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} />
+  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onDevices={() => setScreen('devices')} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} themePref={themePref} onTheme={changeTheme} />
   else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
@@ -1525,11 +1546,10 @@ export default function App () {
         </>
       )}
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
-      {(!pred?.pregnancy?.active && cycleView === 'calendar') ? null : (
-        <div>
-          <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>
+      {((!pred?.pregnancy?.active && cycleView === 'calendar') || !days.length) ? null : (
+        <CollapsibleCard title={`Recent days (${days.length})`} open={recentsOpen} onToggle={() => setRecentsOpen((o) => !o)}>
           <RecentDays days={days} onPick={setDate} />
-        </div>
+        </CollapsibleCard>
       )}
     </div>
   )
@@ -1537,7 +1557,7 @@ export default function App () {
   const showNav = mode === 'owner' && !partnerGroup
   const navActive = ['share', 'settings', 'about'].includes(screen) ? screen : 'main'
   return (
-    <>
+    <ThemeContext.Provider value={theme}>
       <div style={showNav ? { paddingBottom: 'calc(64px + var(--pear-safe-bottom))' } : undefined}>{content}</div>
       {showNav && <BottomNav active={navActive} onTab={setScreen} />}
       <DonationReminderModal open={donateReminder} onDonate={() => { setDonateReminder(false); setScreen('about') }} onDismiss={() => setDonateReminder(false)} />
@@ -1549,6 +1569,6 @@ export default function App () {
           {notice}
         </div>
       )}
-    </>
+    </ThemeContext.Provider>
   )
 }
