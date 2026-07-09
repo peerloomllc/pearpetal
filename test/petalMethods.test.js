@@ -196,6 +196,19 @@ test('share:list includes an empty joiners list until someone joins', async () =
   await engine.close()
 })
 
+test('share:revoke is idempotent: revoking an already-gone share is ok, not an error', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const { groupId } = await call('share:create', { scope: 'phase' })
+  assert.equal((await call('share:revoke', { groupId })).ok, true)
+  // A second revoke (double-fire / reload race) must not throw "share not found".
+  const again = await call('share:revoke', { groupId })
+  assert.equal(again.ok, true)
+  assert.equal(again.already, true)
+  await engine.close()
+})
+
 test('member:publish is a no-op when this device has joined no shares', async () => {
   const { engine, call } = driver()
   await call('init', {})
