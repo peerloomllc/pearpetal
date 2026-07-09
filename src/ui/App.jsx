@@ -1466,6 +1466,20 @@ export default function App () {
     if (themePref !== 'system') return undefined
     return onSystemThemeChange((resolved) => setThemeResolved(resolved))
   }, [themePref])
+  // Android hardware/gesture Back: pop the in-app stack instead of exiting. The
+  // shell consumes Back only while canBack is true (shell:navState) and emits a
+  // 'back' event we handle here, closing the topmost overlay / walking screens ->
+  // main; at the root (main, nothing open) canBack is false so Back exits normally.
+  const canBack = !!(periodSheet || dialInfo || flowerSheet || donateReminder || partnerGroup || (mode === 'owner' && screen !== 'main'))
+  useEffect(() => { call('shell:navState', { canBack }).catch(() => {}) }, [canBack])
+  useEffect(() => on('back', () => {
+    if (flowerSheet) return setFlowerSheet(false)
+    if (dialInfo) return setDialInfo(false)
+    if (periodSheet) return setPeriodSheet(false)
+    if (donateReminder) return setDonateReminder(false)
+    if (partnerGroup) return setPartnerGroup(null)
+    if (mode === 'owner' && screen !== 'main') return setScreen('main')
+  }), [flowerSheet, dialInfo, periodSheet, donateReminder, partnerGroup, mode, screen])
   const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
   const [cycleView, setCycleView] = useState(() => { try { return localStorage.getItem('pearpetal:cycleView') === 'calendar' ? 'calendar' : 'dial' } catch { return 'dial' } })
   const setView = (v) => { setCycleView(v); try { localStorage.setItem('pearpetal:cycleView', v) } catch {} }
