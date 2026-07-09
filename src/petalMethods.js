@@ -16,6 +16,7 @@ const sodium = require('sodium-universal')
 
 const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, memberKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE, MEMBER_RANGE } = require('./petalWire')
 const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FLOW_VALUES } = require('./prediction')
+const { notificationEvents } = require('./notifications')
 
 // Consent scopes (see DECISIONS.md 2026-07-06). Each governs which projection
 // fields the OWNER writes to a shared base; the partner structurally never
@@ -178,6 +179,20 @@ function normDate (s) {
 // (phase + predicted dates) via the pure prediction module.
 async function getPrefs (ctx) {
   return (await ctx.localDb.get('prefs'))?.value || {}
+}
+
+// Device-local notification prefs with defaults. Opt-in: `enabled` defaults
+// false (nothing fires until the user turns it on at onboarding or in Settings).
+// The two v1 categories default on once enabled.
+async function getNotifPrefs (ctx) {
+  const n = (await ctx.localDb.get('notifications'))?.value || {}
+  return {
+    enabled: !!n.enabled,
+    discreet: !!n.discreet,
+    period: n.period !== false,
+    fertility: n.fertility !== false,
+    time: typeof n.time === 'string' && /^\d{2}:\d{2}$/.test(n.time) ? n.time : '09:00',
+  }
 }
 
 // The owner's device-local profile (name + avatar pointer). Distinct from
@@ -344,6 +359,43 @@ const methods = {
     await ctx.localDb.put('prefs', next)
     await refreshShares(ctx).catch(() => {}) // prefs change the projection partners see
     return { ok: true }
+  },
+
+  // --- notifications (device-local; OS-scheduled local reminders) ----------
+  // Prefs live here (never cross the wire, like `prefs`); the RN shell reads
+  // `notifications:schedule` and hands the events to expo-notifications. See
+  // proposals/2026-07-09-notifications.md. Master `enabled` is the app-level
+  // intent; the shell separately reflects the actual OS permission grant.
+  'notifications:get': async (_args, ctx) => getNotifPrefs(ctx),
+  'notifications:set': async (args = {}, ctx) => {
+    const cur = await getNotifPrefs(ctx)
+    const next = { ...cur }
+    if ('enabled' in args) next.enabled = !!args.enabled
+    if ('discreet' in args) next.discreet = !!args.discreet
+    if ('period' in args) next.period = !!args.period
+    if ('fertility' in args) next.fertility = !!args.fertility
+    if ('time' in args && typeof args.time === 'string' && /^\d{1,2}:\d{2}$/.test(args.time)) {
+      const [h, m] = args.time.split(':').map(Number)
+      if (h >= 0 && h <= 23 && m >= 0 && m <= 59) next.time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+    }
+    next.updatedAt = Date.now()
+    await ctx.localDb.put('notifications', next)
+    return next
+  },
+  // The concrete OS notifications to schedule now, computed from the on-device
+  // projection + the notif prefs (goal-aware, confidence-gated, BC-suppressed,
+  // discreet-vs-descriptive). Returns [] when off or the projection is not
+  // trustworthy. The shell converts { dateIso, hour, minute } to a local instant.
+  'notifications:schedule': async (_args, ctx) => {
+    const notif = await getNotifPrefs(ctx)
+    if (!notif.enabled) return { enabled: false, events: [] }
+    const prefs = await getPrefs(ctx)
+    const goal = prefs.goal || 'track'
+    if (!(await privateMembership(ctx))) return { enabled: true, events: [] }
+    try {
+      const { proj } = await computeProjection(ctx)
+      return { enabled: true, events: notificationEvents(proj, { notif, goal, today: todayIso() }) }
+    } catch { return { enabled: true, events: [] } }
   },
 
   // --- profile (device-local; name + avatar projected to partners) --------

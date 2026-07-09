@@ -6,6 +6,18 @@ work lives in `TODO.md`.
 
 ## 2026-07-09
 
+- **To-self local notifications v1** (proposal 2026-07-09-notifications, DECISIONS
+  2026-07-09): opt-in cycle reminders (period due day-before + day-of; fertile
+  window + ovulation), goal-aware + confidence-gated + birth-control-suppressed,
+  with a user-configurable "Discreet" mode that hides cycle wording on the lock
+  screen. Pure `src/notifications.js` computes the events; worklet
+  `notifications:get/set/schedule` own the device-local prefs; the RN shell hands
+  the events to expo-notifications as OS-scheduled DATE triggers (delivered even
+  when the app is closed - no background execution), rescheduling on boot / app
+  foreground / after any prediction-changing edit. Settings "Reminders" card;
+  default OFF, OS prompt only on opt-in. No wire change (T1). Verify green (83
+  tests + 3 bundles). On-device confirm still pending; partner-facing "sharing
+  ended" deferred to a T2 proposal.
 - **Pre-paint dark flash fix** (#42): the RN shell reads the WebView's persisted
   resolved theme (AsyncStorage) at boot and paints the loading view / WebView /
   HTML wrapper / status bar to match, so light-theme users no longer flash dark on

@@ -52,13 +52,15 @@ Website-side (not in-app):
 
 ## Design decisions to make (before building)
 
-- **Notifications - to self and/or to partner?** To-self local reminders (period-due /
-  fertile-window / "log today" / BBT) are pure local scheduling. To-partner
-  notifications must respect the consent scope + the no-push-server P2P model.
-  Specific case: notify a partner when the owner revokes? Recommendation: yes but
-  gently - a passive "sharing ended" state on their next open, not a push alert.
-  Background sync ties in (may need a background wake). Build only if a real use case
-  needs it.
+- ~~**Notifications (v1 to-self)**~~ BUILT 2026-07-09 (proposal
+  2026-07-09-notifications, DECISIONS 2026-07-09): opt-in period-due + fertile/ovulation
+  reminders, goal-aware + confidence-gated, user-configurable discreet mode; Settings
+  Reminders card; OS-scheduled local notifications (no wire change, no background exec).
+  REMAINING: (a) on-device confirm - opt in, seed a near-future fire while backgrounded,
+  discreet wording, disable-cancels (bundle into a hardware pass; may want the
+  notification-icon prebuild item); (b) first-run opt-in prompt folds into the guided-
+  onboarding blocker. Partner-facing "sharing ended" is still a DEFERRED T2 (needs a
+  revoke tombstone - revoke writes no signal today).
 - **JSON export encryption - optional passphrase?** Slice 4 shipped plain JSON
   deliberately (recovery-first). Revisit an OPTIONAL passphrase-encrypted export (KDF
   -> XChaCha20-Poly1305) so backups aren't plaintext at rest, keeping plain export the

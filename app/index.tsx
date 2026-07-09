@@ -2,12 +2,13 @@
 // bridges IPC between them. The one bit of custom native code is the iOS
 // local-network prompt module (modules/local-network); the worklet and WebView
 // are otherwise pure RN libraries. The shell stays minimal: worklet host,
-// WebView, IPC bridge, a few shell actions, the local-network nudge, and
-// deep-link invite delivery. Notifications, background sync, and native QR scan
-// land in later slices (see the wire proposal and TODO).
+// WebView, IPC bridge, a few shell actions, the local-network nudge, deep-link
+// invite delivery, and opt-in to-self cycle reminders (OS-scheduled local
+// notifications). Background sync and native QR scan land in later slices (see
+// the wire proposal and TODO).
 
 import { useEffect, useRef, useState } from 'react'
-import { View, Platform, Share, StatusBar, BackHandler } from 'react-native'
+import { View, Platform, Share, StatusBar, BackHandler, AppState } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Worklet } from 'react-native-bare-kit'
@@ -18,6 +19,7 @@ import * as Linking from 'expo-linking'
 import * as Haptics from 'expo-haptics'
 import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
+import * as Notifications from 'expo-notifications'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { requestLocalNetworkPermission } from '../modules/local-network'
 
@@ -49,6 +51,76 @@ function callRaw (method: string, args: any = {}): Promise<any> {
 }
 function emitEvent (event: string, data?: any) {
   _webViewRef?.current?.injectJavaScript(`window.__pearEvent(${JSON.stringify(event)}, ${JSON.stringify(data ?? null)}); true;`)
+}
+
+// --- local notifications (opt-in to-self cycle reminders) -------------------
+// Design: proposals/2026-07-09-notifications.md. The worklet owns the prefs +
+// the goal-aware/confidence-gated event computation (notifications:schedule);
+// the shell is a thin scheduler - it fetches the events and hands them to the OS,
+// which delivers them even when the app is closed (no background execution). A
+// single neutral Android channel ("Reminders") so the channel label reveals
+// nothing; discreet wording is handled per-notification in the worklet.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false,
+  }),
+})
+const NOTIF_CHANNEL = 'reminders'
+async function ensureNotifSetup (request: boolean): Promise<boolean> {
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync(NOTIF_CHANNEL, {
+      name: 'Reminders', importance: Notifications.AndroidImportance.DEFAULT,
+      description: 'Cycle reminders you have turned on',
+    }).catch(() => {})
+  }
+  let status = (await Notifications.getPermissionsAsync()).status
+  // Only ever prompt when the user is actively opting in (request=true), so a
+  // boot / foreground resync never surprises them with a permission dialog.
+  if (status !== 'granted' && request) status = (await Notifications.requestPermissionsAsync()).status
+  return status === 'granted'
+}
+// Cancel every PearPetal-scheduled notification (ids are prefixed "pp:"), leaving
+// anything else untouched.
+async function cancelOurNotifications () {
+  try {
+    const all = await Notifications.getAllScheduledNotificationsAsync()
+    await Promise.all(all
+      .filter((n) => String(n.identifier).startsWith('pp:'))
+      .map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {})))
+  } catch {}
+}
+// Reconcile the OS-scheduled notifications with the worklet's current schedule.
+// request=true is passed only from an explicit user opt-in so the OS prompt fires
+// then and not on a background resync.
+async function syncNotifications (opts: { request?: boolean } = {}): Promise<{ enabled: boolean; granted: boolean; scheduled: number }> {
+  let prefs: any = {}
+  try { prefs = (await callRaw('notifications:get'))?.result || {} } catch {}
+  await cancelOurNotifications() // always clear ours first (a clean reschedule)
+  if (!prefs.enabled) return { enabled: false, granted: false, scheduled: 0 }
+  const granted = await ensureNotifSetup(!!opts.request)
+  if (!granted) return { enabled: true, granted: false, scheduled: 0 }
+  let events: any[] = []
+  try { events = (await callRaw('notifications:schedule'))?.result?.events || [] } catch {}
+  const now = Date.now()
+  let scheduled = 0
+  for (const e of events) {
+    const [y, m, d] = String(e.dateIso).split('-').map(Number)
+    if (!y || !m || !d) continue
+    const when = new Date(y, m - 1, d, e.hour ?? 9, e.minute ?? 0, 0, 0) // local time on that date
+    if (when.getTime() <= now) continue // drop any already-past time today
+    try {
+      await Notifications.scheduleNotificationAsync({
+        identifier: e.id,
+        content: {
+          title: e.title, body: e.body, data: { tag: 'pearpetal', category: e.category },
+          ...(Platform.OS === 'android' ? { channelId: NOTIF_CHANNEL } : {}),
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
+      })
+      scheduled++
+    } catch {}
+  }
+  return { enabled: true, granted: true, scheduled }
 }
 
 async function startWorklet (): Promise<string | null> {
@@ -156,8 +228,20 @@ export default function Shell () {
       const initErr = await startWorklet()
       if (cancelled) return
       setHtml(initErr ? errorHtml(initErr) : await loadUiHtml(bgFor(boot)))
+      // Re-arm scheduled cycle reminders from the current prediction (no OS
+      // prompt here - request=false). No-op unless the user has opted in.
+      if (!initErr) syncNotifications({ request: false }).catch(() => {})
     })().catch((e) => { if (!cancelled) setHtml(errorHtml('shell boot failed: ' + (e?.message ?? String(e)))) })
     return () => { cancelled = true }
+  }, [])
+
+  // Predictions drift as the user logs; re-arm on every foreground so the
+  // scheduled reminders track the latest projection (never prompts).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') syncNotifications({ request: false }).catch(() => {})
+    })
+    return () => sub.remove()
   }, [])
 
   useEffect(() => {
@@ -235,6 +319,30 @@ export default function Shell () {
         }
         case 'shell:navState': {
           canBackRef.current = !!args?.canBack
+          return reply(id, { ok: true })
+        }
+        case 'shell:notifications:get': {
+          // Worklet prefs + the actual OS grant (so the UI can show a
+          // "turn on in system settings" hint if the app-level toggle is on but
+          // the OS permission was denied).
+          let prefs: any = {}
+          try { prefs = (await callRaw('notifications:get'))?.result || {} } catch {}
+          const granted = (await Notifications.getPermissionsAsync()).status === 'granted'
+          return reply(id, { ...prefs, osGranted: granted })
+        }
+        case 'shell:notifications:set': {
+          // Persist the prefs in the worklet, then reschedule. Request the OS
+          // permission only when the user is turning notifications ON.
+          const enabling = args?.enabled === true
+          let prefs: any = {}
+          try { prefs = (await callRaw('notifications:set', args))?.result || {} } catch {}
+          const res = await syncNotifications({ request: enabling })
+          return reply(id, { ...prefs, osGranted: res.granted, permissionDenied: enabling && !res.granted })
+        }
+        case 'shell:notifications:sync': {
+          // Called by the UI after a log / prefs change so the schedule tracks
+          // the fresh prediction without waiting for a foreground.
+          await syncNotifications({ request: false })
           return reply(id, { ok: true })
         }
         case 'shell:theme': {

@@ -185,6 +185,52 @@ test('period:log preserves a day that already has a chosen flow', async () => {
   await engine.close()
 })
 
+test('notifications: defaults are opt-out (disabled) with categories on', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  const n = await call('notifications:get', {})
+  assert.equal(n.enabled, false)
+  assert.equal(n.discreet, false)
+  assert.equal(n.period, true)
+  assert.equal(n.fertility, true)
+  assert.equal(n.time, '09:00')
+  await engine.close()
+})
+
+test('notifications:set persists + validates, get reflects it', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  const saved = await call('notifications:set', { enabled: true, discreet: true, period: false, time: '7:05' })
+  assert.equal(saved.enabled, true)
+  assert.equal(saved.discreet, true)
+  assert.equal(saved.period, false)
+  assert.equal(saved.time, '07:05') // normalized to 2-digit hour
+  await call('notifications:set', { time: 'garbage' }) // rejected, keeps prior
+  assert.equal((await call('notifications:get', {})).time, '07:05')
+  await engine.close()
+})
+
+test('notifications:schedule: empty when disabled; events once enabled + history', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  // Three tight ~28-day past periods -> a trustworthy projection.
+  for (const back of [84, 56, 28]) {
+    const start = addDays(todayIso(), -back)
+    await call('period:log', { start, end: addDays(start, 4) })
+  }
+  // Disabled -> nothing scheduled even with history.
+  assert.deepEqual((await call('notifications:schedule', {})).events, [])
+  // Enabled -> future cycle events appear.
+  await call('notifications:set', { enabled: true })
+  const sched = await call('notifications:schedule', {})
+  assert.equal(sched.enabled, true)
+  assert.ok(sched.events.length > 0)
+  assert.ok(sched.events.every((e) => e.dateIso >= todayIso()))
+  assert.ok(sched.events.some((e) => e.category === 'period-due'))
+  await engine.close()
+})
+
 test('share:list includes an empty joiners list until someone joins', async () => {
   const { engine, call } = driver()
   await call('init', {})
