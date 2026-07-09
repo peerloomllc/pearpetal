@@ -295,7 +295,7 @@ function Onboarding ({ onReady, onViewerReady }) {
   const back = () => { setMode(null); setErr(''); setCode(''); setScanning(false) }
 
   return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100%', justifyContent: 'center' }}>
+    <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
         <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>Private cycle tracking. No account, no server. Your data stays on your devices.</div>
@@ -360,7 +360,7 @@ function Sharing ({ onClose, onOpenPartner }) {
       <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Sharing</div>
 
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ fontSize: 15, fontWeight: 500 }}>Share with a partner</div>
+        <div style={{ fontSize: 15, fontWeight: 500, textAlign: 'center' }}>Share with a partner</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
           {SCOPE_OPTS.map((o) => (
             <button key={o.key} onClick={() => setScope(o.key)} style={{
