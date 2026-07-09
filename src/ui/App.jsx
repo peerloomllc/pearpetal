@@ -9,7 +9,7 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -77,13 +77,33 @@ const card = { background: colors.surface.card, borderRadius: radius.xl, padding
 // because the WebView viewport is viewport-fit=cover), so it holds even if the
 // injected var lands late.
 const screenPadTop = `calc(${spacing.xl}px + max(var(--pear-safe-top, 0px), env(safe-area-inset-top, 0px)))`
-function Btn ({ children, onClick, kind = 'primary', style }) {
+function Btn ({ children, onClick, kind = 'primary', style, disabled }) {
   const base = { border: 'none', borderRadius: radius.lg, padding: `${spacing.md}px ${spacing.base}px`, fontSize: 15, fontWeight: 500 }
   const kinds = {
     primary: { background: colors.primary, color: colors.text.onPrimary },
     ghost: { background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}` },
   }
-  return <button onClick={onClick} style={{ ...base, ...kinds[kind], ...style }}>{children}</button>
+  return <button onClick={onClick} disabled={disabled} style={{ ...base, ...kinds[kind], cursor: disabled ? 'default' : 'pointer', ...style }}>{children}</button>
+}
+// Shared bottom-sheet chrome: slides up on open, slides down on dismiss (backdrop
+// tap or the `close` passed to children). children is a render function receiving
+// the animated close, so a sheet's own Cancel/Done buttons animate out too.
+function BottomSheet ({ onClose, children, maxWidth = 460 }) {
+  const [closing, setClosing] = useState(false)
+  const done = useRef(false)
+  const close = useCallback(() => {
+    if (done.current) return
+    done.current = true
+    setClosing(true)
+    setTimeout(onClose, 190)
+  }, [onClose])
+  return (
+    <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', animation: `pearpetal-overlay-${closing ? 'out' : 'in'} 200ms ease forwards` }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth, margin: '0 auto', background: colors.surface.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, border: `1px solid ${colors.border}`, padding: spacing.lg, paddingBottom: `calc(${spacing.lg}px + var(--pear-safe-bottom))`, display: 'flex', flexDirection: 'column', gap: spacing.md, animation: `pearpetal-sheet-${closing ? 'down' : 'up'} ${closing ? 190 : 260}ms cubic-bezier(0.32,0.72,0,1) forwards` }}>
+        {children(close)}
+      </div>
+    </div>
+  )
 }
 function Chip ({ active, onClick, children, color, style }) {
   return (
@@ -93,6 +113,19 @@ function Chip ({ active, onClick, children, color, style }) {
       color: active ? colors.text.onPrimary : colors.text.secondary,
       borderRadius: radius.full, padding: `6px 12px`, fontSize: 13, fontWeight: 500,
       ...style,
+    }}>{children}</button>
+  )
+}
+// Compact icon-only action button (share row: QR / copy / revoke).
+function IconBtn ({ children, onClick, label, color, active, disabled }) {
+  return (
+    <button onClick={onClick} aria-label={label} title={label} disabled={disabled} style={{
+      width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      borderRadius: radius.full, cursor: disabled ? 'default' : 'pointer', padding: 0,
+      background: active ? colors.primary : colors.surface.input,
+      border: `1px solid ${active ? colors.primary : colors.border}`,
+      color: active ? colors.text.onPrimary : (color || colors.text.secondary),
+      opacity: disabled ? 0.5 : 1,
     }}>{children}</button>
   )
 }
@@ -343,16 +376,27 @@ function Sharing ({ onClose, onOpenPartner }) {
   const [partners, setPartners] = useState([])
   const [err, setErr] = useState('')
   const [qrFor, setQrFor] = useState(null)
+  const [busyRevoke, setBusyRevoke] = useState(null)
+  const [joinOpen, setJoinOpen] = useState(false)
   const load = useCallback(async () => {
     setShares(await call('share:list').catch(() => []))
     setPartners(await call('partner:list').catch(() => []))
   }, [])
   useSynced(load)
+  // Belt-and-suspenders live refresh: group:updated already fires when a joiner's
+  // member row replicates in, but a join lands over a few seconds of writer-admission
+  // churn, so also poll while this screen is open. This is what flips a share row
+  // from "Not joined yet" to "Shared with X" in real time.
+  useEffect(() => { const t = setInterval(() => load(), 3000); return () => clearInterval(t) }, [load])
   const create = async () => {
     setErr('')
     try { await call('share:create', { scope }); haptic('success'); load() } catch (e) { setErr(e.message) }
   }
-  const revoke = async (groupId) => { try { await call('share:revoke', { groupId }); haptic('warn'); load() } catch (e) { setErr(e.message) } }
+  const revoke = async (groupId) => {
+    if (busyRevoke) return // guard against a double-fire revoking an already-gone share
+    setBusyRevoke(groupId)
+    try { await call('share:revoke', { groupId }); haptic('warn'); await load() } catch (e) { setErr(e.message) } finally { setBusyRevoke(null) }
+  }
   const copy = async (code) => { try { await navigator.clipboard.writeText(code); haptic('success') } catch { call('shell:share', { text: code }).catch(() => {}) } }
 
   return (
@@ -378,13 +422,14 @@ function Sharing ({ onClose, onOpenPartner }) {
 
       {shares.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-          <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>People you share with</div>
+          <div style={{ fontSize: 13, color: colors.text.muted, textAlign: 'center' }}>People you share with</div>
           {shares.map((s) => {
             const joiners = s.joiners || []
             const named = joiners.map((j) => j.name).filter(Boolean)
             const title = named.length ? `Shared with ${named.join(', ')}`
               : joiners.length ? (joiners.length === 1 ? 'Someone joined' : `${joiners.length} people joined`)
                 : 'Not joined yet'
+            const on = qrFor === s.groupId
             return (
               <div key={s.groupId} style={{ ...card, padding: spacing.md, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
@@ -395,35 +440,77 @@ function Sharing ({ onClose, onOpenPartner }) {
                     <div style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
                     <div style={{ color: colors.text.muted, fontSize: 12, textTransform: 'capitalize' }}>{s.scope} · shared {sharedOn(s.createdAt)}</div>
                   </div>
+                  <div style={{ display: 'flex', gap: spacing.xs, flexShrink: 0 }}>
+                    <IconBtn label={on ? 'Hide QR' : 'Show QR'} onClick={() => setQrFor(on ? null : s.groupId)} active={on}><QrCode size={18} weight={on ? 'fill' : 'regular'} /></IconBtn>
+                    <IconBtn label='Copy link' onClick={() => copy(shareUrl(s.inviteKey))}><Copy size={18} /></IconBtn>
+                    <IconBtn label='Revoke share' onClick={() => revoke(s.groupId)} disabled={busyRevoke === s.groupId} color={colors.error}><Trash size={18} /></IconBtn>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: spacing.sm, justifyContent: 'flex-end' }}>
-                  <Btn kind='ghost' onClick={() => setQrFor(qrFor === s.groupId ? null : s.groupId)} style={{ padding: '6px 10px', fontSize: 13 }}>{qrFor === s.groupId ? 'Hide QR' : 'QR'}</Btn>
-                  <Btn kind='ghost' onClick={() => copy(shareUrl(s.inviteKey))} style={{ padding: '6px 10px', fontSize: 13 }}>Copy link</Btn>
-                  <Btn kind='ghost' onClick={() => revoke(s.groupId)} style={{ padding: '6px 10px', fontSize: 13, color: colors.error }}>Revoke</Btn>
-                </div>
-                {qrFor === s.groupId && <QrImage text={shareUrl(s.inviteKey)} />}
+                {on && <QrImage text={shareUrl(s.inviteKey)} />}
               </div>
             )
           })}
         </div>
       )}
 
-      {partners.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-          <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Shared with you</div>
-          {partners.map((p) => (
-            <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md, minWidth: 0 }}>
-                <Avatar src={p.ownerAvatar} name={p.ownerName} size={32} />
-                <span style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.ownerName ? `${p.ownerName}'s cycle` : "A partner's cycle"}</span>
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12, flexShrink: 0 }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Always available - an existing owner can also view a partner's cycle (paste
+          / scan a share code), not only on a fresh install. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        <div style={{ fontSize: 13, color: colors.text.muted, textAlign: 'center' }}>Shared with you</div>
+        {partners.map((p) => (
+          <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md, minWidth: 0 }}>
+              <Avatar src={p.ownerAvatar} name={p.ownerName} size={32} />
+              <span style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.ownerName ? `${p.ownerName}'s cycle` : "A partner's cycle"}</span>
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12, flexShrink: 0, textTransform: 'capitalize' }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
+          </button>
+        ))}
+        <Btn kind='ghost' onClick={() => setJoinOpen(true)}>View a partner's cycle</Btn>
+      </div>
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
+      {joinOpen && <JoinPartnerSheet onClose={() => setJoinOpen(false)} onJoined={(groupId) => { setJoinOpen(false); onOpenPartner(groupId) }} />}
     </div>
+  )
+}
+
+// Join a partner's share from within the app (paste code or scan QR), so an
+// existing owner - not just a fresh install - can view a partner's cycle.
+function JoinPartnerSheet ({ onClose, onJoined }) {
+  const [code, setCode] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  // Enable "View cycle" only once the box holds something that parses to a
+  // plausible invite key (long base64/base64url blob). Real validation still
+  // happens on join; this just stops taps on an empty/garbage box.
+  const parsed = parseInvite(code)
+  const valid = parsed.length >= 24 && /^[A-Za-z0-9+/=_-]+$/.test(parsed)
+  const join = async (raw) => {
+    setErr(''); setBusy(true)
+    try {
+      const r = await call('partner:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) })
+      haptic('success'); onJoined(r.groupId)
+    } catch (e) { setErr(e.message); setBusy(false) }
+  }
+  return (
+    <BottomSheet onClose={onClose}>
+      {(close) => (
+        <>
+          <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>View a partner's cycle</div>
+          <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>Paste the share code your partner gave you. You'll see only what they chose to share.</div>
+          <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder='Paste code' rows={3}
+            style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
+          {err && <div style={{ color: colors.error, fontSize: 13, textAlign: 'center' }}>{err}</div>}
+          <div style={{ display: 'flex', gap: spacing.sm }}>
+            <Btn onClick={() => join()} disabled={!valid || busy} style={{ flex: 1, opacity: (!valid || busy) ? 0.5 : 1 }}>{busy ? 'Joining…' : 'View cycle'}</Btn>
+            <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing.sm }}><QrCode size={18} />Scan QR</Btn>
+          </div>
+          <Btn kind='ghost' onClick={close}>Cancel</Btn>
+          <ScannerView open={scanning} onClose={() => setScanning(false)} onDecode={(txt) => { setScanning(false); join(txt) }} />
+        </>
+      )}
+    </BottomSheet>
   )
 }
 
@@ -1123,16 +1210,18 @@ function AboutLink ({ onClick, children, primary }) {
 function DialInfoSheet ({ onClose }) {
   const Line = ({ children }) => <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.5 }}>{children}</div>
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 auto', background: colors.surface.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, border: `1px solid ${colors.border}`, padding: spacing.lg, paddingBottom: `calc(${spacing.lg}px + var(--pear-safe-bottom))`, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>How to read your flower</div>
-        <Line>One lap of the ring is <b>one cycle</b>. The top is <b>day 1</b> - your last period start - and the highlighted marker is <b>today</b>.</Line>
-        <Line>The flower <b>furls and blooms</b> across the cycle, fullest around <b>ovulation</b>, so a glance tells you roughly where you are.</Line>
-        <Line><b>Tap or drag</b> a past day on the ring to open and edit it.</Line>
-        <Line>The dial shows your <b>current</b> cycle only. To browse other months or your history, switch to <b>Month</b> view.</Line>
-        <Btn kind='ghost' onClick={onClose}>Got it</Btn>
-      </div>
-    </div>
+    <BottomSheet onClose={onClose}>
+      {(close) => (
+        <>
+          <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>How to read your flower</div>
+          <Line>One lap of the ring is <b>one cycle</b>. The top is <b>day 1</b> - your last period start - and the highlighted marker is <b>today</b>.</Line>
+          <Line>The flower <b>furls and blooms</b> across the cycle, fullest around <b>ovulation</b>, so a glance tells you roughly where you are.</Line>
+          <Line><b>Tap or drag</b> a past day on the ring to open and edit it.</Line>
+          <Line>The dial shows your <b>current</b> cycle only. To browse other months or your history, switch to <b>Month</b> view.</Line>
+          <Btn kind='ghost' onClick={close}>Got it</Btn>
+        </>
+      )}
+    </BottomSheet>
   )
 }
 
@@ -1145,56 +1234,62 @@ function PeriodSheet ({ defaultStart, onClose, onSaved }) {
   const [end, setEnd] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const save = async () => {
-    if (!start) { setErr('Pick a start date.'); return }
-    if (end && end < start) { setErr('End date is before the start date.'); return }
-    setBusy(true); setErr('')
-    try {
-      await call('period:log', { start, end: end || null })
-      haptic('success'); onSaved && onSaved(start); onClose()
-    } catch (e) { setErr(e.message || 'Could not save.'); setBusy(false) }
-  }
   const field = { background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `8px 10px`, fontSize: 15 }
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 auto', background: colors.surface.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, border: `1px solid ${colors.border}`, padding: spacing.lg, paddingBottom: `calc(${spacing.lg}px + var(--pear-safe-bottom))`, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
-        <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Period dates</div>
-        <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>When did your last period start? Leave the end blank if it is ongoing. Those days are logged with a medium flow - tap any day afterward to adjust the amount.</div>
-        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
-          <span style={{ color: colors.text.secondary, fontSize: 14 }}>Start</span>
-          <input type='date' value={start} max={todayIso()} onChange={(e) => setStart(e.target.value)} style={field} />
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
-          <span style={{ color: colors.text.secondary, fontSize: 14 }}>End <span style={{ color: colors.text.muted }}>(optional)</span></span>
-          <input type='date' value={end} min={start} max={todayIso()} onChange={(e) => setEnd(e.target.value)} style={field} />
-        </label>
-        {err && <div style={{ color: colors.warn, fontSize: 13, textAlign: 'center' }}>{err}</div>}
-        <Btn onClick={save} style={{ opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save'}</Btn>
-        <Btn kind='ghost' onClick={onClose}>Cancel</Btn>
-      </div>
-    </div>
+    <BottomSheet onClose={onClose}>
+      {(close) => {
+        const save = async () => {
+          if (!start) { setErr('Pick a start date.'); return }
+          if (end && end < start) { setErr('End date is before the start date.'); return }
+          setBusy(true); setErr('')
+          try {
+            await call('period:log', { start, end: end || null })
+            haptic('success'); onSaved && onSaved(start); close()
+          } catch (e) { setErr(e.message || 'Could not save.'); setBusy(false) }
+        }
+        return (
+          <>
+            <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Period dates</div>
+            <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>When did your last period start? Leave the end blank if it is ongoing. Those days are logged with a medium flow - tap any day afterward to adjust the amount.</div>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
+              <span style={{ color: colors.text.secondary, fontSize: 14 }}>Start</span>
+              <input type='date' value={start} max={todayIso()} onChange={(e) => setStart(e.target.value)} style={field} />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
+              <span style={{ color: colors.text.secondary, fontSize: 14 }}>End <span style={{ color: colors.text.muted }}>(optional)</span></span>
+              <input type='date' value={end} min={start} max={todayIso()} onChange={(e) => setEnd(e.target.value)} style={field} />
+            </label>
+            {err && <div style={{ color: colors.warn, fontSize: 13, textAlign: 'center' }}>{err}</div>}
+            <Btn onClick={save} disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save'}</Btn>
+            <Btn kind='ghost' onClick={close}>Cancel</Btn>
+          </>
+        )
+      }}
+    </BottomSheet>
   )
 }
 
 function WalletSheet ({ onClose }) {
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 auto', background: colors.surface.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, border: `1px solid ${colors.border}`, padding: spacing.lg, paddingBottom: `calc(${spacing.lg}px + var(--pear-safe-bottom))`, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-        <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>⚡ Bitcoin Lightning ⚡</div>
-        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center', marginBottom: spacing.sm }}>No Lightning wallet was detected. To send a tip, install one:</div>
-        {LIGHTNING_WALLETS.map((w) => (
-          <button key={w.name} onClick={() => openUrl(w.url)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: spacing.md, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, cursor: 'pointer', textAlign: 'left' }}>
-            <span style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ color: colors.text.primary, fontSize: 15 }}>{w.name}</span>
-              <span style={{ color: colors.text.muted, fontSize: 13 }}>{w.desc}</span>
-            </span>
-            <span style={{ color: colors.text.muted }}>↗</span>
-          </button>
-        ))}
-        <div style={{ textAlign: 'center', color: colors.text.muted, fontSize: 13, marginTop: spacing.sm }}>After installing, come back and tap Bitcoin again.</div>
-        <Btn kind='ghost' onClick={onClose}>Close</Btn>
-      </div>
-    </div>
+    <BottomSheet onClose={onClose}>
+      {(close) => (
+        <>
+          <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>⚡ Bitcoin Lightning ⚡</div>
+          <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center', marginBottom: spacing.sm }}>No Lightning wallet was detected. To send a tip, install one:</div>
+          {LIGHTNING_WALLETS.map((w) => (
+            <button key={w.name} onClick={() => openUrl(w.url)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: spacing.md, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, cursor: 'pointer', textAlign: 'left' }}>
+              <span style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ color: colors.text.primary, fontSize: 15 }}>{w.name}</span>
+                <span style={{ color: colors.text.muted, fontSize: 13 }}>{w.desc}</span>
+              </span>
+              <span style={{ color: colors.text.muted }}>↗</span>
+            </button>
+          ))}
+          <div style={{ textAlign: 'center', color: colors.text.muted, fontSize: 13, marginTop: spacing.sm }}>After installing, come back and tap Bitcoin again.</div>
+          <Btn kind='ghost' onClick={close}>Close</Btn>
+        </>
+      )}
+    </BottomSheet>
   )
 }
 

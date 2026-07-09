@@ -713,8 +713,11 @@ const methods = {
   // only - it cannot unsend the projection blocks the partner already replicated
   // (a P2P invariant; the UI states this).
   'share:revoke': async ({ groupId }, ctx) => {
+    // Idempotent: revoke means "ensure this share is gone". If it is already gone
+    // (e.g. a double-fire from the UI, or a group:updated-triggered reload racing
+    // the tap), that is success, not an error - never surface "share not found".
     const m = (await membershipsByKind(ctx, 'shared-out')).find((x) => x.groupId === groupId)
-    if (!m) throw new Error('share not found')
+    if (!m) return { ok: true, already: true }
     await ctx.localDb.del('groups:joined:' + groupId).catch(() => {})
     await ctx.destroyGroup(groupId).catch(() => {})
     return { ok: true }
