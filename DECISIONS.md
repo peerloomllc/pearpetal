@@ -27,8 +27,11 @@ Consequences: additive + back-compat (old peers ignore `revoked`); forward-only
 (cannot unsend replicated blocks). A revoked base lingers until "Remove permanently"
 (no ack channel since the base is owner-write-only; TTL deferred). Verify: `npm run
 verify` green (85 tests incl. wire revoke-tombstone gate + soft-close method test +
-share:remove + partner read; 3 bundles). ON-DEVICE (two-phone owner->partner) pending a
-hardware pass.
+share:remove + partner read; 3 bundles). ON-DEVICE VERIFIED 2026-07-09 (two-phone,
+TCL owner Ada -> Pixel partner Leah, Full scope): join + live full sync, owner revoke
+soft-closes to an "Ended" section, the partner shows the "sharing ended" banner over
+dimmed last-known data LIVE (group:updated, no reload), and partner Remove + owner
+Remove-permanently both clear.
 
 ## 2026-07-09 - To-self local notifications (v1) - IMPLEMENTED
 Tier: T1 (device-local prefs feeding OS-scheduled local notifications over the

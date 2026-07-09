@@ -41,10 +41,11 @@ Code done, need **on-device confirmation** (bundle these into a hardware pass):
   development.
 - **User profile**: live two-phone owner->partner name display (propagation is
   unit-covered; needs the Pixel as partner).
-- **Sharing ended (soft-close revoke tombstone)**: BUILT 2026-07-09 (proposal
-  2026-07-09-sharing-ended). Two-phone confirm: owner (TCL) shares -> partner (Pixel)
-  joins -> owner revokes -> partner shows the "sharing ended" banner on next open;
-  owner "Remove permanently" + partner "Remove" both clear.
+- ~~**Sharing ended (soft-close revoke tombstone)**~~ CONFIRMED 2026-07-09 (two-phone,
+  TCL owner Ada -> Pixel partner Leah, Full scope): join + live full sync, owner revoke
+  soft-closes to an "Ended" section, partner shows the "sharing ended" banner over dimmed
+  last-known data LIVE (group:updated, no reload), partner Remove + owner Remove-permanently
+  both clear. Proposal 2026-07-09-sharing-ended, DECISIONS 2026-07-09.
 
 Website-side (not in-app):
 - **Universal-link tap-to-open**: serve Android `/.well-known/assetlinks.json`

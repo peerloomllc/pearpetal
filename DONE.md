@@ -16,7 +16,7 @@ work lives in `TODO.md`.
   New `share:remove` is the owner "Remove permanently" (old hard teardown). Partner UI:
   a "sharing ended" banner over the dimmed last-known view + Remove; ViewerHome/Sharing
   show "Sharing ended"; owner Sharing gets an "Ended" section. Additive + back-compat.
-  Verify green (85 tests + 3 bundles). On-device two-phone pass pending.
+  Verify green (85 tests + 3 bundles). ON-DEVICE VERIFIED (TCL owner -> Pixel partner, Full scope): join + live sync, revoke soft-close -> partner "sharing ended" banner over dimmed data (live, no reload), partner Remove + owner Remove-permanently clear.
 - **Notification tray glyph confirmed monochrome (Android)** (docs/verification only):
   the tray icon had been the colored launcher icon because the built `android/` predated
   the expo-notifications icon config. A fresh `expo prebuild -p android --clean` wired
