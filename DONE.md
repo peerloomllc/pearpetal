@@ -27,6 +27,18 @@ work lives in `TODO.md`.
   just content, else Android routes them to expo's fallback channel - confirmed the
   fix lands them on the custom "reminders" channel. Partner-facing "sharing ended"
   deferred to a T2 proposal.
+- **iOS: strip the push entitlement + fix the app icon** (same notifications work):
+  the expo-notifications config plugin adds `aps-environment` (Push Notifications) to
+  the iOS entitlements, which the wildcard dev provisioning profile cannot sign - a
+  fresh `expo prebuild` + Release archive FAILED. PearPetal is local-notifications-only
+  (no remote push), so new config plugin `plugins/with-ios-no-aps.js` removes it.
+  GOTCHA: iOS entitlements mods run in REVERSE app.json `plugins` order, so this plugin
+  is listed BEFORE "expo-notifications" to run after it. Separately fixed a STALE blank
+  iOS app icon: `ios/` was generated 2026-07-07 (before the cherry-blossom `icon.png`
+  landed 2026-07-08) and `ios-dev-install.sh` only prebuilds when `ios/` is missing, so
+  the blank placeholder kept shipping; regenerating `ios/` rebuilds the AppIcon from the
+  current art. Both verified on hardware: archive SUCCEEDED + installed on the iPhone SE
+  over USB, real icon on the home screen.
 - **Pre-paint dark flash fix** (#42): the RN shell reads the WebView's persisted
   resolved theme (AsyncStorage) at boot and paints the loading view / WebView /
   HTML wrapper / status bar to match, so light-theme users no longer flash dark on

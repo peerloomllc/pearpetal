@@ -99,6 +99,7 @@
           "resizeMode": "contain"
         }
       ],
+      "./plugins/with-ios-no-aps",
       [
         "expo-notifications",
         {
