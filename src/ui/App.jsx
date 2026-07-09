@@ -685,12 +685,13 @@ function PregnancyView ({ preg, flower, onSettings }) {
   )
 }
 
-function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub, selected, onEditPeriod }) {
+function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub, selected, onEditPeriod, onInfo }) {
   if (!pred) return null
   const days = pred.daysUntilNextPeriod
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
-    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
+    <div style={{ ...card, position: 'relative', display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
+      <button onClick={onInfo} aria-label='How to read the dial' style={{ position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, color: colors.text.muted, cursor: 'pointer', display: 'flex' }}><Info size={20} /></button>
       <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} hideFertile={pred.birthControl} />
       {!pred.known ? (
         <>
@@ -1102,6 +1103,25 @@ function AboutLink ({ onClick, children, primary }) {
   return <Btn kind={primary ? 'primary' : 'ghost'} onClick={onClick} style={{ flex: 1, fontSize: 14 }}>{children}</Btn>
 }
 
+// Explains what the petal dial represents. The dial is a single-cycle, forward-
+// looking view (not a whole-history scrubber), which is not self-evident; this is
+// reached from a small info icon on the dial card.
+function DialInfoSheet ({ onClose }) {
+  const Line = ({ children }) => <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.5 }}>{children}</div>
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 auto', background: colors.surface.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, border: `1px solid ${colors.border}`, padding: spacing.lg, paddingBottom: `calc(${spacing.lg}px + var(--pear-safe-bottom))`, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+        <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>How to read your flower</div>
+        <Line>One lap of the ring is <b>one cycle</b>. The top is <b>day 1</b> - your last period start - and the highlighted marker is <b>today</b>.</Line>
+        <Line>The flower <b>furls and blooms</b> across the cycle, fullest around <b>ovulation</b>, so a glance tells you roughly where you are.</Line>
+        <Line><b>Tap or drag</b> a past day on the ring to open and edit it.</Line>
+        <Line>The dial shows your <b>current</b> cycle only. To browse other months or your history, switch to <b>Month</b> view.</Line>
+        <Btn kind='ghost' onClick={onClose}>Got it</Btn>
+      </div>
+    </div>
+  )
+}
+
 // Add / adjust a period span (start + optional end) via native date pickers.
 // Calls the existing period:set; the projection (dial, next-period, calendar) then
 // recomputes on refresh. A period start also anchors the cycle, so setting the last
@@ -1289,6 +1309,7 @@ export default function App () {
   const [notice, setNotice] = useState('')
   const [donateReminder, setDonateReminder] = useState(false)
   const [periodSheet, setPeriodSheet] = useState(false)
+  const [dialInfo, setDialInfo] = useState(false)
   const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
   const [cycleView, setCycleView] = useState(() => { try { return localStorage.getItem('pearpetal:cycleView') === 'calendar' ? 'calendar' : 'dial' } catch { return 'dial' } })
   const setView = (v) => { setCycleView(v); try { localStorage.setItem('pearpetal:cycleView', v) } catch {} }
@@ -1364,7 +1385,7 @@ export default function App () {
           <div key={cycleView} style={{ animation: 'pearpetal-fade 220ms ease' }}>
             {cycleView === 'calendar'
               ? <MonthCalendar monthIso={calMonth} dir={calDir} pred={pred} daysByIso={Object.fromEntries(days.map((d) => [d.date, d]))} selected={date} today={todayIso()} onPick={setDate} onPrev={() => goMonth(-1)} onNext={() => goMonth(1)} onToday={goToday} />
-              : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} onEditPeriod={() => setPeriodSheet(true)} />}
+              : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} onEditPeriod={() => setPeriodSheet(true)} onInfo={() => setDialInfo(true)} />}
           </div>
         </>
       )}
@@ -1386,6 +1407,7 @@ export default function App () {
       {showNav && <BottomNav active={navActive} onTab={setScreen} />}
       <DonationReminderModal open={donateReminder} onDonate={() => { setDonateReminder(false); setScreen('about') }} onDismiss={() => setDonateReminder(false)} />
       {periodSheet && <PeriodSheet defaultStart={pred?.known ? addDaysIso(todayIso(), -((pred.dayOfCycle || 1) - 1)) : todayIso()} onClose={() => setPeriodSheet(false)} onSaved={(start) => { setView('dial'); setDate(start <= todayIso() ? start : todayIso()); refresh() }} />}
+      {dialInfo && <DialInfoSheet onClose={() => setDialInfo(false)} />}
       {notice && (
         <div onClick={() => setNotice('')} style={{ position: 'fixed', left: 12, right: 12, bottom: `calc(16px + 64px + var(--pear-safe-bottom))`, zIndex: 50, background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, color: colors.text.primary, fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
           {notice}
