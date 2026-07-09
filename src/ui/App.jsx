@@ -9,7 +9,7 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -93,6 +93,19 @@ function Chip ({ active, onClick, children, color, style }) {
       color: active ? colors.text.onPrimary : colors.text.secondary,
       borderRadius: radius.full, padding: `6px 12px`, fontSize: 13, fontWeight: 500,
       ...style,
+    }}>{children}</button>
+  )
+}
+// Compact icon-only action button (share row: QR / copy / revoke).
+function IconBtn ({ children, onClick, label, color, active, disabled }) {
+  return (
+    <button onClick={onClick} aria-label={label} title={label} disabled={disabled} style={{
+      width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      borderRadius: radius.full, cursor: disabled ? 'default' : 'pointer', padding: 0,
+      background: active ? colors.primary : colors.surface.input,
+      border: `1px solid ${active ? colors.primary : colors.border}`,
+      color: active ? colors.text.onPrimary : (color || colors.text.secondary),
+      opacity: disabled ? 0.5 : 1,
     }}>{children}</button>
   )
 }
@@ -343,6 +356,8 @@ function Sharing ({ onClose, onOpenPartner }) {
   const [partners, setPartners] = useState([])
   const [err, setErr] = useState('')
   const [qrFor, setQrFor] = useState(null)
+  const [busyRevoke, setBusyRevoke] = useState(null)
+  const [joinOpen, setJoinOpen] = useState(false)
   const load = useCallback(async () => {
     setShares(await call('share:list').catch(() => []))
     setPartners(await call('partner:list').catch(() => []))
@@ -352,7 +367,11 @@ function Sharing ({ onClose, onOpenPartner }) {
     setErr('')
     try { await call('share:create', { scope }); haptic('success'); load() } catch (e) { setErr(e.message) }
   }
-  const revoke = async (groupId) => { try { await call('share:revoke', { groupId }); haptic('warn'); load() } catch (e) { setErr(e.message) } }
+  const revoke = async (groupId) => {
+    if (busyRevoke) return // guard against a double-fire revoking an already-gone share
+    setBusyRevoke(groupId)
+    try { await call('share:revoke', { groupId }); haptic('warn'); await load() } catch (e) { setErr(e.message) } finally { setBusyRevoke(null) }
+  }
   const copy = async (code) => { try { await navigator.clipboard.writeText(code); haptic('success') } catch { call('shell:share', { text: code }).catch(() => {}) } }
 
   return (
@@ -378,13 +397,14 @@ function Sharing ({ onClose, onOpenPartner }) {
 
       {shares.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-          <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>People you share with</div>
+          <div style={{ fontSize: 13, color: colors.text.muted, textAlign: 'center' }}>People you share with</div>
           {shares.map((s) => {
             const joiners = s.joiners || []
             const named = joiners.map((j) => j.name).filter(Boolean)
             const title = named.length ? `Shared with ${named.join(', ')}`
               : joiners.length ? (joiners.length === 1 ? 'Someone joined' : `${joiners.length} people joined`)
                 : 'Not joined yet'
+            const on = qrFor === s.groupId
             return (
               <div key={s.groupId} style={{ ...card, padding: spacing.md, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
@@ -395,34 +415,69 @@ function Sharing ({ onClose, onOpenPartner }) {
                     <div style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
                     <div style={{ color: colors.text.muted, fontSize: 12, textTransform: 'capitalize' }}>{s.scope} · shared {sharedOn(s.createdAt)}</div>
                   </div>
+                  <div style={{ display: 'flex', gap: spacing.xs, flexShrink: 0 }}>
+                    <IconBtn label={on ? 'Hide QR' : 'Show QR'} onClick={() => setQrFor(on ? null : s.groupId)} active={on}><QrCode size={18} weight={on ? 'fill' : 'regular'} /></IconBtn>
+                    <IconBtn label='Copy link' onClick={() => copy(shareUrl(s.inviteKey))}><Copy size={18} /></IconBtn>
+                    <IconBtn label='Revoke share' onClick={() => revoke(s.groupId)} disabled={busyRevoke === s.groupId} color={colors.error}><Trash size={18} /></IconBtn>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: spacing.sm, justifyContent: 'flex-end' }}>
-                  <Btn kind='ghost' onClick={() => setQrFor(qrFor === s.groupId ? null : s.groupId)} style={{ padding: '6px 10px', fontSize: 13 }}>{qrFor === s.groupId ? 'Hide QR' : 'QR'}</Btn>
-                  <Btn kind='ghost' onClick={() => copy(shareUrl(s.inviteKey))} style={{ padding: '6px 10px', fontSize: 13 }}>Copy link</Btn>
-                  <Btn kind='ghost' onClick={() => revoke(s.groupId)} style={{ padding: '6px 10px', fontSize: 13, color: colors.error }}>Revoke</Btn>
-                </div>
-                {qrFor === s.groupId && <QrImage text={shareUrl(s.inviteKey)} />}
+                {on && <QrImage text={shareUrl(s.inviteKey)} />}
               </div>
             )
           })}
         </div>
       )}
 
-      {partners.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-          <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Shared with you</div>
-          {partners.map((p) => (
-            <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md, minWidth: 0 }}>
-                <Avatar src={p.ownerAvatar} name={p.ownerName} size={32} />
-                <span style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.ownerName ? `${p.ownerName}'s cycle` : "A partner's cycle"}</span>
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12, flexShrink: 0 }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Always available - an existing owner can also view a partner's cycle (paste
+          / scan a share code), not only on a fresh install. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        <div style={{ fontSize: 13, color: colors.text.muted, textAlign: 'center' }}>Shared with you</div>
+        {partners.map((p) => (
+          <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md, minWidth: 0 }}>
+              <Avatar src={p.ownerAvatar} name={p.ownerName} size={32} />
+              <span style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.ownerName ? `${p.ownerName}'s cycle` : "A partner's cycle"}</span>
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.muted, fontSize: 12, flexShrink: 0, textTransform: 'capitalize' }}>{p.scope || '...'}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
+          </button>
+        ))}
+        <Btn kind='ghost' onClick={() => setJoinOpen(true)}>View a partner's cycle</Btn>
+      </div>
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
+      {joinOpen && <JoinPartnerSheet onClose={() => setJoinOpen(false)} onJoined={(groupId) => { setJoinOpen(false); onOpenPartner(groupId) }} />}
+    </div>
+  )
+}
+
+// Join a partner's share from within the app (paste code or scan QR), so an
+// existing owner - not just a fresh install - can view a partner's cycle.
+function JoinPartnerSheet ({ onClose, onJoined }) {
+  const [code, setCode] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const join = async (raw) => {
+    setErr(''); setBusy(true)
+    try {
+      const r = await call('partner:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) })
+      haptic('success'); onJoined(r.groupId)
+    } catch (e) { setErr(e.message); setBusy(false) }
+  }
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 auto', background: colors.surface.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, border: `1px solid ${colors.border}`, padding: spacing.lg, paddingBottom: `calc(${spacing.lg}px + var(--pear-safe-bottom))`, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+        <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>View a partner's cycle</div>
+        <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>Paste the share code your partner gave you. You'll see only what they chose to share.</div>
+        <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder='Paste code' rows={3}
+          style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
+        {err && <div style={{ color: colors.error, fontSize: 13, textAlign: 'center' }}>{err}</div>}
+        <div style={{ display: 'flex', gap: spacing.sm }}>
+          <Btn onClick={() => join()} style={{ flex: 1, opacity: busy ? 0.6 : 1 }}>{busy ? 'Joining…' : 'View their cycle'}</Btn>
+          <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }}>Scan QR</Btn>
+        </div>
+        <Btn kind='ghost' onClick={onClose}>Cancel</Btn>
+        <ScannerView open={scanning} onClose={() => setScanning(false)} onDecode={(txt) => { setScanning(false); join(txt) }} />
+      </div>
     </div>
   )
 }
