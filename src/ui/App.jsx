@@ -9,7 +9,7 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, CaretDown, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -798,13 +798,9 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
     <div style={{ ...card, position: 'relative', display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
+      <button onClick={onFlowerTap} aria-label='Change flower' style={{ position: 'absolute', top: spacing.md, left: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, cursor: 'pointer', display: 'flex', alignItems: 'center' }}><FlowerThumb flower={flower} size={26} /></button>
       <button onClick={onInfo} aria-label='How to read the dial' style={{ position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, color: colors.text.muted, cursor: 'pointer', display: 'flex' }}><Info size={20} /></button>
       <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} hideFertile={pred.birthControl} />
-      <button onClick={onFlowerTap} aria-label='Change flower' style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: spacing.sm, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: '4px 12px 4px 6px', cursor: 'pointer' }}>
-        <FlowerThumb flower={flower} size={24} />
-        <span style={{ fontSize: 13, color: colors.text.secondary, width: FLOWER_NAME_CH, textAlign: 'center', whiteSpace: 'nowrap' }}>{flowerLabel(flower)}</span>
-        <CaretDown size={12} color={colors.text.muted} />
-      </button>
       {!pred.known ? (
         <>
           <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Learning your cycle</div>
@@ -1459,6 +1455,7 @@ export default function App () {
   const [periodSheet, setPeriodSheet] = useState(false)
   const [dialInfo, setDialInfo] = useState(false)
   const [flowerSheet, setFlowerSheet] = useState(false)
+  const [recentsOpen, setRecentsOpen] = useState(false) // Recents is collapsed by default (declutter the main page)
   // Theme: `themePref` is the user's choice (dark/light/system), `theme` the
   // resolved dark|light that drives CSS + the flower palette. main.jsx already
   // applied the saved pref pre-paint; keep React in sync so flowers re-render.
@@ -1549,11 +1546,10 @@ export default function App () {
         </>
       )}
       <DayEditor date={date} setDate={setDate} onSaved={refresh} />
-      {(!pred?.pregnancy?.active && cycleView === 'calendar') ? null : (
-        <div>
-          <div style={{ fontSize: 13, color: colors.text.muted, margin: `0 0 ${spacing.sm}px ${spacing.xs}px` }}>Recent</div>
+      {((!pred?.pregnancy?.active && cycleView === 'calendar') || !days.length) ? null : (
+        <CollapsibleCard title={`Recent days (${days.length})`} open={recentsOpen} onToggle={() => setRecentsOpen((o) => !o)}>
           <RecentDays days={days} onPick={setDate} />
-        </div>
+        </CollapsibleCard>
       )}
     </div>
   )
