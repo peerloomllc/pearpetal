@@ -21,11 +21,19 @@ Not yet built:
 Code done, need **on-device confirmation** (bundle these into a hardware pass):
 - **iOS Local Network prompt**: install on the iPhone (`scripts/ios-dev-install.sh`),
   confirm the LN prompt appears + partner sync takes the LAN path.
-- **App icon / notification icons**: iOS HOME-SCREEN icon CONFIRMED 2026-07-09 (was a
+- ~~**App icon / notification icons**~~ CONFIRMED 2026-07-09. iOS home-screen icon: was a
   stale blank `ios/` from before the art landed; regenerated `ios/` -> real cherry-blossom
-  icon on the iPhone SE). STILL TODO: the notification-tray glyph shows the colored app
-  icon, not the monochrome one (Android + iOS); needs the icon-asset wiring confirmed on a
-  fresh prebuild (pair with the durable-debug-config dev-infra item).
+  icon on the iPhone SE. Android notification-tray glyph: was the colored launcher icon
+  because the built `android/` predated the expo-notifications icon config; a fresh `expo
+  prebuild -p android` wired `@drawable/notification_icon` (monochrome silhouette from
+  `monochrome-icon.png`) + the `default_notification_icon` manifest meta-data + tint color
+  `#f2789f`, and the rebuilt APK shows the correct WHITE monochrome glyph on the TCL (icon
+  resource is now a drawable, not the mipmap launcher icon). NO source change was needed -
+  the app.json config was already correct; it just needed a build from a fresh prebuild.
+  NOTE (build hygiene, below): the `.debug` config survives prebuild now (it lives in the
+  `with-android-debug-standalone` plugin), so `expo prebuild -p android --clean` is the
+  safe way to pick up any app.json/icon/plugin change. iOS notifications always use the app
+  icon (no custom small-icon), so nothing further there.
 - **Invite/share URL**: copy a link on one phone, open/paste on another.
 - **Petal dial in the partner view + ring day-scrub**: owner taps a past tick ->
   editor jumps; partner sees the dial.
@@ -108,10 +116,16 @@ may need an app reopen to finish syncing its first edits."
   surfacing): `app/index.tsx` shows an "Engine failed to start" page + writes
   `Documents/init-error.txt`; `engine.js` dispatch includes `err.stack`; the fix for
   `callRaw` silently swallowing init errors. The init-error.txt write is optional.
-- **Make the debug-build Android config durable**: `applicationIdSuffix ".debug"` +
-  `debuggableVariants = []` are edited into the generated `android/` (lost on `expo
-  prebuild`). Move both into a config plugin. Suite convention: debug builds are
-  standalone `.debug`-suffixed installs (never Metro-dependent).
+- ~~**Make the debug-build Android config durable**~~ DONE (verified 2026-07-09):
+  `applicationIdSuffix ".debug"` + `debuggableVariants = []` live in the
+  `plugins/with-android-debug-standalone.js` config plugin, so they SURVIVE a fresh
+  `expo prebuild -p android --clean` (confirmed - both present after a clean regen).
+  Suite convention holds: debug builds are standalone `.debug`-suffixed installs (never
+  Metro-dependent). Remaining build-hygiene gap: `gradlew assembleDebug` uses whatever
+  `android/` exists, so a stale `android/` (predating an app.json/icon/plugin change)
+  silently ships old assets - as happened with the notification glyph. Consider a
+  build wrapper that prebuilds first (same class as the iOS `ios-dev-install.sh` gap
+  below).
 - **iOS dev-install workflow** (`scripts/ios-dev-install.sh`): build + archive on the
   Mac mini, then install from this linux box via `ideviceinstaller install <ipa>` over
   USB (devicectl install fails "Authorization required" over the wireless CoreDevice
