@@ -18,7 +18,16 @@ import * as Linking from 'expo-linking'
 import * as Haptics from 'expo-haptics'
 import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { requestLocalNetworkPermission } from '../modules/local-network'
+
+// Pre-paint background per theme, so a light-theme user does not flash the dark
+// shell bg before the WebView's JS applies the palette. Must match theme.js
+// --color-surface-base. The WebView persists its resolved theme (shell:theme) so
+// the shell can read it here on the next boot.
+const THEME_KEY = 'pearpetal:theme:resolved'
+const SHELL_BG: Record<string, string> = { dark: '#140f11', light: '#faf4f5' }
+const bgFor = (t: string) => SHELL_BG[t] || SHELL_BG.dark
 
 // --- worklet + IPC (module-scoped so it survives remounts) -----------------
 let _worklet: any = null
@@ -95,16 +104,16 @@ function errorHtml (err: string) {
 }
 
 // --- UI html ---------------------------------------------------------------
-function buildHtml (jsBundle: string) {
+function buildHtml (jsBundle: string, bg: string) {
   const platform = JSON.stringify(Platform.OS)
   const debug = JSON.stringify(__DEV__)
-  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" /><style>html,body,#root{height:100%;margin:0;padding:0;background:#140f11}body{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}</style><script>window.__pearPlatform=${platform};window.__pearDebug=${debug};</script></head><body><div id="root"></div><script>${jsBundle}</script></body></html>`
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" /><style>html,body,#root{height:100%;margin:0;padding:0;background:${bg}}body{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}</style><script>window.__pearPlatform=${platform};window.__pearDebug=${debug};</script></head><body><div id="root"></div><script>${jsBundle}</script></body></html>`
 }
-async function loadUiHtml () {
+async function loadUiHtml (bg: string) {
   const asset = Asset.fromModule(require('../assets/app-ui.bundle'))
   await asset.downloadAsync()
   const js = await FileSystem.readAsStringAsync(asset.localUri!, { encoding: FileSystem.EncodingType.UTF8 })
-  return buildHtml(js)
+  return buildHtml(js, bg)
 }
 
 // The invite payload rides in the URL fragment (#) or a query (?). Match either.
@@ -113,6 +122,7 @@ const INVITE_RE = /^(pear:\/\/pearpetal\/(link|join)|https:\/\/peerloomllc\.com\
 export default function Shell () {
   const webViewRef = useRef<any>(null)
   const [html, setHtml] = useState<string | null>(null)
+  const [shellTheme, setShellTheme] = useState('dark') // pre-paint bg; the WebView corrects it via shell:theme
   const webViewLoaded = useRef(false)
   const pendingDeeplink = useRef<string | null>(null)
   const canBackRef = useRef(false)
@@ -138,9 +148,14 @@ export default function Shell () {
       // devices + partner) connect directly instead of via a relay (see
       // modules/local-network). Fire-and-forget; no-op off iOS.
       requestLocalNetworkPermission()
+      // Read the persisted resolved theme first so the WebView wrapper + container
+      // paint in the right colour from the first frame (no dark flash for light users).
+      const saved = await AsyncStorage.getItem(THEME_KEY).catch(() => null)
+      const boot = saved === 'light' ? 'light' : 'dark'
+      if (!cancelled) setShellTheme(boot)
       const initErr = await startWorklet()
       if (cancelled) return
-      setHtml(initErr ? errorHtml(initErr) : await loadUiHtml())
+      setHtml(initErr ? errorHtml(initErr) : await loadUiHtml(bgFor(boot)))
     })().catch((e) => { if (!cancelled) setHtml(errorHtml('shell boot failed: ' + (e?.message ?? String(e)))) })
     return () => { cancelled = true }
   }, [])
@@ -222,6 +237,14 @@ export default function Shell () {
           canBackRef.current = !!args?.canBack
           return reply(id, { ok: true })
         }
+        case 'shell:theme': {
+          // The WebView reports its resolved theme; follow it live (status bar +
+          // container bg) and persist so the next cold start paints correctly.
+          const t = args?.theme === 'light' ? 'light' : 'dark'
+          setShellTheme(t)
+          AsyncStorage.setItem(THEME_KEY, t).catch(() => {})
+          return reply(id, { ok: true })
+        }
         default: {
           const wm = await callRaw(method, args)
           if (wm && wm.error != null) return replyError(id, wm.error)
@@ -242,16 +265,16 @@ export default function Shell () {
     }
   }
 
-  if (!html) return <View style={{ flex: 1, backgroundColor: '#140f11' }} />
+  if (!html) return <View style={{ flex: 1, backgroundColor: bgFor(shellTheme) }} />
   return (
     <>
-      <StatusBar barStyle='light-content' translucent backgroundColor='transparent' />
+      <StatusBar barStyle={shellTheme === 'light' ? 'dark-content' : 'light-content'} translucent backgroundColor='transparent' />
       <WebView
         ref={webViewRef}
         source={{ html, baseUrl: 'https://localhost/' }}
         onMessage={onMessage}
         onLoad={onLoad}
-        style={{ flex: 1, backgroundColor: '#140f11' }}
+        style={{ flex: 1, backgroundColor: bgFor(shellTheme) }}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
