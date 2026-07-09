@@ -224,14 +224,31 @@ async function writeShareMeta (ctx, groupId, scope, prof) {
 }
 // Re-project the current profile into every shared-out base's share:meta so
 // existing partners get an updated name/avatar. Only writable bases (the owner
-// is the writer) are touched.
+// is the writer) are touched. Revoked shares are SKIPPED - rewriting their
+// share:meta from the profile would drop the `revoked` tombstone and un-end them.
 async function refreshShareMeta (ctx) {
   const prof = await getProfile(ctx)
   for (const m of await membershipsByKind(ctx, 'shared-out')) {
+    if (m.revoked) continue
     const base = ctx.bases.get(m.groupId)
     if (!base || !base.writable) continue
     try { await writeShareMeta(ctx, m.groupId, m.scope || 'phase', prof) } catch {}
   }
+}
+
+// Mark a shared-out base's owner-signed share:meta as revoked (the "sharing
+// ended" tombstone), preserving the existing owner/scope/identity fields. Owner-
+// signed like every other share:meta write, so it inherits the owner-write-only
+// apply gate; uses a distinct `revoked` field (NOT `deleted`, which would trip the
+// apply resurrection guard). See proposals/2026-07-09-sharing-ended.md.
+async function revokeShareMeta (ctx, groupId) {
+  const existing = await readRow(viewFor(ctx, groupId), 'share:meta')
+  if (!existing) return false
+  // Drop the prior signing fields so signRow re-stamps pubkey/updatedAt + a fresh
+  // sig (fresh updatedAt makes LWW keep this over the last projection-era meta).
+  const { pubkey, updatedAt, sig, ...keep } = existing
+  await putRow(ctx, groupId, 'share:meta', { ...keep, revoked: true, revokedAt: Date.now() })
+  return true
 }
 
 // A JOINER (viewer) self-publishes their display name into a shared-IN base's
@@ -293,7 +310,8 @@ async function writeProjection (ctx, groupId, scope, proj, dayRows) {
 // Recompute the projection and push it to every shared-out base. Best-effort and
 // scoped per base. Called after any private-log change so partners stay current.
 async function refreshShares (ctx) {
-  const shares = await membershipsByKind(ctx, 'shared-out')
+  // Revoked shares are frozen at their last-synced projection - never push more.
+  const shares = (await membershipsByKind(ctx, 'shared-out')).filter((m) => !m.revoked)
   if (!shares.length) return
   let projData
   try { projData = await computeProjection(ctx) } catch { return }
@@ -755,19 +773,36 @@ const methods = {
           }
         } catch {}
       }
-      out.push({ groupId: m.groupId, scope: m.scope || 'phase', inviteKey: reencodeInvite(m), createdAt: m.joinedAt || 0, joiners })
+      out.push({ groupId: m.groupId, scope: m.scope || 'phase', inviteKey: reencodeInvite(m), createdAt: m.joinedAt || 0, joiners, revoked: !!m.revoked, revokedAt: m.revokedAt || null })
     }
     out.sort((a, b) => a.createdAt - b.createdAt)
     return out
   },
 
-  // Revoke a share: stop announcing/replicating that base and forget it. Forward-
-  // only - it cannot unsend the projection blocks the partner already replicated
-  // (a P2P invariant; the UI states this).
+  // Revoke a share (SOFT-CLOSE): write the "sharing ended" tombstone into the
+  // owner-signed share:meta and flag the membership revoked so we stop projecting
+  // to it, but KEEP the base + swarm alive so the tombstone still reaches a partner
+  // who was offline at revoke time (it replicates whenever they next reconnect).
+  // Forward-only: it cannot unsend the projection blocks the partner already has (a
+  // P2P invariant). "Remove permanently" (share:remove) is the hard teardown. See
+  // proposals/2026-07-09-sharing-ended.md.
   'share:revoke': async ({ groupId }, ctx) => {
-    // Idempotent: revoke means "ensure this share is gone". If it is already gone
-    // (e.g. a double-fire from the UI, or a group:updated-triggered reload racing
-    // the tap), that is success, not an error - never surface "share not found".
+    // Idempotent: a double-fire or a group:updated-triggered reload racing the tap
+    // is success, not an error.
+    const m = (await membershipsByKind(ctx, 'shared-out')).find((x) => x.groupId === groupId)
+    if (!m) return { ok: true, already: true }
+    if (m.revoked) return { ok: true, already: true }
+    try { await revokeShareMeta(ctx, groupId) } catch {}
+    const rec = (await ctx.localDb.get('groups:joined:' + groupId))?.value || m
+    await ctx.localDb.put('groups:joined:' + groupId, { ...rec, revoked: true, revokedAt: Date.now() })
+    return { ok: true, revoked: true }
+  },
+
+  // Remove a share PERMANENTLY: stop announcing/serving that base and forget it
+  // locally (the pre-soft-close revoke behaviour). Use after a share has ended to
+  // clean up the lingering base - accepts that a partner who never reconnected will
+  // not have received the tombstone.
+  'share:remove': async ({ groupId }, ctx) => {
     const m = (await membershipsByKind(ctx, 'shared-out')).find((x) => x.groupId === groupId)
     if (!m) return { ok: true, already: true }
     await ctx.localDb.del('groups:joined:' + groupId).catch(() => {})
@@ -800,7 +835,7 @@ const methods = {
       const base = ctx.bases.get(m.groupId)
       let meta = null
       if (base) { try { await base.update(); meta = (await base.view.get('share:meta'))?.value } catch {} }
-      out.push({ groupId: m.groupId, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar: resolveAvatarCached(ctx, meta), scope: meta?.scope || null, joinedAt: m.joinedAt || 0 })
+      out.push({ groupId: m.groupId, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar: resolveAvatarCached(ctx, meta), scope: meta?.scope || null, joinedAt: m.joinedAt || 0, revoked: !!meta?.revoked, revokedAt: meta?.revokedAt || null })
     }
     out.sort((a, b) => a.joinedAt - b.joinedAt)
     return out
@@ -826,7 +861,7 @@ const methods = {
     // background fetch; ownerHasAvatar tells the UI to keep polling until it lands.
     const ownerAvatar = resolveAvatarCached(ctx, meta)
     const ownerHasAvatar = !!(meta?.avatarBlob || meta?.avatar)
-    return { scope: meta?.scope || null, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar, ownerHasAvatar, phase, predict, summary }
+    return { scope: meta?.scope || null, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar, ownerHasAvatar, phase, predict, summary, revoked: !!meta?.revoked, revokedAt: meta?.revokedAt || null }
   },
 
   'partner:leave': async ({ groupId }, ctx) => {

@@ -144,6 +144,20 @@ test('share:meta identity fields ride the owner-only gate (name/avatar)', () => 
   assert.equal(rowSharedDecision('share:meta', forged, existing), 'reject')
 })
 
+test('share:meta revoke tombstone: owner may set revoked, partner cannot; row still updatable', () => {
+  const existing = shareMeta()
+  // The owner writes revoked:true on share:meta -> applies (inherits the owner gate).
+  const revoked = shareMeta(OWNER, OWNERPUB, OWNERPUB, { updatedAt: 3000, revoked: true, revokedAt: 3000 })
+  assert.equal(rowSharedDecision('share:meta', revoked, existing), 'accept')
+  // A partner cannot forge the tombstone onto the owner's meta.
+  const forged = shareMeta(PARTNER, PARTNERPUB, PARTNERPUB, { updatedAt: 3000, revoked: true })
+  assert.equal(rowSharedDecision('share:meta', forged, existing), 'reject')
+  // `revoked` (not `deleted`) does not trip the resurrection guard: a later
+  // owner-signed meta write still applies over a revoked row.
+  const later = shareMeta(OWNER, OWNERPUB, OWNERPUB, { updatedAt: 4000, revoked: true, revokedAt: 3000 })
+  assert.equal(rowSharedDecision('share:meta', later, revoked), 'accept')
+})
+
 test('phase:current accepted from the owner, rejected from the partner', () => {
   assert.equal(rowSharedDecision(phaseKey(), phaseRow(OWNER, OWNERPUB), null, OWNERPUB), 'accept')
   // Same key, validly self-signed by the partner, but not the owner -> reject.

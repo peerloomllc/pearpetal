@@ -156,9 +156,11 @@ const mockMethods = {
     mock.shares.set(groupId, { groupId, scope, inviteKey, createdAt: Date.now() })
     return { groupId, inviteKey, scope }
   },
-  'share:list': async () => [...mock.shares.values()].map((s) => ({ ...s, joiners: s.joiners || [] })).sort((a, b) => a.createdAt - b.createdAt),
+  'share:list': async () => [...mock.shares.values()].map((s) => ({ ...s, joiners: s.joiners || [], revoked: !!s.revoked, revokedAt: s.revokedAt || null })).sort((a, b) => a.createdAt - b.createdAt),
   'member:publish': async () => ({ published: 0 }),
-  'share:revoke': async ({ groupId }) => { mock.shares.delete(groupId); return { ok: true } },
+  // Soft-close: flag revoked (keep the row) so the "Sharing ended" UI renders.
+  'share:revoke': async ({ groupId }) => { const s = mock.shares.get(groupId); if (s) { s.revoked = true; s.revokedAt = Date.now() } return { ok: true, revoked: true } },
+  'share:remove': async ({ groupId }) => { mock.shares.delete(groupId); return { ok: true } },
   'partner:join': async ({ inviteKey }) => {
     if (!inviteKey) throw new Error('inviteKey required')
     const m = /mock-share-(phase|fertility|full)/.exec(inviteKey)
@@ -167,7 +169,7 @@ const mockMethods = {
     mock.partners.set(groupId, { groupId, scope, ownerPubkey: 'cd'.repeat(32), joinedAt: Date.now() })
     return { groupId }
   },
-  'partner:list': async () => [...mock.partners.values()].sort((a, b) => a.joinedAt - b.joinedAt),
+  'partner:list': async () => [...mock.partners.values()].map((p) => ({ ...p, revoked: !!p.revoked, revokedAt: p.revokedAt || null })).sort((a, b) => a.joinedAt - b.joinedAt),
   'partner:view': async ({ groupId }) => {
     const p = mock.partners.get(groupId); if (!p) throw new Error('not found')
     const proj = mockProjection()
@@ -175,7 +177,7 @@ const mockMethods = {
     let predict = null
     if (proj.known) { predict = { nextPeriodStart: proj.nextPeriodStart }; if (p.scope !== 'phase') { predict.fertileStart = proj.fertileStart; predict.fertileEnd = proj.fertileEnd; predict.ovulationEst = proj.ovulationEst } }
     const summary = p.scope === 'full' ? [...mock.days.values()].filter((d) => !d.deleted).slice(0, 8).map((d) => ({ date: d.date, flow: !!d.flow, symptomTags: (d.symptoms || []).filter((s) => ['cramps', 'headache', 'fatigue', 'bloating'].includes(s)) })) : []
-    return { scope: p.scope, ownerPubkey: p.ownerPubkey, phase, predict, summary }
+    return { scope: p.scope, ownerPubkey: p.ownerPubkey, phase, predict, summary, revoked: !!p.revoked, revokedAt: p.revokedAt || null }
   },
   'partner:leave': async ({ groupId }) => { mock.partners.delete(groupId); return { ok: true } },
   'shell:haptic': async () => ({ ok: true }),

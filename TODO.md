@@ -41,6 +41,10 @@ Code done, need **on-device confirmation** (bundle these into a hardware pass):
   development.
 - **User profile**: live two-phone owner->partner name display (propagation is
   unit-covered; needs the Pixel as partner).
+- **Sharing ended (soft-close revoke tombstone)**: BUILT 2026-07-09 (proposal
+  2026-07-09-sharing-ended). Two-phone confirm: owner (TCL) shares -> partner (Pixel)
+  joins -> owner revokes -> partner shows the "sharing ended" banner on next open;
+  owner "Remove permanently" + partner "Remove" both clear.
 
 Website-side (not in-app):
 - **Universal-link tap-to-open**: serve Android `/.well-known/assetlinks.json`
@@ -73,9 +77,7 @@ Website-side (not in-app):
   custom "reminders" channel not expo's fallback). REMAINING: (a) first-run opt-in prompt
   folds into the guided-onboarding blocker; (b) confirm on iOS next hardware pass; (c) the
   notification status-bar icon shows the colored app icon, not a monochrome glyph - needs
-  the `expo prebuild` notification-icon item (pair with durable-debug-config). Partner-facing
-  "sharing ended" is still a DEFERRED T2 (needs a revoke tombstone - revoke writes no signal
-  today).
+  the `expo prebuild` notification-icon item (pair with durable-debug-config).
 - **JSON export encryption - optional passphrase?** Slice 4 shipped plain JSON
   deliberately (recovery-first). Revisit an OPTIONAL passphrase-encrypted export (KDF
   -> XChaCha20-Poly1305) so backups aren't plaintext at rest, keeping plain export the

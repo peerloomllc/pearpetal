@@ -2,6 +2,34 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-09 - Sharing ended (revoke tombstone) - IMPLEMENTED
+Tier: T2 (new optional field on the owner-signed `share:meta` + a revoke-flow change;
+NO privacy-boundary/crypto/admission change, fully back-compatible). Proposal
+`proposals/2026-07-09-sharing-ended.md`.
+Context: revoke destroyed the owner's shared base with no signal, so a partner saw
+frozen data forever with no indication the share ended.
+Choice (decisions with Tim 2026-07-09):
+  - SOFT-CLOSE: `share:revoke` writes `revoked:true`+`revokedAt` into the owner-signed
+    `share:meta` (inherits the owner-write-only apply gate - no apply change; uses a
+    distinct `revoked` field, not `deleted`, to avoid the resurrection guard) and flags
+    the local membership `revoked`, but KEEPS the base + swarm alive so the tombstone
+    reaches an offline partner whenever they next reconnect. `refreshShares` /
+    `refreshShareMeta` skip revoked memberships (frozen projection, and a later profile
+    change can't un-revoke). New `share:remove` = the old hard teardown (destroyGroup),
+    surfaced as owner "Remove permanently".
+  - Partner UI: a calm "sharing ended" banner atop the (dimmed) last-known view with a
+    Remove button; ViewerHome/Sharing cards show "Sharing ended"; polling stops.
+  - No notification (passive on-open state, per 2026-07-09-notifications).
+Alternatives: hard-destroy with a brief flush (rejected - misses an offline partner);
+key rotation on revoke (out of scope - soft-close serves the same base with a frozen
+projection, no new data exposed; a re-share still mints a fresh base).
+Consequences: additive + back-compat (old peers ignore `revoked`); forward-only
+(cannot unsend replicated blocks). A revoked base lingers until "Remove permanently"
+(no ack channel since the base is owner-write-only; TTL deferred). Verify: `npm run
+verify` green (85 tests incl. wire revoke-tombstone gate + soft-close method test +
+share:remove + partner read; 3 bundles). ON-DEVICE (two-phone owner->partner) pending a
+hardware pass.
+
 ## 2026-07-09 - To-self local notifications (v1) - IMPLEMENTED
 Tier: T1 (device-local prefs feeding OS-scheduled local notifications over the
 existing on-device prediction; NO wire change, no new Autobase row, nothing
