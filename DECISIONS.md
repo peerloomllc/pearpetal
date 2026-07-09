@@ -2,6 +2,24 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-09 - Per-person shares (who joined)
+Tier: T3 (new shared-base row type on the consent/pairing surface).
+Context: two shares of the same scope were indistinguishable ("Phase" / "Phase").
+The owner wants to see WHO joined a share, not just its scope.
+Choice: a JOINER self-publishes a `member:{pubkey}` identity row into the shared
+base (display name; self-signed, key must equal signer - like `device:{pubkey}` on
+the private base). The owner reads `member:*` to render "Shared with Ada". Projection
+rows stay strictly owner-write-only. See `proposals/2026-07-09-per-person-shares.md`.
+Alternatives: keep bearer links + owner-named labels/fingerprints (rejected - Tim
+chose per-person); put joiner identity in `share:meta` (rejected - that row is
+owner-only by design).
+Consequences: **Part A only** ships here (identity display, PearPetal-only, additive,
+back-compatible - old peers ignore `member:`). The joiner name is SELF-ATTESTED until
+**Part B** - `@peerloom/core` addWriter gating so a partner cannot admit a third party
+- which is a separate suite-wide proposal (still the deferred "Shared-base addWriter
+gating" security item). Joiner AVATAR is also deferred (needs cross-base blob
+replication check); the UI shows an initials avatar meanwhile.
+
 ## 2026-07-08 - Monthly calendar view (Stardust blocker #13)
 Tier: T1 (new owner UI over existing on-device prediction; NO wire change; the
 Dial/Month preference is device-local in localStorage).

@@ -204,31 +204,20 @@ throughout with the owner's chosen name.
 
 ## UX / sharing polish (nice-to-have, found 2026-07-07 on-device)
 
-- **Flower picker is buried in Cycle Settings.** Confirmed present + working on-device, but
-  the "Your flower" picker lives inside Settings (gear), which is itself hard to find. Surface
-  flower choice more prominently (e.g. tap the dial to switch, or a top-level control) in the
-  UI polish phase.
+- **Flower picker is buried in Cycle Settings.** DONE 2026-07-09 (PR #31): a pill under the
+  dial (current flower thumb + name) opens a FlowerPickerSheet; the Settings picker stays too.
 
-- **Owner Share screen: differentiate share instances.** Multiple shares of the same scope
-  render as identical-looking "Phase" rows with near-identical codes (invites share the
-  `eyJncm91cElkIjoi` base64 prefix; only the tail differs - they ARE distinct). Add a label /
-  created-date / short fingerprint (e.g. last 6 chars of groupId) + let the user name a share
-  or see who joined, so two "Phase" shares are tellable apart.
+- **Owner Share screen: differentiate share instances.** DONE 2026-07-09 (per-person shares,
+  below): rows now show WHO joined ("Shared with Ada" / "Someone joined" / "Not joined yet")
+  plus the shared-on date, so two same-scope shares are tellable apart.
 
-- **Are "People you share with" rows 1:1 with a person, or reusable by many? (queued 2026-07-08)**
-  Today each `share:create` makes a NEW shared base with its own invite, but the invite is a
-  bearer link: ANYONE who has it can `partner:join` and become a writer on that base, so a single
-  share row is technically 1:many (multiple people could join the same code and all see the same
-  projection). Nothing binds a row to one individual. DECIDE the model:
-  - If shares should be **per-individual**: have the joiner publish their identity (name/avatar,
-    reusing the new profile blob-avatar pattern) into the shared base, gated so only the intended
-    joiner writes it, and show that name + avatar on the owner's share row ("Shared with Ada").
-    This needs the addWriter gating below (a partner is a writer and could admit a 3rd party), so
-    it is entangled with the "Shared-base addWriter gating" security item.
-  - If shares stay **reusable/bearer**: keep them code-based but make that explicit in copy, and
-    lean on the share label / fingerprint item above for disambiguation.
-  Cross-ref the owner-identity work just shipped (owner name/avatar already ride `share:meta`);
-  this is the mirror - the JOINER's identity back to the owner.
+- **Share model DECIDED 2026-07-09: per-individual (who joined).** Tim chose per-person over
+  bearer+labels. **Part A shipped** (proposal 2026-07-09-per-person-shares, DECISIONS 2026-07-09):
+  a joiner self-publishes a `member:{pubkey}` name row into the shared base; the owner renders it.
+  **Part B still deferred** = `@peerloom/core` addWriter gating so a partner cannot admit a 3rd
+  party (a separate suite-wide proposal; = the "Shared-base addWriter gating" security item below).
+  Until Part B, the joiner name is SELF-ATTESTED and the bearer-link caveat holds (UI copy says so).
+  Joiner AVATAR also deferred (needs cross-base blob replication check; initials avatar for now).
 
 ## UX / navigation (nice-to-have, found 2026-07-07 on-device)
 

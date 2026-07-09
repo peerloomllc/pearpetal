@@ -373,25 +373,38 @@ function Sharing ({ onClose, onOpenPartner }) {
           ))}
         </div>
         <Btn onClick={create}>Create a share link</Btn>
-        <div style={{ color: colors.text.muted, fontSize: 12 }}>Your full log and notes never leave your devices. Revoking stops future updates but cannot unsend what a partner already received.</div>
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>Anyone you send a link to can view it until you revoke. Your full log and notes never leave your devices. Revoking stops future updates but cannot unsend what a partner already received.</div>
       </div>
 
       {shares.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
           <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>People you share with</div>
-          {shares.map((s) => (
-            <div key={s.groupId} style={{ ...card, padding: spacing.md, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ color: colors.text.primary, fontWeight: 500, textTransform: 'capitalize' }}>{s.scope}</span>
-                <div style={{ display: 'flex', gap: spacing.sm }}>
+          {shares.map((s) => {
+            const joiners = s.joiners || []
+            const named = joiners.map((j) => j.name).filter(Boolean)
+            const title = named.length ? `Shared with ${named.join(', ')}`
+              : joiners.length ? (joiners.length === 1 ? 'Someone joined' : `${joiners.length} people joined`)
+                : 'Not joined yet'
+            return (
+              <div key={s.groupId} style={{ ...card, padding: spacing.md, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+                  {joiners.length
+                    ? <Avatar name={named[0] || '?'} size={32} />
+                    : <span style={{ width: 32, height: 32, borderRadius: radius.full, background: colors.surface.elevated, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: colors.text.muted, flexShrink: 0 }}><ShareNetwork size={16} /></span>}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
+                    <div style={{ color: colors.text.muted, fontSize: 12, textTransform: 'capitalize' }}>{s.scope} · shared {sharedOn(s.createdAt)}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: spacing.sm, justifyContent: 'flex-end' }}>
                   <Btn kind='ghost' onClick={() => setQrFor(qrFor === s.groupId ? null : s.groupId)} style={{ padding: '6px 10px', fontSize: 13 }}>{qrFor === s.groupId ? 'Hide QR' : 'QR'}</Btn>
                   <Btn kind='ghost' onClick={() => copy(shareUrl(s.inviteKey))} style={{ padding: '6px 10px', fontSize: 13 }}>Copy link</Btn>
                   <Btn kind='ghost' onClick={() => revoke(s.groupId)} style={{ padding: '6px 10px', fontSize: 13, color: colors.error }}>Revoke</Btn>
                 </div>
+                {qrFor === s.groupId && <QrImage text={shareUrl(s.inviteKey)} />}
               </div>
-              {qrFor === s.groupId && <QrImage text={shareUrl(s.inviteKey)} />}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -661,6 +674,7 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
 // --- cycle summary (owner's own prediction) ---------------------------------
 const PHASE_COLOR = { menstrual: '#c8384f', follicular: '#c9a0d8', fertile: '#e8859b', luteal: '#8f8288' }
 function fmtDate (iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }) } catch { return iso } }
+function sharedOn (ms) { try { return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) } catch { return '' } }
 
 // Pregnancy (gestational) hero: replaces the cycle summary when the goal is
 // Pregnant. Shows the bloom-by-gestation dial + weeks/trimester/due-date.

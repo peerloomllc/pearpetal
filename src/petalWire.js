@@ -46,7 +46,7 @@ const DAY_RANGE = { gt: 'day:', lt: 'day:~' }
 const PERIOD_RANGE = { gt: 'period:', lt: 'period:~' }
 
 const PRIVATE_NAMESPACES = ['device:', 'day:', 'period:']
-const SHARED_NAMESPACES = ['share:', 'phase:', 'predict:', 'summary:']
+const SHARED_NAMESPACES = ['share:', 'phase:', 'predict:', 'summary:', 'member:']
 const inPrivateNs = (key) => typeof key === 'string' && PRIVATE_NAMESPACES.some((n) => key.startsWith(n))
 const inSharedNs = (key) => typeof key === 'string' && SHARED_NAMESPACES.some((n) => key.startsWith(n))
 // Back-compat name used by callers/tests for the private-base check.
@@ -95,7 +95,14 @@ function rowSharedDecision (key, incoming, existing, ownerPubkey) {
   if (incoming.updatedAt > Date.now() + FUTURE_TS_TOLERANCE_MS) return 'reject'
   if (!verifyValue(incoming)) return 'reject'
 
-  if (key === 'share:meta') {
+  if (key.startsWith('member:')) {
+    // A JOINER self-publishes their identity (name/avatar) so the owner can see
+    // who joined. Like device:{pubkey} on the private base, a writer may only
+    // write their OWN member row (key suffix must equal the signer), so nobody can
+    // spoof another member. This is the one shared row a non-owner may write; the
+    // owner-write-only rule below still governs every projection row.
+    if (key.slice('member:'.length) !== incoming.pubkey) return 'reject'
+  } else if (key === 'share:meta') {
     // First write claims ownership: the claimant must name itself as owner.
     if (!existing) return incoming.ownerPubkey === incoming.pubkey ? 'accept' : 'reject'
     // After that only the established owner may update it.
@@ -141,11 +148,13 @@ async function applyPetalOp (op, ctx) {
 function phaseKey () { return 'phase:current' }
 function predictKey () { return 'predict:current' }
 function summaryKey (yyyymmdd) { return 'summary:' + yyyymmdd }
+function memberKey (pubkey) { return 'member:' + pubkey }
 const SUMMARY_RANGE = { gt: 'summary:', lt: 'summary:~' }
+const MEMBER_RANGE = { gt: 'member:', lt: 'member:~' }
 
 module.exports = {
   applyPetalOp, rowApplyDecision, rowSharedDecision,
-  deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey,
-  DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE,
+  deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, memberKey,
+  DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE, MEMBER_RANGE,
   FUTURE_TS_TOLERANCE_MS,
 }
