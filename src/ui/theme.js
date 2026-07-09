@@ -55,6 +55,10 @@ button:active{transform:scale(0.97)}
 @keyframes pearpetal-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes pearpetal-slide-r{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
 @keyframes pearpetal-slide-l{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+@keyframes pearpetal-sheet-up{from{transform:translateY(100%)}to{transform:none}}
+@keyframes pearpetal-sheet-down{from{transform:none}to{transform:translateY(100%)}}
+@keyframes pearpetal-overlay-in{from{opacity:0}to{opacity:1}}
+@keyframes pearpetal-overlay-out{from{opacity:1}to{opacity:0}}
 `
 
 export function injectGlobalStyles () {
