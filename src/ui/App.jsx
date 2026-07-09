@@ -685,7 +685,7 @@ function PregnancyView ({ preg, flower, onSettings }) {
   )
 }
 
-function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub, selected }) {
+function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub, selected, onEditPeriod }) {
   if (!pred) return null
   const days = pred.daysUntilNextPeriod
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
@@ -696,6 +696,7 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
         <>
           <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Learning your cycle</div>
           <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Log a period start or two and the flower will track your phase, next period, and fertile window. Everything is computed on this device.</div>
+          <Btn onClick={onEditPeriod} style={{ alignSelf: 'center', padding: `8px 20px` }}>Add period</Btn>
           <button onClick={onSettings} style={{ alignSelf: 'center', background: 'none', border: 'none', color: colors.primary, fontSize: 13, padding: 0 }}>Set your average cycle length ›</button>
         </>
       ) : (
@@ -706,6 +707,7 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
           </div>
           {!pred.birthControl && pred.goal === 'conceive' && <div style={{ textAlign: 'center', color: colors.primary, fontSize: 12 }}>Your fertile window is your best chance to conceive.</div>}
           {!pred.birthControl && pred.goal === 'avoid' && <div style={{ textAlign: 'center', color: colors.warn, fontSize: 12, fontWeight: 500 }}>Not contraception. Do not rely on this to avoid pregnancy.</div>}
+          <Btn kind='ghost' onClick={onEditPeriod} style={{ alignSelf: 'center', padding: `7px 18px`, fontSize: 14 }}>{pred.phase === 'menstrual' ? 'Adjust period' : 'Add period'}</Btn>
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
             <Row label='Next period' value={`${fmtDate(pred.nextPeriodStart)} · ${nextLabel}`} />
             {!pred.birthControl && <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} accent={pred.goal === 'conceive'} />}
@@ -1100,6 +1102,46 @@ function AboutLink ({ onClick, children, primary }) {
   return <Btn kind={primary ? 'primary' : 'ghost'} onClick={onClick} style={{ flex: 1, fontSize: 14 }}>{children}</Btn>
 }
 
+// Add / adjust a period span (start + optional end) via native date pickers.
+// Calls the existing period:set; the projection (dial, next-period, calendar) then
+// recomputes on refresh. A period start also anchors the cycle, so setting the last
+// period here is the direct way to correct "day N" without logging flow day-by-day.
+function PeriodSheet ({ defaultStart, onClose, onSaved }) {
+  const [start, setStart] = useState(defaultStart || todayIso())
+  const [end, setEnd] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const save = async () => {
+    if (!start) { setErr('Pick a start date.'); return }
+    if (end && end < start) { setErr('End date is before the start date.'); return }
+    setBusy(true); setErr('')
+    try {
+      await call('period:set', { start, end: end || null })
+      haptic('success'); onSaved && onSaved(start); onClose()
+    } catch (e) { setErr(e.message || 'Could not save.'); setBusy(false) }
+  }
+  const field = { background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `8px 10px`, fontSize: 15 }
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 auto', background: colors.surface.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, border: `1px solid ${colors.border}`, padding: spacing.lg, paddingBottom: `calc(${spacing.lg}px + var(--pear-safe-bottom))`, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
+        <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Period dates</div>
+        <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>When did your last period start? Leave the end blank if it is ongoing.</div>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
+          <span style={{ color: colors.text.secondary, fontSize: 14 }}>Start</span>
+          <input type='date' value={start} max={todayIso()} onChange={(e) => setStart(e.target.value)} style={field} />
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
+          <span style={{ color: colors.text.secondary, fontSize: 14 }}>End <span style={{ color: colors.text.muted }}>(optional)</span></span>
+          <input type='date' value={end} min={start} max={todayIso()} onChange={(e) => setEnd(e.target.value)} style={field} />
+        </label>
+        {err && <div style={{ color: colors.warn, fontSize: 13, textAlign: 'center' }}>{err}</div>}
+        <Btn onClick={save} style={{ opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save'}</Btn>
+        <Btn kind='ghost' onClick={onClose}>Cancel</Btn>
+      </div>
+    </div>
+  )
+}
+
 function WalletSheet ({ onClose }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
@@ -1246,6 +1288,7 @@ export default function App () {
   const [flower, setFlower] = useState('rose')
   const [notice, setNotice] = useState('')
   const [donateReminder, setDonateReminder] = useState(false)
+  const [periodSheet, setPeriodSheet] = useState(false)
   const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
   const [cycleView, setCycleView] = useState(() => { try { return localStorage.getItem('pearpetal:cycleView') === 'calendar' ? 'calendar' : 'dial' } catch { return 'dial' } })
   const setView = (v) => { setCycleView(v); try { localStorage.setItem('pearpetal:cycleView', v) } catch {} }
@@ -1321,7 +1364,7 @@ export default function App () {
           <div key={cycleView} style={{ animation: 'pearpetal-fade 220ms ease' }}>
             {cycleView === 'calendar'
               ? <MonthCalendar monthIso={calMonth} dir={calDir} pred={pred} daysByIso={Object.fromEntries(days.map((d) => [d.date, d]))} selected={date} today={todayIso()} onPick={setDate} onPrev={() => goMonth(-1)} onNext={() => goMonth(1)} onToday={goToday} />
-              : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} />}
+              : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} onEditPeriod={() => setPeriodSheet(true)} />}
           </div>
         </>
       )}
@@ -1342,6 +1385,7 @@ export default function App () {
       <div style={showNav ? { paddingBottom: 'calc(64px + var(--pear-safe-bottom))' } : undefined}>{content}</div>
       {showNav && <BottomNav active={navActive} onTab={setScreen} />}
       <DonationReminderModal open={donateReminder} onDonate={() => { setDonateReminder(false); setScreen('about') }} onDismiss={() => setDonateReminder(false)} />
+      {periodSheet && <PeriodSheet defaultStart={pred?.known ? addDaysIso(todayIso(), -((pred.dayOfCycle || 1) - 1)) : todayIso()} onClose={() => setPeriodSheet(false)} onSaved={(start) => { setView('dial'); setDate(start <= todayIso() ? start : todayIso()); refresh() }} />}
       {notice && (
         <div onClick={() => setNotice('')} style={{ position: 'fixed', left: 12, right: 12, bottom: `calc(16px + 64px + var(--pear-safe-bottom))`, zIndex: 50, background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, color: colors.text.primary, fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
           {notice}
