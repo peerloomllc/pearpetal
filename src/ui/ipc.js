@@ -109,6 +109,21 @@ const mockMethods = {
   'day:getAll': async () => [...mock.days.values()].filter((d) => !d.deleted).sort((a, b) => b.date.localeCompare(a.date)),
   'day:delete': async ({ date }) => { const r = mock.days.get(date); if (!r) throw new Error('day not found'); r.deleted = true; return { ok: true } },
   'period:set': async ({ start, end }) => { mock.periods.set(start, { start, end: end || null, deleted: false }); return { ok: true } },
+  'period:log': async ({ start, end }) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const ongoing = !end
+    const endIso = ongoing ? (today > start ? today : start) : end
+    mock.periods.set(start, { start, end: ongoing ? null : endIso, deleted: false })
+    let marked = 0; let d = start
+    for (let i = 0; i < 15 && d <= endIso && d <= today; i++) {
+      const ex = mock.days.get(d)
+      if (!(ex && !ex.deleted && ['spotting', 'light', 'medium', 'heavy'].includes(ex.flow))) {
+        mock.days.set(d, { ...(ex || {}), date: d, flow: 'medium', deleted: false, pubkey: MOCK_SELF, updatedAt: Date.now() }); marked++
+      }
+      d = new Date(new Date(d + 'T00:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
+    }
+    return { ok: true, start, end: endIso, marked }
+  },
   'period:getAll': async () => [...mock.periods.values()].filter((p) => !p.deleted).sort((a, b) => b.start.localeCompare(a.start)),
   'export:data': async () => {
     const days = [...mock.days.values()].filter((d) => !d.deleted).map((d) => { const o = { date: d.date }; if (d.flow !== undefined) o.flow = d.flow; if (d.symptoms && d.symptoms.length) o.symptoms = d.symptoms; if (d.mood && d.mood.length) o.mood = d.mood; if (d.notes) o.notes = d.notes; if (typeof d.bbt === 'number') o.bbt = d.bbt; return o })

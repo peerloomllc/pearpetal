@@ -586,6 +586,50 @@ const methods = {
     return { ok: true }
   },
 
+  // Log a period the way the rest of the app understands one: as a span of
+  // bleeding days. The calendar and dial key off logged flow (an explicit
+  // period-span row alone anchors prediction but paints no days), so this stamps a
+  // default 'medium' flow across start..(end||today) AND records the span row. It
+  // never clobbers a day that already has a flow, so per-day intensities the user
+  // picked are preserved; the span is capped so a bad range can't write forever.
+  'period:log': async ({ start, end }, ctx) => {
+    const ns = normDate(start)
+    if (!ns) throw new Error('start must be YYYY-MM-DD')
+    const today = todayIso()
+    if (ns.iso > today) throw new Error('start is in the future')
+    const ongoing = (end === undefined || end === null || end === '')
+    let endIso = ns.iso
+    if (!ongoing) {
+      const ne = normDate(end); if (!ne) throw new Error('end must be YYYY-MM-DD')
+      endIso = ne.iso
+      if (endIso < ns.iso) throw new Error('end is before start')
+    } else if (today > ns.iso) {
+      endIso = today // ongoing: bleed through today
+    }
+    const groupId = await privateGroupId(ctx)
+    const base = viewFor(ctx, groupId)
+    // Record the explicit span (start anchors the cycle; end marks its length).
+    const existingP = await readRow(base, periodKey(ns.key))
+    const p0 = (existingP && !existingP.deleted) ? existingP : { start: ns.iso, createdBy: pubkeyHex(ctx), createdAt: Date.now() }
+    await putRow(ctx, groupId, periodKey(ns.key), { ...p0, start: ns.iso, end: ongoing ? null : endIso, deleted: false })
+    // Stamp bleeding flow across the span (capped), preserving existing flow days.
+    const MAX_SPAN = 15
+    let marked = 0; let d = ns.iso
+    for (let i = 0; i < MAX_SPAN && d <= endIso && d <= today; i++) {
+      const nd = normDate(d)
+      const existing = await readRow(base, dayKey(nd.key))
+      const hasFlow = existing && !existing.deleted && FLOW_VALUES.has(existing.flow)
+      if (!hasFlow) {
+        const base0 = (existing && !existing.deleted) ? existing : { date: nd.iso, createdBy: pubkeyHex(ctx), createdAt: Date.now() }
+        await putRow(ctx, groupId, dayKey(nd.key), { ...base0, flow: 'medium', deleted: false })
+        marked++
+      }
+      d = addDays(d, 1)
+    }
+    await refreshShares(ctx).catch(() => {})
+    return { ok: true, start: ns.iso, end: endIso, marked }
+  },
+
   'period:getAll': async (_args, ctx) => {
     const base = viewFor(ctx, await privateGroupId(ctx))
     await base.update()

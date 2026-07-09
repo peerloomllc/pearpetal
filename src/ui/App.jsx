@@ -1116,7 +1116,7 @@ function PeriodSheet ({ defaultStart, onClose, onSaved }) {
     if (end && end < start) { setErr('End date is before the start date.'); return }
     setBusy(true); setErr('')
     try {
-      await call('period:set', { start, end: end || null })
+      await call('period:log', { start, end: end || null })
       haptic('success'); onSaved && onSaved(start); onClose()
     } catch (e) { setErr(e.message || 'Could not save.'); setBusy(false) }
   }
@@ -1125,7 +1125,7 @@ function PeriodSheet ({ defaultStart, onClose, onSaved }) {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 auto', background: colors.surface.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, border: `1px solid ${colors.border}`, padding: spacing.lg, paddingBottom: `calc(${spacing.lg}px + var(--pear-safe-bottom))`, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
         <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Period dates</div>
-        <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>When did your last period start? Leave the end blank if it is ongoing.</div>
+        <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>When did your last period start? Leave the end blank if it is ongoing. Those days are logged with a medium flow - tap any day afterward to adjust the amount.</div>
         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
           <span style={{ color: colors.text.secondary, fontSize: 14 }}>Start</span>
           <input type='date' value={start} max={todayIso()} onChange={(e) => setStart(e.target.value)} style={field} />

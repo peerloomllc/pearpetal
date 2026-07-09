@@ -13,6 +13,7 @@ const Corestore = require('corestore')
 const { createGroupEngine } = require('@peerloom/core/engine')
 const { applyPetalOp } = require('../src/petalWire')
 const petalMethods = require('../src/petalMethods')
+const { addDays, todayIso } = require('../src/prediction')
 
 const _tmpDirs = []
 function tmpStore () {
@@ -147,5 +148,53 @@ test('profile: an oversized avatar is rejected', async () => {
   await call('init', {})
   const big = 'data:image/png;base64,' + 'A'.repeat(3 * 1024 * 1024) // ~2.25MB decoded, over the 2MB cap
   await assert.rejects(() => call('profile:set', { displayName: 'Ada', avatar: big }))
+  await engine.close()
+})
+
+// period:log records the span AND stamps bleeding flow across it, so the calendar
+// and dial (which key off logged flow) actually reflect an added period.
+test('period:log stamps bleeding flow across the span and records the span', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const start = addDays(todayIso(), -30)
+  const end = addDays(todayIso(), -26) // a 5-day period, fully in the past
+  const r = await call('period:log', { start, end })
+  assert.equal(r.marked, 5)
+  const byDate = Object.fromEntries((await call('day:getAll', {})).map(d => [d.date, d]))
+  for (let i = 0; i < 5; i++) assert.equal(byDate[addDays(start, i)]?.flow, 'medium', 'day ' + i + ' should be logged as flow')
+  const periods = await call('period:getAll', {})
+  assert.ok(periods.find(p => p.start === start && p.end === end), 'explicit span row recorded')
+  // and the logged bleeding anchors the cycle -> prediction now knows the cycle
+  assert.equal((await call('cycle:prediction', {})).known, true)
+  await engine.close()
+})
+
+test('period:log preserves a day that already has a chosen flow', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const start = addDays(todayIso(), -20)
+  const heavyDay = addDays(start, 1)
+  await call('day:set', { date: heavyDay, flow: 'heavy' }) // user already picked an intensity
+  const r = await call('period:log', { start, end: addDays(start, 4) })
+  assert.equal(r.marked, 4) // 5-day span minus the pre-set heavy day
+  const byDate = Object.fromEntries((await call('day:getAll', {})).map(d => [d.date, d]))
+  assert.equal(byDate[heavyDay].flow, 'heavy') // not clobbered
+  assert.equal(byDate[start].flow, 'medium')
+  await engine.close()
+})
+
+test('period:log with no end marks through today (ongoing period)', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const start = addDays(todayIso(), -2)
+  const r = await call('period:log', { start })
+  assert.equal(r.marked, 3) // start, start+1, today
+  const byDate = Object.fromEntries((await call('day:getAll', {})).map(d => [d.date, d]))
+  assert.equal(byDate[todayIso()]?.flow, 'medium')
+  const span = (await call('period:getAll', {})).find(p => p.start === start)
+  assert.equal(span.end, null) // ongoing
   await engine.close()
 })
