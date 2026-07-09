@@ -130,6 +130,9 @@ function IconBtn ({ children, onClick, label, color, active, disabled }) {
   )
 }
 function flowColor (k) { return colors.flow[k] || colors.track }
+// Width (in ch) of the longest flower name, so the picker tiles + the dial pill
+// are all uniform (sized to the longest label) instead of varying by text length.
+const FLOWER_NAME_CH = `${Math.max(...FLOWER_KEYS.map((k) => flowerLabel(k).length))}ch`
 // A small on/off switch (for the birth-control toggle).
 function Toggle ({ on, onClick, label }) {
   return (
@@ -799,7 +802,7 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
       <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} hideFertile={pred.birthControl} />
       <button onClick={onFlowerTap} aria-label='Change flower' style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: spacing.sm, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: '4px 12px 4px 6px', cursor: 'pointer' }}>
         <FlowerThumb flower={flower} size={24} />
-        <span style={{ fontSize: 13, color: colors.text.secondary }}>{flowerLabel(flower)}</span>
+        <span style={{ fontSize: 13, color: colors.text.secondary, width: FLOWER_NAME_CH, textAlign: 'center', whiteSpace: 'nowrap' }}>{flowerLabel(flower)}</span>
         <CaretDown size={12} color={colors.text.muted} />
       </button>
       {!pred.known ? (
@@ -1044,7 +1047,7 @@ function FlowerPicker ({ value, onPick }) {
               border: `1px solid ${active ? colors.primary : colors.border}`, borderRadius: radius.lg, padding: `${spacing.sm}px ${spacing.md}px`,
             }}>
               <FlowerThumb flower={key} size={52} />
-              <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>{flowerLabel(key)}</span>
+              <span style={{ fontSize: 11, color: active ? colors.text.primary : colors.text.muted, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap', width: FLOWER_NAME_CH, textAlign: 'center' }}>{flowerLabel(key)}</span>
             </button>
           )
         })}
