@@ -97,7 +97,11 @@ function Btn ({ children, onClick, kind = 'primary', style, disabled }) {
     primary: { background: colors.primary, color: colors.text.onPrimary },
     ghost: { background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}` },
   }
-  return <button onClick={onClick} disabled={disabled} style={{ ...base, ...kinds[kind], cursor: disabled ? 'default' : 'pointer', ...style }}>{children}</button>
+  // A light tactile tick on every press, so all buttons feel responsive (existing
+  // explicit haptic('success')/('warn') calls fire later, on completion - a natural
+  // two-stage feel). Existing haptic('light') calls are on custom buttons/Chips, not
+  // Btn, so nothing double-fires.
+  return <button onClick={(e) => { haptic('light'); onClick && onClick(e) }} disabled={disabled} style={{ ...base, ...kinds[kind], cursor: disabled ? 'default' : 'pointer', ...style }}>{children}</button>
 }
 // Shared bottom-sheet chrome: slides up on open, slides down on dismiss (backdrop
 // tap or the `close` passed to children). children is a render function receiving
@@ -122,7 +126,7 @@ function BottomSheet ({ onClose, children, maxWidth = 460 }) {
 }
 function Chip ({ active, onClick, children, color, style }) {
   return (
-    <button onClick={onClick} style={{
+    <button onClick={(e) => { haptic('light'); onClick && onClick(e) }} style={{
       border: `1px solid ${active ? (color || colors.primary) : colors.border}`,
       background: active ? (color || colors.primary) : 'transparent',
       color: active ? colors.text.onPrimary : colors.text.secondary,
@@ -134,7 +138,7 @@ function Chip ({ active, onClick, children, color, style }) {
 // Compact icon-only action button (share row: QR / copy / revoke).
 function IconBtn ({ children, onClick, label, color, active, disabled }) {
   return (
-    <button onClick={onClick} aria-label={label} title={label} disabled={disabled} style={{
+    <button onClick={(e) => { haptic('light'); onClick && onClick(e) }} aria-label={label} title={label} disabled={disabled} style={{
       width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
       borderRadius: radius.full, cursor: disabled ? 'default' : 'pointer', padding: 0,
       background: active ? colors.primary : colors.surface.input,
