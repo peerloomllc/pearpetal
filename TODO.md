@@ -16,12 +16,28 @@ Not yet built:
    QR now opens in a bottom sheet that auto-dismisses on real peer connection (`share:connected`);
    full-screen scanner (portal fix). PR #49. Android end-to-end scan CONFIRMED by Tim 2026-07-10.
    iOS WebView scanner CONFIRMED 2026-07-10. FULLY DONE.
-2. **Store assets, release scripts, listing copy** (the publish mechanics).
-   ~~Privacy page~~ DONE 2026-07-10 (`website/pearpetal/privacy.html`, health-data
-   specific: structural privacy boundary, on-device predictions, encrypted backups,
-   permissions, not-medical-advice) + a support page + app landing page. REMAINING:
-   store screenshots / feature graphics, listing copy, and porting the
-   PearList/PearGuard release scripts (AAB/IPA build + upload).
+2. **Store assets + release** (the publish mechanics). DONE so far:
+   - ~~Privacy page~~ (+ support + landing) on peerloomllc.com (2026-07-10).
+   - ~~Release scripts ported~~ 2026-07-10: `scripts/release.sh` (Android AAB/APK +
+     GitHub/Zapstore/Play/Nostr), `scripts/ios-appstore.sh` (App Store archive+upload,
+     with a PearPetal `expo prebuild` step that keeps Universal Links),
+     `scripts/app.conf`, `scripts/.env.example`, `plugins/with-android-release-signing.js`
+     (wired in app.json; signs release with `~/keystore.jks` alias `pearpetal` =
+     assetlinks fingerprint). `release.sh --check-versions` green (detects com.pearpetal,
+     starts v1.0.0). NOT YET RUN a real signed build/upload (needs `scripts/.env` creds).
+   - ~~Listing copy drafted~~ 2026-07-10: `metadata/listing-play.md` (Play),
+     `metadata/listing-appstore.md` (App Store - subtitle/keywords/privacy-label/
+     age-rating/export-compliance guidance), `release_notes.md` (v1.0.0 what's-new).
+   REMAINING:
+   - **Screenshots + feature graphic**: port the sibling screenshot scripts
+     (`android-screenshots.sh` / `ios-screenshots.sh` / framing) and capture the required
+     sizes (6.9" iPhone, Pixel), plus a 1024x512 Play feature graphic.
+   - **iOS App Store distribution profile**: create "PearPetal App Store" (App Store dist
+     profile for com.pearpetal; the App ID already has Associated Domains) for
+     `ios-appstore.sh` manual signing.
+   - **Fill `scripts/.env`** (keystore + ASC + Play creds) and do a first signed
+     build + upload (TestFlight / Play internal).
+   - Confirm current Play/App Store policy for menstrual/health trackers at submission.
 3. ~~**First-run onboarding / guided demo**~~ BUILT + on-device VERIFIED 2026-07-09
    (see DONE): a skippable `SetupWizard` after "Start tracking" - welcome (hero dial) ->
    name/photo -> goal (incl. pregnancy) -> log last period (dial no longer empty) ->
@@ -104,23 +120,23 @@ shares.
   blocked on the deferred ack channel) + C (announce back-off - deferred, needs care);
   suite adoption gate = re-run PearList's pairing smoke before other apps rely on the
   core change.
-- **Pairing/sync degradation after repeated share/revoke/re-share** (OBSERVED, needs
-  repro + root-cause; **UX-critical**). The FIRST pair almost always connects immediately,
-  but SUBSEQUENT shares/pairings take an indeterminate (sometimes long) time to sync. The
-  full lifecycle churn must NOT degrade performance: repeated **share -> revoke ->
-  re-share** (and multiple concurrent partners) should each pair as fast as the first.
-  Feels like accumulation-driven degradation - likely the same class as the swarm-topic/
-  connection-accumulation item above (each share spins up another base + swarm topic;
-  soft-revoke deliberately KEEPS the base + swarm alive so the tombstone reaches an
-  offline partner, so revoked shares keep announcing/holding connections; re-share adds yet
-  another). Mitigation A (viewers join client-only) helps but clearly does not fully fix
-  it, and B (auto-sweep soft-revoked shares) is exactly the revoke-side leak - still
-  blocked on the deferred ack channel. NEXT: instrument active topics/connections per
-  share, repro on hardware with N>=3 sequential shares AND a share/revoke/re-share loop,
-  and find the lever (C announce back-off, a per-base connection cap, tearing down swarm
-  for revoked shares once the tombstone is acked, and/or capping total simultaneous
-  topics). Until fixed, warn in release notes that a 2nd/3rd share may be slow to
-  first-sync. Relates to the swarm-accumulation proposal + the sharing-ended soft-close.
+- **Pairing/sync degradation after repeated share/revoke/re-share** (BACKBURNER -
+  INTERMITTENT; needs repro + root-cause). Observed: the FIRST pair almost always connects
+  immediately, but SUBSEQUENT shares/pairings sometimes take an indeterminate (occasionally
+  long) time to sync. It is INTERMITTENT, not consistently reproducible, so deferred for
+  future investigation (not a launch blocker). Ideally repeated **share -> revoke ->
+  re-share** (and multiple concurrent partners) each pair as fast as the first. Working
+  theory: accumulation-driven, same class as the swarm-topic/connection-accumulation item
+  above (each share spins up another base + swarm topic; soft-revoke deliberately KEEPS the
+  base + swarm alive so the tombstone reaches an offline partner, so revoked shares keep
+  announcing/holding connections; re-share adds yet another). Mitigation A (viewers join
+  client-only) helps but does not fully fix it; B (auto-sweep soft-revoked shares) is the
+  revoke-side leak - still blocked on the deferred ack channel. WHEN REVISITED: instrument
+  active topics/connections per share, try to repro on hardware with N>=3 sequential shares
+  AND a share/revoke/re-share loop, and find the lever (C announce back-off, a per-base
+  connection cap, tearing down swarm for revoked shares once the tombstone is acked, and/or
+  capping total simultaneous topics). Relates to the swarm-accumulation proposal + the
+  sharing-ended soft-close.
 
 ## Known limitation (deferred) - linked device's writes slow to sync back to founder
 

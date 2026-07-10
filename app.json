@@ -112,7 +112,8 @@
         }
       ],
       "./plugins/with-android-debug-standalone",
-      "./plugins/with-android-queries"
+      "./plugins/with-android-queries",
+      "./plugins/with-android-release-signing"
     ],
     "assets": [
       "./assets/bare-universal.bundle",
