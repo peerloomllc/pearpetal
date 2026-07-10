@@ -38,21 +38,35 @@ two-phone owner->partner name display; earlier: petal dial in partner view 2026-
 app icon / notification glyph + About Bitcoin + sharing-ended 2026-07-09/10).
 
 Website-side (not in-app):
-- ~~**Universal-link tap-to-open**~~ MOSTLY DONE 2026-07-10 (in the `website/` repo,
-  deploy pending): iOS `/.well-known/apple-app-site-association` (`G79ALD29NA.com.pearpetal`,
-  paths `/petal/link*` + `/petal/join*`); `/petal/link` + `/petal/join` landing pages that
+- ~~**Universal-link tap-to-open**~~ DONE + DEPLOYED 2026-07-10 (website PR #27): iOS
+  `/.well-known/apple-app-site-association` (`G79ALD29NA.com.pearpetal`, paths
+  `/petal/link*` + `/petal/join*`); `/petal/link` + `/petal/join` landing pages that
   reconstruct the `pear://pearpetal/...#<blob>` deep link (blob rides the #fragment);
-  `associatedDomains` (`applinks:peerloomllc.com`) added to the iOS app.json; PearPetal
-  card + `/pearpetal/` landing/privacy/support pages + website icon & OG art. Android
-  `assetlinks.json` has BOTH the RELEASE `com.pearpetal` fingerprint (key generated in
-  `/home/tim/keystore.jks` alias `pearpetal`, 2026-07-10) and `com.pearpetal.debug`.
-  REMAINING: `wrangler deploy` the `website/` repo, then confirm tap-to-open on hardware
-  (Android App Links verify against the live `assetlinks.json`; iOS against the live AASA).
-  Until deployed, a tap shows a chooser; `pear://` + paste-into-app already work.
+  `associatedDomains` (`applinks:peerloomllc.com`) in the iOS app.json (pearpetal PR #58);
+  PearPetal card + `/pearpetal/` landing/privacy/support pages + Zapstore/GitHub badges +
+  website icon & OG art. Android `assetlinks.json` has BOTH the RELEASE `com.pearpetal`
+  fingerprint (key `/home/tim/keystore.jks` alias `pearpetal`) and `com.pearpetal.debug`.
+  Live-verified on peerloomllc.com: all pages 200, both `.well-known` files served as
+  `application/json`. REMAINING: confirm tap-to-open on hardware (Android App Links
+  verify against the live `assetlinks.json`; iOS against the live AASA) - fold into the
+  next device pass; needs the iOS `associatedDomains` baked in via a fresh prebuild
+  (`rm -rf ios`).
 
 ## Nice-to-have / UX polish
 
-All prior nice-to-haves shipped + verified 2026-07-10 (see DONE.md): bottom sheets for
+- **Partner (viewer) mode is barebones - needs a real shell.** The owner side has
+  bottom nav + Settings + About, but the partner/viewer side does not:
+  - Give the viewer home bottom navigation with at least **Settings** and **About**
+    pages (reuse the owner components where they make sense; a viewer has no cycle to
+    configure, so scope Settings to what's relevant - theme/appearance, name/photo,
+    reminders if any, backup/export).
+  - **No way to open the "View a partner's cycle" bottom sheet** from viewer mode: the
+    `ViewerHome` only shows the shared-cycle row(s) + "start tracking my own cycle". A
+    viewer who wants to accept a NEW partner invite (paste link / scan QR) has no entry
+    point - surface the `JoinPartnerSheet` (it already exists; owners reach it from
+    Sharing) on the viewer home too.
+
+Prior nice-to-haves shipped + verified 2026-07-10 (see DONE.md): bottom sheets for
 day/symptom entry, partner-view scoped Month calendar, joiner photo avatar in per-person
 shares.
 

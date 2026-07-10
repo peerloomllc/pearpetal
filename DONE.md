@@ -27,8 +27,12 @@ work lives in `TODO.md`.
     and `com.pearpetal.debug` (shared default debug keystore) so App Links autoVerify for
     both release and on-device `.debug` builds. PearPetal card added to the homepage
     showcase; `icon-pearpetal.png` + `og-pearpetal.jpg` generated from the app art.
-  - REMAINING (tracked in TODO): `wrangler deploy` the website, then confirm tap-to-open
-    on hardware against the live `.well-known` files.
+  - DEPLOYED to peerloomllc.com 2026-07-10 (website PR #27, app PR #58). Live-verified:
+    all pages 200; both `.well-known` files served as `application/json` (the strict
+    content-type iOS requires); AASA carries `com.pearpetal`; `assetlinks.json` carries
+    the release + debug fingerprints. REMAINING (tracked in TODO): a hardware tap-to-open
+    confirm on the next device pass (needs the iOS `associatedDomains` baked in via a fresh
+    `rm -rf ios` prebuild).
 - **Hardware verification pass - remaining on-device confirmations DONE**: the last
   code-done-needs-confirmation items are now confirmed on real devices.
   - **iOS WebView QR scanner**: the getUserMedia + `jsQR` scanner (Onboarding +
