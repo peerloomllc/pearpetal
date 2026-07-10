@@ -95,6 +95,11 @@ Website-side (not in-app):
 ## Deferred - security / scale
 
 - Migrate `day:`/`period:` retention/paging once logs get long.
+- **Swarm topic + connection accumulation** (`@peerloom/core`, T3, suite-wide) -
+  proposal `proposals/2026-07-09-swarm-topic-accumulation.md`. Pairing slows/stalls as a
+  device piles up bases (each rejoins its own topic every boot + shares connections
+  during pairing); fresh install resets it. NOT a topic collision. Recommended fix:
+  viewers join client-only (A) + Hyperswarm cap (D). Surfaced by QR-pairing testing.
 
 ## Known limitation (deferred) - linked device's writes slow to sync back to founder
 
