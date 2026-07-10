@@ -185,7 +185,6 @@ const mockMethods = {
   'shell:haptic': async () => ({ ok: true }),
   'shell:share': async ({ text }) => { try { if (navigator.share) await navigator.share({ text }); else alert('Share:\n\n' + text) } catch {} return { ok: true } },
   'shell:openUrl': async ({ url }) => { try { window.open(url, '_blank', 'noopener') } catch {} return { ok: true } },
-  'shell:scanQr': async () => { const code = window.prompt ? window.prompt('Paste an invite code (camera scan on device):') : null; return { code: code || null } },
   // Notifications are inert in the browser preview; keep the prefs so the Settings
   // card is fully clickable (on device the shell owns scheduling + OS permission).
   'shell:notifications:get': async () => ({ ...mock.notif, osGranted: true }),
