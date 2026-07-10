@@ -97,7 +97,11 @@ function Btn ({ children, onClick, kind = 'primary', style, disabled }) {
     primary: { background: colors.primary, color: colors.text.onPrimary },
     ghost: { background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}` },
   }
-  return <button onClick={onClick} disabled={disabled} style={{ ...base, ...kinds[kind], cursor: disabled ? 'default' : 'pointer', ...style }}>{children}</button>
+  // A light tactile tick on every press, so all buttons feel responsive (existing
+  // explicit haptic('success')/('warn') calls fire later, on completion - a natural
+  // two-stage feel). Existing haptic('light') calls are on custom buttons/Chips, not
+  // Btn, so nothing double-fires.
+  return <button onClick={(e) => { haptic('light'); onClick && onClick(e) }} disabled={disabled} style={{ ...base, ...kinds[kind], cursor: disabled ? 'default' : 'pointer', ...style }}>{children}</button>
 }
 // Shared bottom-sheet chrome: slides up on open, slides down on dismiss (backdrop
 // tap or the `close` passed to children). children is a render function receiving
@@ -122,7 +126,7 @@ function BottomSheet ({ onClose, children, maxWidth = 460 }) {
 }
 function Chip ({ active, onClick, children, color, style }) {
   return (
-    <button onClick={onClick} style={{
+    <button onClick={(e) => { haptic('light'); onClick && onClick(e) }} style={{
       border: `1px solid ${active ? (color || colors.primary) : colors.border}`,
       background: active ? (color || colors.primary) : 'transparent',
       color: active ? colors.text.onPrimary : colors.text.secondary,
@@ -134,7 +138,7 @@ function Chip ({ active, onClick, children, color, style }) {
 // Compact icon-only action button (share row: QR / copy / revoke).
 function IconBtn ({ children, onClick, label, color, active, disabled }) {
   return (
-    <button onClick={onClick} aria-label={label} title={label} disabled={disabled} style={{
+    <button onClick={(e) => { haptic('light'); onClick && onClick(e) }} aria-label={label} title={label} disabled={disabled} style={{
       width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
       borderRadius: radius.full, cursor: disabled ? 'default' : 'pointer', padding: 0,
       background: active ? colors.primary : colors.surface.input,
@@ -324,7 +328,8 @@ function ScannerView ({ open, onClose, onDecode }) {
 }
 
 // --- onboarding -------------------------------------------------------------
-function Onboarding ({ onReady, onViewerReady }) {
+function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
+  const [intro, setIntro] = useState(true) // the blooming-dial welcome, shown before the chooser
   const [mode, setMode] = useState(null) // null | 'link' | 'partner'
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
@@ -332,7 +337,9 @@ function Onboarding ({ onReady, onViewerReady }) {
 
   const start = async () => {
     setErr('')
-    try { await call('cycle:create'); haptic('success'); onReady() } catch (e) { setErr(e.message) }
+    // Create the private base, then hand off to the guided setup wizard (name /
+    // goal / last period / reminders) instead of dropping onto an empty dial.
+    try { await call('cycle:create'); haptic('success'); onStartSetup() } catch (e) { setErr(e.message) }
   }
   const link = async (raw) => {
     setErr('')
@@ -345,13 +352,33 @@ function Onboarding ({ onReady, onViewerReady }) {
   const submit = () => (mode === 'link' ? link() : joinPartner())
   const onScanned = (txt) => { setScanning(false); (mode === 'link' ? link : joinPartner)(txt) }
   const back = () => { setMode(null); setErr(''); setCode(''); setScanning(false) }
-  useBackHandler(mode !== null, back) // Android Back leaves a link/partner sub-mode
+  // Android Back: from a paste sub-mode -> the chooser; from the chooser -> the intro.
+  useBackHandler(!intro || mode !== null, () => { if (mode !== null) back(); else setIntro(true) })
+
+  // First-run intro: the blooming-dial welcome shown BEFORE the Start / Link / View
+  // chooser, so the app introduces itself first. "Get started" reveals the chooser.
+  const t0 = todayIso()
+  const samplePred = { known: true, phase: 'fertile', dayOfCycle: 14, cycleLen: 28, ovulationEst: t0, nextPeriodStart: addDaysIso(t0, 14), fertileStart: addDaysIso(t0, -4), fertileEnd: addDaysIso(t0, 1) }
+  if (intro) {
+    return (
+      <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+          <PetalDial pred={samplePred} today={t0} flower='rose' />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
+          <div style={{ color: colors.text.secondary, marginTop: spacing.sm, lineHeight: 1.5 }}>Your flower furls and blooms across your cycle, so a glance shows your phase. Private tracking - no account, no server, your data stays on your devices.</div>
+        </div>
+        <Btn onClick={() => setIntro(false)}>Get started</Btn>
+      </div>
+    )
+  }
 
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
-        <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>Private cycle tracking. No account, no server. Your data stays on your devices.</div>
+        {mode === null && <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>How would you like to begin?</div>}
       </div>
       {mode === null && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
@@ -378,6 +405,138 @@ function Onboarding ({ onReady, onViewerReady }) {
       )}
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
       <ScannerView open={scanning} onClose={() => setScanning(false)} onDecode={onScanned} />
+    </div>
+  )
+}
+
+// --- first-run setup wizard --------------------------------------------------
+// Runs right after "Start tracking" (which created the private base). A short,
+// fully skippable sequence sets up the essentials - name/photo, goal, last period,
+// reminders - so the user lands on a MEANINGFUL dial instead of an empty "Learning
+// your cycle". Reuses the same controls as Settings; T1, no wire change.
+const SETUP_STEPS = ['name', 'goal', 'period', 'reminders', 'done']
+
+function StepDots ({ n, i }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+      {Array.from({ length: n }).map((_, k) => (
+        <span key={k} style={{ width: k === i ? 18 : 6, height: 6, borderRadius: radius.full, background: k === i ? colors.primary : colors.border, transition: 'width 160ms, background 160ms' }} />
+      ))}
+    </div>
+  )
+}
+
+function SetupWizard ({ onDone }) {
+  const [step, setStep] = useState(0)
+  const [prefs, setPrefs] = useState({ goal: 'track' })
+  const [name, setName] = useState('')
+  const [avatar, setAvatar] = useState(null) // avatar data URL
+  const [periodStart, setPeriodStart] = useState('')
+  const [notif, setNotif] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const total = SETUP_STEPS.length
+  const s = SETUP_STEPS[step]
+  const go = (d) => setStep((v) => Math.max(0, Math.min(total - 1, v + d)))
+  useBackHandler(step > 0, () => go(-1)) // Android Back steps back through the wizard
+
+  const savePrefs = async (patch) => { setPrefs((p) => ({ ...p, ...patch })); await call('prefs:set', patch).catch(() => {}) }
+  const saveName = async () => {
+    const dn = name.trim()
+    if (dn || avatar) { try { await call('profile:set', { displayName: dn, avatar: avatar || undefined }) } catch {} }
+    go(1)
+  }
+  const logPeriod = async () => {
+    if (periodStart) { setBusy(true); try { await call('period:log', { start: periodStart, end: null }) } catch {} setBusy(false) }
+    go(1)
+  }
+  const enableReminders = async () => {
+    setBusy(true)
+    try { setNotif(await call('shell:notifications:set', { enabled: true })) } catch {}
+    setBusy(false); go(1)
+  }
+
+  const field = { background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '10px 12px', fontSize: 15 }
+
+  const title = (t, sub) => (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontSize: 24, fontWeight: 600 }}>{t}</div>
+      {sub && <div style={{ color: colors.text.secondary, fontSize: 14, marginTop: spacing.sm, lineHeight: 1.5 }}>{sub}</div>}
+    </div>
+  )
+  const nextRow = (label, onPrimary, { skip = true, disabled = false } = {}) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+      <Btn onClick={onPrimary} disabled={disabled} style={{ opacity: disabled ? 0.6 : 1 }}>{label}</Btn>
+      {skip && <Btn kind='ghost' onClick={() => go(1)}>Skip</Btn>}
+    </div>
+  )
+
+  let body
+  if (s === 'name') {
+    body = (
+      <>
+        {title('What should we call you?', 'Shown to partners you share with; otherwise it stays on your device. Optional.')}
+        <div style={{ ...card, display: 'flex', alignItems: 'center', gap: spacing.md }}>
+          <label style={{ cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
+            <Avatar src={avatar} name={name} size={56} />
+            <span style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderRadius: '50%', background: colors.primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Camera size={13} color={colors.text.onPrimary} /></span>
+            <input type='file' accept='image/*' style={{ display: 'none' }} onChange={async (e) => { const f = e.target.files?.[0]; if (f) { try { setAvatar(await fileToAvatarDataUrl(f)) } catch {} } }} />
+          </label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder='Your name' maxLength={64} style={{ ...field, flex: 1, minWidth: 0 }} />
+        </div>
+        {nextRow('Continue', saveName)}
+      </>
+    )
+  } else if (s === 'goal') {
+    body = (
+      <>
+        {title('What are you tracking for?', 'This tailors what PearPetal shows you. You can change it anytime.')}
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
+            {GOAL_OPTS.map(([k, l]) => (
+              <Chip key={k} active={(prefs.goal || 'track') === k} onClick={() => savePrefs({ goal: k })} style={{ width: '100%' }}>{l}</Chip>
+            ))}
+          </div>
+          {prefs.goal === 'pregnant'
+            ? <PregnancySetup prefs={prefs} save={savePrefs} />
+            : <Explainer>{(GOAL_OPTS.find(([k]) => k === (prefs.goal || 'track')) || [])[2]}</Explainer>}
+        </div>
+        {nextRow('Continue', () => go(1), { skip: false })}
+      </>
+    )
+  } else if (s === 'period') {
+    body = (
+      <>
+        {title('When did your last period start?', 'Pick the first day of your most recent period so your dial starts out accurate. Not sure? Skip it - PearPetal learns as you log.')}
+        <div style={{ ...card }}>
+          <input type='date' value={periodStart} max={todayIso()} onChange={(e) => setPeriodStart(e.target.value)} style={{ ...field, width: '100%', boxSizing: 'border-box' }} />
+        </div>
+        {nextRow(busy ? 'Saving...' : 'Continue', logPeriod, { disabled: busy })}
+      </>
+    )
+  } else if (s === 'reminders') {
+    body = (
+      <>
+        {title('Want reminders?', 'Gentle nudges on your own phone for your period and fertile window. Private to this device, never sent to anyone - fine-tune them anytime in Settings.')}
+        {notif && notif.permissionDenied && <div style={{ color: colors.text.muted, fontSize: 12, textAlign: 'center' }}>Notifications are off in system settings - turn them on for PearPetal to receive reminders.</div>}
+        {nextRow(busy ? '...' : 'Turn on reminders', enableReminders, { disabled: busy })}
+      </>
+    )
+  } else {
+    body = (
+      <>
+        {title("You're all set", 'Tap the flower or a past day to log flow and symptoms. Share a scoped view with a partner anytime from the Share tab. Your cycle lives only on your devices.')}
+        <Btn onClick={onDone}>Open my cycle</Btn>
+      </>
+    )
+  }
+
+  return (
+    <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, minHeight: '100dvh', display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+      <div style={{ paddingTop: spacing.sm }}><StepDots n={total} i={step} /></div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        <div style={{ margin: 'auto 0', display: 'flex', flexDirection: 'column', gap: spacing.lg }}>{body}</div>
+      </div>
     </div>
   )
 }
@@ -1557,7 +1716,7 @@ function BottomNav ({ active, onTab }) {
 }
 
 export default function App () {
-  const [mode, setMode] = useState(null) // null (loading) | 'onboard' | 'owner' | 'viewer'
+  const [mode, setMode] = useState(null) // null (loading) | 'onboard' | 'setup' | 'owner' | 'viewer'
   const [screen, setScreen] = useState('main') // 'main' | 'devices' | 'share'
   const [partnerGroup, setPartnerGroup] = useState(null)
   const [date, setDate] = useState(todayIso())
@@ -1659,9 +1818,10 @@ export default function App () {
 
   let content
   if (mode === null) content = <div style={{ height: '100%' }} />
-  else if (mode === 'onboard') content = <Onboarding onReady={boot} onViewerReady={boot} />
+  else if (mode === 'onboard') content = <Onboarding onReady={boot} onViewerReady={boot} onStartSetup={() => setMode('setup')} />
+  else if (mode === 'setup') content = <SetupWizard onDone={boot} />
   else if (partnerGroup) content = <PartnerView groupId={partnerGroup} onClose={() => setPartnerGroup(null)} onLeft={() => { setPartnerGroup(null); boot() }} />
-  else if (mode === 'viewer') content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); boot() }} />
+  else if (mode === 'viewer') content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); setMode('setup') }} />
   else if (screen === 'devices') content = <Devices onClose={() => setScreen('main')} />
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
   else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onDevices={() => setScreen('devices')} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} themePref={themePref} onTheme={changeTheme} />
