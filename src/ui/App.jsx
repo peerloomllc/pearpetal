@@ -349,12 +349,39 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [scanning, setScanning] = useState(false)
+  const [pendingImport, setPendingImport] = useState(null) // encrypted backup awaiting its password
 
   const start = async () => {
     setErr('')
     // Create the private base, then hand off to the guided setup wizard (name /
     // goal / last period / reminders) instead of dropping onto an empty dial.
     try { await call('cycle:create'); haptic('success'); onStartSetup() } catch (e) { setErr(e.message) }
+  }
+  // Recovery / migration: restore a JSON backup. import:data creates the private
+  // base if this device has none (the all-devices-lost case), then boots into the
+  // app. Encrypted backups route through the password sheet first.
+  const restore = async () => {
+    setErr('')
+    const inShell = typeof window !== 'undefined' && !!window.ReactNativeWebView
+    if (inShell) {
+      let json = null
+      try { const r = await call('shell:import'); json = r && r.json } catch { setErr('Could not open that file. Please try again.'); return }
+      if (json) restoreJson(json)
+      return
+    }
+    const input = document.createElement('input'); input.type = 'file'; input.accept = 'application/json,.json'
+    input.onchange = () => { const f = input.files && input.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => restoreJson(String(rd.result)); rd.readAsText(f) }
+    input.click()
+  }
+  const restoreJson = async (json) => {
+    let parsed
+    try { parsed = JSON.parse(json) } catch { setErr('That file could not be read. Choose a valid PearPetal backup.'); return }
+    if (parsed && parsed.enc) { setPendingImport(parsed); return }
+    try { await call('import:data', { data: parsed }); haptic('success'); onReady() } catch (e) { setErr(friendlyImportError(e)) }
+  }
+  const submitRestore = async (pw) => {
+    await call('import:data', { data: pendingImport, password: pw }) // throws 'wrong password' -> sheet shows friendly error
+    setPendingImport(null); haptic('success'); onReady()
   }
   const link = async (raw) => {
     setErr('')
@@ -400,6 +427,7 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
           <Btn onClick={start}>Start tracking</Btn>
           <Btn kind='ghost' onClick={() => { setMode('link'); setErr('') }}>Link another device</Btn>
           <Btn kind='ghost' onClick={() => { setMode('partner'); setErr('') }}>View a partner's cycle</Btn>
+          <Btn kind='ghost' onClick={restore}>Restore from a backup</Btn>
         </div>
       )}
       {(mode === 'link' || mode === 'partner') && (
@@ -420,6 +448,7 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
       )}
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
       <ScannerView open={scanning} onClose={() => setScanning(false)} onDecode={onScanned} />
+      {pendingImport && <ImportPasswordSheet onSubmit={submitRestore} onClose={() => setPendingImport(null)} />}
     </div>
   )
 }
@@ -1449,7 +1478,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
   const [dataMsg, setDataMsg] = useState(null) // { text, tone: 'success'|'error'|'muted' }
   const [exportPw, setExportPw] = useState('') // optional backup password (blank = plaintext)
   const [pendingImport, setPendingImport] = useState(null) // encrypted wrapper awaiting its password
-  const [importResult, setImportResult] = useState(null) // { days, periods } -> success modal
+  const [successModal, setSuccessModal] = useState(null) // { title, message } -> export/import result popup
   // The advanced/occasional sections collapse independently (collapsed by default).
   const [openSection, setOpenSection] = useState({})
   const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
@@ -1479,17 +1508,32 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
       if (inShell) {
         const r = await call('shell:export', { filename: fname, json })
         if (r && r.canceled) { setDataMsg({ text: 'Export canceled.', tone: 'muted' }); return }
-        setDataMsg({ text: encrypted ? 'Encrypted backup saved.' : 'Backup saved.' })
+        setDataMsg(null)
+        const dest = r && r.folder ? ` to ${r.folder}` : ''
+        setSuccessModal({
+          title: encrypted ? 'Encrypted backup saved' : 'Backup saved',
+          message: encrypted
+            ? `Your encrypted backup was saved${dest || ' successfully'}. Keep its password safe: it cannot be recovered.`
+            : (dest ? `Your backup was saved${dest}.` : 'Your backup was saved successfully.'),
+        })
       } else {
         const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
         const a = document.createElement('a'); a.href = url; a.download = fname; a.click(); URL.revokeObjectURL(url)
-        setDataMsg({ text: encrypted ? 'Exported an encrypted backup.' : `Exported ${data.days.length} days.` })
+        setDataMsg(null)
+        setSuccessModal({
+          title: encrypted ? 'Encrypted backup exported' : 'Backup exported',
+          message: encrypted ? 'Your encrypted backup file was downloaded.' : `Your backup with ${data.days.length} ${data.days.length === 1 ? 'day' : 'days'} was downloaded.`,
+        })
       }
       haptic('success')
     } catch { setDataMsg({ text: 'Export failed. Please try again.', tone: 'error' }) }
   }
   // Import succeeded: clear any stale message, surface the success modal, refresh.
-  const finishImport = (r) => { setDataMsg(''); setImportResult({ days: r.days, periods: r.periods }); haptic('success'); onSaved && onSaved() }
+  const finishImport = (r) => {
+    const dayN = r.days === 1 ? '1 day' : `${r.days} days`
+    const perN = r.periods === 1 ? '1 period' : `${r.periods} periods`
+    setDataMsg(null); setSuccessModal({ title: 'Backup imported', message: `${dayN} and ${perN} were merged into your log.` }); haptic('success'); onSaved && onSaved()
+  }
   const applyImport = async (json) => {
     let parsed
     try { parsed = JSON.parse(json) } catch { setDataMsg({ text: 'That file could not be read. Choose a valid PearPetal backup.', tone: 'error' }); return }
@@ -1590,7 +1634,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
         {dataMsg && <div style={{ color: dataMsg.tone === 'error' ? colors.error : dataMsg.tone === 'muted' ? colors.text.muted : colors.success, fontSize: 13 }}>{dataMsg.text}</div>}
       </CollapsibleCard>
       {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
-      {importResult && <ImportSuccessModal result={importResult} onClose={() => setImportResult(null)} />}
+      {successModal && <BackupSuccessModal title={successModal.title} message={successModal.message} onClose={() => setSuccessModal(null)} />}
     </div>
   )
 }
@@ -1608,19 +1652,16 @@ function friendlyImportError (e) {
   return 'Import failed. Please try again with a valid backup file.'
 }
 
-// Prominent confirmation after a successful import. A centered modal (not the
-// small inline line) so the user clearly sees the merge landed.
-function ImportSuccessModal ({ result, onClose }) {
-  useBackHandler(!!result, onClose)
-  if (!result) return null
-  const dayN = result.days === 1 ? '1 day' : `${result.days} days`
-  const perN = result.periods === 1 ? '1 period' : `${result.periods} periods`
+// Prominent confirmation for a successful backup export or import. A centered
+// modal (not the small inline line) so the user clearly sees the result.
+function BackupSuccessModal ({ title, message, onClose }) {
+  useBackHandler(true, onClose)
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
       <div style={{ background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.xl, padding: spacing.xl, maxWidth: 360, width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: spacing.sm, alignItems: 'center' }}>
         <CheckCircle size={48} weight='fill' color={colors.success} />
-        <div style={{ fontSize: 20, fontWeight: 600, color: colors.text.primary }}>Backup imported</div>
-        <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.5, marginBottom: spacing.sm }}>{dayN} and {perN} were merged into your log.</div>
+        <div style={{ fontSize: 20, fontWeight: 600, color: colors.text.primary }}>{title}</div>
+        <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.5, marginBottom: spacing.sm }}>{message}</div>
         <Btn onClick={onClose} style={{ width: '100%' }}>Done</Btn>
       </div>
     </div>
