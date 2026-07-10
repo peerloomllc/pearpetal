@@ -6,6 +6,49 @@ work lives in `TODO.md`.
 
 ## 2026-07-10
 
+- **Website: universal links + privacy/support/landing pages** (in the `website/`
+  repo; deploy pending). Closes most of the website-side release work and the App
+  Store privacy-page requirement.
+  - **Privacy page** (`website/pearpetal/privacy.html`) - health-data specific: the
+    structural two-base privacy boundary, on-device predictions never crossing the wire,
+    optional encrypted backups, per-permission rationale (camera/notifications/network),
+    no accounts/tracking/analytics, children's-privacy + not-medical-advice sections.
+    Effective 2026-07-10. Plus a **support/FAQ page** and a **`/pearpetal/` app landing
+    page** (store badges, GitHub link), mirroring the PearList pattern.
+  - **Universal-link tap-to-open**: iOS `apple-app-site-association` gains
+    `G79ALD29NA.com.pearpetal` (paths `/petal/link*`, `/petal/join*`); `associatedDomains`
+    (`applinks:peerloomllc.com`) added to the iOS `app.json`; `/petal/link` + `/petal/join`
+    landing pages reconstruct the `pear://pearpetal/link|join#<blob>` deep link, passing the
+    invite blob through the URL #fragment (so it never reaches the server) and auto-opening
+    the app. Verified route-by-route against a local clean-URL server (all 200; deep-link
+    reconstruction + JSON validity checked).
+  - **Android `assetlinks.json`**: added BOTH the RELEASE `com.pearpetal` fingerprint
+    (release key generated in `/home/tim/keystore.jks` alias `pearpetal` on 2026-07-10)
+    and `com.pearpetal.debug` (shared default debug keystore) so App Links autoVerify for
+    both release and on-device `.debug` builds. PearPetal card added to the homepage
+    showcase; `icon-pearpetal.png` + `og-pearpetal.jpg` generated from the app art.
+  - REMAINING (tracked in TODO): `wrangler deploy` the website, then confirm tap-to-open
+    on hardware against the live `.well-known` files.
+- **Hardware verification pass - remaining on-device confirmations DONE**: the last
+  code-done-needs-confirmation items are now confirmed on real devices.
+  - **iOS WebView QR scanner**: the getUserMedia + `jsQR` scanner (Onboarding +
+    JoinPartnerSheet) confirmed on iPhone hardware - OS camera prompt -> live scanner ->
+    aim-at-QR decode. Closes release blocker #1 (Android was already confirmed 2026-07-09).
+  - **iOS Local Network prompt + LAN partner sync**: the LN prompt appears on first
+    partner connect on the iPhone and partner sync takes the LAN path (`modules/local-
+    network` + boot-time prompt + app.json infoPlist/Bonjour).
+  - **Invite/share URL copy-paste across two phones**: copy the
+    `https://peerloomllc.com/petal/link|join#<blob>` link on one phone, paste into the
+    other -> deep-link routing joins the share (the paste-into-app path; universal-link
+    tap-to-open still pending the website `.well-known` files).
+  - **User profile - live two-phone owner->partner name display**: owner sets a name,
+    partner sees "{name}'s cycle" live (projected via `share:meta`; previously only
+    unit-covered - now confirmed with the Pixel as partner).
+- **Nice-to-have UX polish shipped + verified**: bottom sheets for day/symptom entry
+  (replacing full-screen pushes, reusing the shared `BottomSheet`); a partner-view scoped
+  Month calendar (was owner-only); joiner photo avatar in per-person shares (the joiner's
+  avatar blob now replicates to the owner via the shared base's blob store - previously an
+  initials-only fallback).
 - **Optional password-encrypted JSON backups** (T3, proposal + review
   2026-07-10-encrypted-backups, PR #55): export can seal the file under a password.
   Worklet `encryptBackup`/`decryptBackup` on the already-bundled `sodium-universal` -
