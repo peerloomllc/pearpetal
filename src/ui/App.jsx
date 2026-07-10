@@ -10,7 +10,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -185,7 +185,7 @@ function Explainer ({ title, children }) {
 }
 // Inline text link (e.g. "tracked conditions" -> the Settings health section).
 function LinkSpan ({ onClick, children }) {
-  return <button onClick={onClick} style={{ background: 'none', border: 'none', padding: 0, margin: 0, color: colors.primary, textDecoration: 'underline', fontSize: 'inherit', fontWeight: 'inherit', cursor: 'pointer' }}>{children}</button>
+  return <button onClick={(e) => { haptic('light'); onClick && onClick(e) }} style={{ background: 'none', border: 'none', padding: 0, margin: 0, color: colors.primary, textDecoration: 'underline', fontSize: 'inherit', fontWeight: 'inherit', cursor: 'pointer' }}>{children}</button>
 }
 
 // Round avatar with an initial fallback. `src` is a data URL (own or a partner's
@@ -935,13 +935,13 @@ function DayEditor ({ date, setDate, onSaved }) {
   if (!row) return null
   const setFlow = async (k) => {
     const flow = row.flow === k ? null : k
-    setRow({ ...row, flow }); haptic('light')
+    setRow({ ...row, flow }) // Chip fires the haptic tick on tap
     await call('day:set', { date, flow }); flash()
   }
   const toggleSymptom = async (s) => {
     const has = (row.symptoms || []).includes(s)
     const symptoms = has ? row.symptoms.filter((x) => x !== s) : [...(row.symptoms || []), s]
-    setRow({ ...row, symptoms }); haptic('light')
+    setRow({ ...row, symptoms }) // Chip fires the haptic tick on tap
     await call('day:set', { date, symptoms }); flash()
   }
   const saveNotes = async () => { await call('day:set', { date, notes }); flash() }
@@ -1090,15 +1090,15 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
     <div style={{ ...card, position: 'relative', display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
-      <button onClick={onFlowerTap} aria-label='Change flower' style={{ position: 'absolute', top: spacing.md, left: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, cursor: 'pointer', display: 'flex', alignItems: 'center' }}><FlowerThumb flower={flower} size={26} /></button>
-      <button onClick={onInfo} aria-label='How to read the dial' style={{ position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, color: colors.text.muted, cursor: 'pointer', display: 'flex' }}><Info size={20} /></button>
+      <button onClick={() => { haptic('light'); onFlowerTap && onFlowerTap() }} aria-label='Change flower' style={{ position: 'absolute', top: spacing.md, left: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, cursor: 'pointer', display: 'flex', alignItems: 'center' }}><FlowerThumb flower={flower} size={26} /></button>
+      <button onClick={() => { haptic('light'); onInfo && onInfo() }} aria-label='How to read the dial' style={{ position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, color: colors.text.muted, cursor: 'pointer', display: 'flex' }}><Info size={20} /></button>
       <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} hideFertile={pred.birthControl} />
       {!pred.known ? (
         <>
           <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Learning your cycle</div>
           <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Log a period start or two and the flower will track your phase, next period, and fertile window. Everything is computed on this device.</div>
           <Btn onClick={onEditPeriod} style={{ alignSelf: 'center', padding: `8px 20px` }}>Add period</Btn>
-          <button onClick={onSettings} style={{ alignSelf: 'center', background: 'none', border: 'none', color: colors.primary, fontSize: 13, padding: 0 }}>Set your average cycle length ›</button>
+          <button onClick={() => { haptic('light'); onSettings && onSettings() }} style={{ alignSelf: 'center', background: 'none', border: 'none', color: colors.primary, fontSize: 13, padding: 0 }}>Set your average cycle length ›</button>
         </>
       ) : (
         <>
@@ -1135,7 +1135,7 @@ function ViewToggle ({ value, onChange }) {
       {opts.map(([k, l, Icon]) => {
         const on = value === k
         return (
-          <button key={k} onClick={() => onChange(k)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', borderRadius: radius.full, padding: '7px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>
+          <button key={k} onClick={() => { haptic('light'); onChange(k) }} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', borderRadius: radius.full, padding: '7px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>
             <Icon size={16} weight={on ? 'fill' : 'regular'} />{l}
           </button>
         )
@@ -1190,14 +1190,14 @@ function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, on
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <button onClick={onPrev} aria-label='Previous month' style={navBtn}><CaretLeft size={20} /></button>
+        <button onClick={() => { haptic('light'); onPrev() }} aria-label='Previous month' style={navBtn}><CaretLeft size={20} /></button>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.sm }}>
           <div style={{ fontSize: 16, fontWeight: 600 }}>{monthLabel}</div>
           {/* Always in layout (reserves height) so the header does not jump; fades in
               only when off the current month. */}
-          <button onClick={onToday} aria-hidden={isCurrentMonth} style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: '2px 12px', fontSize: 11, fontWeight: 500, color: colors.primary, cursor: 'pointer', opacity: isCurrentMonth ? 0 : 1, pointerEvents: isCurrentMonth ? 'none' : 'auto', transition: 'opacity 200ms' }}>Today</button>
+          <button onClick={() => { haptic('light'); onToday() }} aria-hidden={isCurrentMonth} style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: '2px 12px', fontSize: 11, fontWeight: 500, color: colors.primary, cursor: 'pointer', opacity: isCurrentMonth ? 0 : 1, pointerEvents: isCurrentMonth ? 'none' : 'auto', transition: 'opacity 200ms' }}>Today</button>
         </div>
-        <button onClick={onNext} aria-label='Next month' style={navBtn}><CaretRight size={20} /></button>
+        <button onClick={() => { haptic('light'); onNext() }} aria-label='Next month' style={navBtn}><CaretRight size={20} /></button>
       </div>
       <div key={monthIso} style={{ animation: `${slide} 240ms ease` }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
@@ -1346,10 +1346,12 @@ function FlowerPicker ({ value, onPick }) {
   )
 }
 
-// Collapsible settings card for the occasional / advanced sections. Centered title
-// with a caret on the right, matching the About accordion's motion; independent
-// open/close (not one-at-a-time, unlike About) since you may adjust several.
-function CollapsibleCard ({ title, open, onToggle, children, id }) {
+// Collapsible settings card for the occasional / advanced sections. A left-aligned
+// phosphor icon + title with a caret on the right, matching PearCircle's Settings
+// list; independent open/close (not one-at-a-time, unlike About) since you may
+// adjust several. `icon` is optional so non-settings uses (e.g. Recent days) can
+// omit the glyph.
+function CollapsibleCard ({ title, open, onToggle, children, id, icon: Icon }) {
   const ref = useRef(null)
   // When a section opens, once the expand has finished, scroll it into view so its
   // content clears the fixed bottom nav (block:'nearest' + the root's scroll-padding
@@ -1361,9 +1363,12 @@ function CollapsibleCard ({ title, open, onToggle, children, id }) {
   }, [open])
   return (
     <div id={id} ref={ref} style={{ ...card, padding: 0, overflow: 'hidden', scrollMarginTop: screenPadTop }}>
-      <button onClick={onToggle} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: spacing.base, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer', color: colors.text.secondary }}>
-        <span style={{ fontSize: 14, fontWeight: 500 }}>{title}</span>
-        <CaretRight size={16} color={colors.text.muted} weight='regular' style={{ position: 'absolute', right: spacing.base, top: '50%', marginTop: -8, transition: 'transform 0.3s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+      <button onClick={() => { haptic('light'); onToggle() }} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: `${spacing.md}px ${spacing.base}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: colors.text.secondary }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: 13, fontWeight: 400 }}>
+          {Icon ? <Icon size={17} weight='regular' color={colors.text.muted} /> : null}
+          {title}
+        </span>
+        <CaretRight size={15} color={colors.text.muted} weight='regular' style={{ transition: 'transform 0.3s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
       </button>
       <div style={{ maxHeight: open ? 2500 : 0, overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)' }}>
         <div style={{ padding: `0 ${spacing.lg}px ${spacing.lg}px`, display: 'flex', flexDirection: 'column', gap: spacing.md }}>{children}</div>
@@ -1483,7 +1488,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
     </div>
   )
   return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
       <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Cycle settings</div>
       <ProfileCard />
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
@@ -1513,13 +1518,13 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
           : <Explainer>{(GOAL_OPTS.find(([k]) => k === (prefs.goal || 'track')) || [])[2]}</Explainer>}
       </div>
       <NotificationsCard />
-      <CollapsibleCard title='Cycle lengths' open={openSection.lengths} onToggle={() => toggleSection('lengths')}>
+      <CollapsibleCard title='Cycle lengths' icon={CalendarBlank} open={openSection.lengths} onToggle={() => toggleSection('lengths')}>
         <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
         <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />
         <Stepper label='Luteal phase length' value={prefs.lutealLength} def={14} min={9} max={18} field='lutealLength' />
         <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
       </CollapsibleCard>
-      <CollapsibleCard id='health-section' title='Health & birth control' open={openSection.health} onToggle={() => toggleSection('health')}>
+      <CollapsibleCard id='health-section' title='Health & birth control' icon={Pill} open={openSection.health} onToggle={() => toggleSection('health')}>
         <div style={{ color: colors.text.muted, fontSize: 12 }}>Conditions that affect your cycle. These stay on your device and are never shared. They widen prediction estimates and tailor the guidance you see. Tap one to see how it changes your estimates.</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
           {CONDITION_OPTS.map(([k, l]) => {
@@ -1536,7 +1541,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
         </div>
         {prefs.birthControl && <Explainer>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal hides them and leads with your period dates.</Explainer>}
       </CollapsibleCard>
-      <CollapsibleCard title='Your data' open={openSection.data} onToggle={() => toggleSection('data')}>
+      <CollapsibleCard title='Your data' icon={Database} open={openSection.data} onToggle={() => toggleSection('data')}>
         <div style={{ display: 'flex', gap: spacing.sm }}>
           <Btn onClick={doExport} style={{ flex: 1 }}>Export</Btn>
           <Btn kind='ghost' onClick={doImport} style={{ flex: 1 }}>Import</Btn>
@@ -1550,14 +1555,18 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
 
 // --- root -------------------------------------------------------------------
 // --- About + Bitcoin donation -----------------------------------------------
-// Collapsible card: centered title + caret, tap to expand. Accordion (one open at
-// a time) is managed by AboutScreen.
-function AboutSection ({ title, open, onToggle, children }) {
+// Collapsible card: left-aligned phosphor icon + title with a caret, tap to expand.
+// Matches PearCircle's Settings list (same treatment as CycleSettings's
+// CollapsibleCard). Accordion (one open at a time) is managed by AboutScreen.
+function AboutSection ({ title, open, onToggle, children, icon: Icon }) {
   return (
     <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-      <button onClick={onToggle} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: `${spacing.base}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: colors.text.primary }}>
-        <span style={{ fontSize: 16, fontWeight: 400 }}>{title}</span>
-        <CaretRight size={18} color={colors.text.muted} weight='regular' style={{ flexShrink: 0, transition: 'transform 0.3s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+      <button onClick={() => { haptic('light'); onToggle() }} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: `${spacing.md}px ${spacing.base}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: colors.text.secondary }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: 13, fontWeight: 400 }}>
+          {Icon ? <Icon size={17} weight='regular' color={colors.text.muted} /> : null}
+          {title}
+        </span>
+        <CaretRight size={15} color={colors.text.muted} weight='regular' style={{ flexShrink: 0, transition: 'transform 0.3s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
       </button>
       <div style={{ maxHeight: open ? 640 : 0, overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)' }}>
         <div style={{ padding: `0 ${spacing.base}px ${spacing.base}px`, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>{children}</div>
@@ -1707,7 +1716,7 @@ function AboutScreen ({ onClose }) {
   }
   const share = () => { const p = call('shell:share', { title: 'PearPetal', text: 'PearPetal - a private, peer-to-peer cycle tracker. No account, no server.\n\nhttps://peerloomllc.com/pearpetal/' }); if (p && p.catch) p.catch(() => {}) }
   return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
       <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>About</div>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 28, fontWeight: 600, color: colors.primary }}>PearPetal</div>
@@ -1718,13 +1727,13 @@ function AboutScreen ({ onClose }) {
         <span style={{ fontWeight: 600, color: colors.text.primary }}>Not medical advice.</span> PearPetal gives calendar-based estimates for your information only. It is not a medical device and not contraception. Do not rely on it to prevent pregnancy, and talk to a healthcare provider for medical decisions.
       </div>
 
-      <AboutSection title='How it works' open={open === 'how'} onToggle={() => toggle('how')}>
+      <AboutSection title='How it works' icon={Info} open={open === 'how'} onToggle={() => toggle('how')}>
         <AboutText>PearPetal keeps your cycle on your own devices and syncs it peer-to-peer over the Hypercore Protocol - no account, no server, no cloud, no data collection. You choose exactly what a partner sees; your full log and notes never leave your devices.</AboutText>
         <AboutLink onClick={() => openUrl('https://pears.com/')}>Learn about P2P ↗</AboutLink>
       </AboutSection>
 
       {!ios && (
-        <AboutSection title='Support development' open={open === 'support'} onToggle={() => toggle('support')}>
+        <AboutSection title='Support development' icon={Heart} open={open === 'support'} onToggle={() => toggle('support')}>
           <AboutText>PearPetal is free and open source. If it brings you value, consider sending a little back.</AboutText>
           <div style={{ display: 'flex', gap: spacing.sm }}>
             <AboutLink primary onClick={donateBTC}>⚡ Bitcoin ⚡</AboutLink>
@@ -1733,22 +1742,22 @@ function AboutScreen ({ onClose }) {
         </AboutSection>
       )}
 
-      <AboutSection title='Learn about Bitcoin' open={open === 'btc'} onToggle={() => toggle('btc')}>
+      <AboutSection title='Learn about Bitcoin' icon={CurrencyBtc} open={open === 'btc'} onToggle={() => toggle('btc')}>
         <AboutText>New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course on how it works and why it matters.</AboutText>
         <AboutLink onClick={() => openUrl('https://nakamotoinstitute.org/crash-course/')}>Bitcoin Crash Course ↗</AboutLink>
       </AboutSection>
 
-      <AboutSection title='Open source' open={open === 'oss'} onToggle={() => toggle('oss')}>
+      <AboutSection title='Open source' icon={Code} open={open === 'oss'} onToggle={() => toggle('oss')}>
         <AboutText>PearPetal is open source under the MIT license. Read the code, file an issue, or contribute.</AboutText>
         <AboutLink onClick={() => openUrl('https://github.com/peerloomllc/pearpetal')}>View on GitHub ↗</AboutLink>
       </AboutSection>
 
-      <AboutSection title='Share the app' open={open === 'share'} onToggle={() => toggle('share')}>
+      <AboutSection title='Share the app' icon={ShareNetwork} open={open === 'share'} onToggle={() => toggle('share')}>
         <AboutText>Know someone who'd want a private, serverless cycle tracker? Share PearPetal.</AboutText>
         <AboutLink onClick={share}>Share PearPetal</AboutLink>
       </AboutSection>
 
-      <AboutSection title='Contact' open={open === 'contact'} onToggle={() => toggle('contact')}>
+      <AboutSection title='Contact' icon={EnvelopeSimple} open={open === 'contact'} onToggle={() => toggle('contact')}>
         <div style={{ display: 'flex', gap: spacing.sm }}>
           <AboutLink onClick={() => openUrl('mailto:peerloomllc@proton.me?subject=%5BPearPetal%5D%20Feedback')}>Email</AboutLink>
           <AboutLink onClick={() => openUrl('https://github.com/peerloomllc/pearpetal/issues')}>Issue</AboutLink>
@@ -1781,7 +1790,7 @@ function BottomNav ({ active, onTab }) {
         const on = active === t.key
         const Icon = t.Icon
         return (
-          <button key={t.key} onClick={() => onTab(t.key)} aria-current={on ? 'page' : undefined} style={{ flex: 1, background: 'none', border: 'none', padding: `${spacing.sm}px 0`, cursor: 'pointer', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, color: on ? colors.primary : colors.text.muted, transition: 'color 240ms' }}>
+          <button key={t.key} onClick={() => { haptic('light'); onTab(t.key) }} aria-current={on ? 'page' : undefined} style={{ flex: 1, background: 'none', border: 'none', padding: `${spacing.sm}px 0`, cursor: 'pointer', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, color: on ? colors.primary : colors.text.muted, transition: 'color 240ms' }}>
             <span style={{ display: 'flex', transform: on ? 'scale(1.12)' : 'scale(1)', transition: 'transform 220ms cubic-bezier(0.2,0.8,0.2,1)' }}>
               <Icon size={22} weight={on ? 'fill' : 'regular'} />
             </span>

@@ -8,6 +8,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { colors } from './theme.js'
 import { buildFlower } from './flowers.js'
+import { haptic } from './ipc.js'
 
 // Current 'dark' | 'light' theme, so the flower SVG fills (computed, not CSS vars)
 // can pick their theme-appropriate palette and re-render when the theme changes.
@@ -64,6 +65,7 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
     const day = posToDay(e)
     if (day === lastDay.current) return
     lastDay.current = day
+    haptic('light') // a detent tick each time the scrub crosses to a new day
     onDayTap(addDaysIso(today, day - dayOfCycle))
   }
   // Tap OR press-and-drag: pointerdown starts, moves scrub live (the marker + date
