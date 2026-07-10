@@ -2105,7 +2105,9 @@ export default function App () {
   const changeTheme = (pref) => { setThemePref(pref); setThemeResolved(applyThemePref(pref)); haptic('light') }
   useEffect(() => {
     if (themePref !== 'system') return undefined
-    return onSystemThemeChange((resolved) => setThemeResolved(resolved))
+    // Re-apply through applyThemePref so the OS flip re-stamps data-theme on <html>
+    // (which drives the CSS-var colours), not just the React theme state.
+    return onSystemThemeChange(() => setThemeResolved(applyThemePref('system')))
   }, [themePref])
   // Tell the shell our resolved theme so it persists it and paints the pre-JS
   // background to match on the next cold start (no dark flash for light users).
