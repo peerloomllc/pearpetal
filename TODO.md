@@ -51,6 +51,17 @@ Website-side (not in-app):
   verify against the live `assetlinks.json`; iOS against the live AASA) - fold into the
   next device pass; needs the iOS `associatedDomains` baked in via a fresh prebuild
   (`rm -rf ios`).
+  - **BLOCKER (iOS build, found 2026-07-10): `associatedDomains` breaks every iOS archive.**
+    The wildcard dev profile ("iOS Team Provisioning Profile: *") cannot sign the Associated
+    Domains capability -> `error: ...doesn't include the com.apple.developer.associated-domains
+    entitlement`, ARCHIVE FAILED. Same class as the aps-environment issue solved by
+    `with-ios-no-aps.js`. FIX: register an EXPLICIT App ID `com.pearpetal` in the Apple
+    Developer portal with the **Associated Domains** capability enabled (wildcard App IDs
+    can't have it), so automatic signing picks a profile that includes it. Until then, ANY
+    iOS build fails - either provision the App ID, or add a config plugin that strips
+    `associatedDomains` from dev builds (mirrors `with-ios-no-aps`) so dev builds still
+    archive (iOS tap-to-open stays deferred). Android is unaffected. Tim chose to skip iOS
+    on the 2026-07-10 device pass; Android (TCL) got the build.
 
 ## Nice-to-have / UX polish
 
