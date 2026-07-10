@@ -6,6 +6,17 @@ work lives in `TODO.md`.
 
 ## 2026-07-10
 
+- **iOS Universal Links provisioned end-to-end + App Store Connect app created**: registered
+  an EXPLICIT `com.pearpetal` App ID in the Apple Developer portal with the **Associated
+  Domains** capability (wildcard App IDs can't carry it); created the PearPetal record in App
+  Store Connect (bundle id `com.pearpetal`). The headless archive kept failing (still picked
+  the wildcard profile; then `No Accounts`) until we signed the PeerLoom Apple ID into Xcode
+  on the Mac mini and added `-allowProvisioningUpdates` to `scripts/ios-dev-install.sh`
+  (archive + export) so xcodebuild mints the explicit managed profile including the capability.
+  Rebuilt with `PEARPETAL_ASSOCIATED_DOMAINS=1` -> the entitlement (`applinks:peerloomllc.com`)
+  is signed in; ARCHIVE + EXPORT + install SUCCEEDED on the iPhone SE. Remaining is the human
+  tap-a-link confirm. The `with-ios-no-associated-domains` plugin still strips the entitlement
+  by default (so no-env dev builds archive without the App ID); set the env to include UL.
 - **iOS dev builds unblocked - strip the Associated Domains entitlement**
   (`plugins/with-ios-no-associated-domains.js`): `ios.associatedDomains` (added for
   Universal Links) made every iOS archive fail because the wildcard dev provisioning
@@ -36,7 +47,8 @@ work lives in `TODO.md`.
     one owner - not just at first install. On join it refreshes the list and opens the new
     partner's cycle.
   - Dev: `?seed=viewer` browser-preview seed in `ipc.js`. verify green (build:ui clean,
-    89 tests). REMAINING: on-device confirm on the next hardware pass.
+    89 tests). ON-DEVICE VERIFIED 2026-07-10 (two-phone: TCL owner <-> Pixel 9 Pro viewer):
+    viewer nav + Settings + About + the "View a partner's cycle" join flow all confirmed good.
 - **Website: universal links + privacy/support/landing pages** (in the `website/`
   repo; deploy pending). Closes most of the website-side release work and the App
   Store privacy-page requirement.

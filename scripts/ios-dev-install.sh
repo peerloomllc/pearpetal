@@ -110,11 +110,15 @@ ssh "$MAC_MINI" "bash -lc 'cd $MAC_REPO_PATH/ios && LANG=en_US.UTF-8 LC_ALL=en_U
 # ── 3. Archive + export ─────────────────────────────────────────────────────
 # Strip /opt/homebrew/bin from PATH so Apple's openrsync (not Homebrew GNU
 # rsync) is used by Xcode's distribution pipeline. Unlock + partition-list so
-# codesign over SSH can reach the private key. Automatic signing relies on
-# Xcode's cached wildcard team profile ("iOS Team Provisioning Profile: *")
-# covering com.pearpetal — requires PearPetal.entitlements request no
-# capability the wildcard profile lacks (keep it empty: no aps-environment,
-# no associated domains).
+# codesign over SSH can reach the private key.
+#
+# `-allowProvisioningUpdates` lets xcodebuild create/download managed profiles
+# via the Apple ID signed into Xcode on the Mac (Xcode > Settings > Accounts).
+# Needed when the app requests a capability the cached wildcard team profile
+# ("iOS Team Provisioning Profile: *") lacks — e.g. Associated Domains for
+# Universal Links (PEARPETAL_ASSOCIATED_DOMAINS=1), which needs an EXPLICIT
+# com.pearpetal App ID + profile. Without an account signed in, this fails with
+# "No Accounts: Add a new account in Accounts settings."
 step "archive (Release, generic/platform=iOS, automatic signing)"
 ssh "$MAC_MINI" "bash -lc '
   set -euo pipefail
@@ -132,6 +136,7 @@ ssh "$MAC_MINI" "bash -lc '
     -archivePath $ARCHIVE_PATH \
     DEVELOPMENT_TEAM=$TEAM_ID \
     CODE_SIGN_STYLE=Automatic \
+    -allowProvisioningUpdates \
     archive 2>&1 | grep -E \"^error:|ARCHIVE FAILED|ARCHIVE SUCCEEDED\" || true
 '"
 
@@ -161,6 +166,7 @@ EOF
     -archivePath $ARCHIVE_PATH \
     -exportPath $EXPORT_DIR \
     -exportOptionsPlist /tmp/PearPetalExportDev.plist \
+    -allowProvisioningUpdates \
     OTHER_CODE_SIGN_FLAGS=\"--keychain $KEYCHAIN_PATH\" 2>&1 | tail -3
   ls $EXPORT_DIR/PearPetal.ipa
 '"

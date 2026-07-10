@@ -47,29 +47,27 @@ Website-side (not in-app):
   website icon & OG art. Android `assetlinks.json` has BOTH the RELEASE `com.pearpetal`
   fingerprint (key `/home/tim/keystore.jks` alias `pearpetal`) and `com.pearpetal.debug`.
   Live-verified on peerloomllc.com: all pages 200, both `.well-known` files served as
-  `application/json`. REMAINING: confirm tap-to-open on hardware (Android App Links
-  verify against the live `assetlinks.json`; iOS against the live AASA) - fold into the
-  next device pass; needs the iOS `associatedDomains` baked in via a fresh prebuild
-  (`rm -rf ios`).
-  - **iOS dev builds: `associatedDomains` entitlement WORKED AROUND** 2026-07-10
-    (`plugins/with-ios-no-associated-domains.js`). The wildcard dev profile can't sign the
-    Associated Domains capability (`error: ...doesn't include the
-    com.apple.developer.associated-domains entitlement`, ARCHIVE FAILED - same class as the
-    aps-environment issue solved by `with-ios-no-aps.js`). The plugin strips the entitlement
-    from dev builds by DEFAULT so they archive; iPhone got this session's build. To actually
-    ENABLE iOS Universal Links (tap-to-open) on a real build: register an EXPLICIT App ID
-    `com.pearpetal` in the Apple Developer portal with the **Associated Domains** capability
-    enabled (wildcard App IDs can't have it), then prebuild with `PEARPETAL_ASSOCIATED_DOMAINS=1`
-    (the plugin keeps the entitlement when that env var is set). Android App Links are
-    unaffected and already work. So iOS tap-to-open remains DEFERRED (needs the App ID);
-    everything else (pear:// scheme + paste-into-app) works.
+  `application/json`.
+  - **iOS Universal Links now PROVISIONED + built + installed** 2026-07-10: registered an
+    EXPLICIT `com.pearpetal` App ID with the **Associated Domains** capability in the Apple
+    Developer portal; created the PearPetal app record in App Store Connect; signed into
+    Xcode on the Mac mini (Xcode > Settings > Accounts, PeerLoom LLC) and added
+    `-allowProvisioningUpdates` to `ios-dev-install.sh` so xcodebuild mints the explicit
+    managed profile that includes the capability. Built with `PEARPETAL_ASSOCIATED_DOMAINS=1`
+    (the `with-ios-no-associated-domains` plugin keeps the entitlement when that env is set) ->
+    ARCHIVE + EXPORT + install SUCCEEDED on the iPhone SE.
+  - REMAINING (human test only): actually TAP an `https://peerloomllc.com/petal/link|join`
+    link on the iPhone and confirm it opens PearPetal (iOS UL) - and the same on Android
+    (App Links vs the live `assetlinks.json`). Note: the `with-ios-no-associated-domains`
+    plugin still STRIPS the entitlement by DEFAULT, so any iOS build that must have UL needs
+    `PEARPETAL_ASSOCIATED_DOMAINS=1` at prebuild time.
 
 ## Nice-to-have / UX polish
 
-- ~~**Partner (viewer) mode is barebones - needs a real shell**~~ DONE 2026-07-10 (see
-  DONE.md): viewer bottom nav (Shared / Settings / About), a scoped ViewerSettings
-  (profile + appearance), and a "View a partner's cycle" JoinPartnerSheet entry point on
-  the viewer home. REMAINING: on-device confirm on the next hardware pass.
+- ~~**Partner (viewer) mode is barebones - needs a real shell**~~ DONE + VERIFIED
+  2026-07-10 (see DONE.md): viewer bottom nav (Shared / Settings / About), a scoped
+  ViewerSettings (profile + appearance), and a "View a partner's cycle" JoinPartnerSheet
+  entry point on the viewer home. Two-phone check passed (TCL owner <-> Pixel viewer).
 
 Prior nice-to-haves shipped + verified 2026-07-10 (see DONE.md): bottom sheets for
 day/symptom entry, partner-view scoped Month calendar, joiner photo avatar in per-person
