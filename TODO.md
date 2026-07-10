@@ -23,8 +23,11 @@ Not yet built:
    (see DONE): a skippable `SetupWizard` after "Start tracking" - welcome (hero dial) ->
    name/photo -> goal (incl. pregnancy) -> log last period (dial no longer empty) ->
    reminders opt-in -> "all set" with log-a-day + Share tips. Lands on a populated
-   goal-aware dial. REMAINING (optional, deferred): a deeper interactive coach-mark tour
-   of the live menus/sharing was scoped out of v1 - revisit only if wanted.
+   goal-aware dial. REWORKED 2026-07-10 (PR #55): welcome -> name/photo for EVERYONE (moved
+   out of the wizard so viewers + restore users set a name too) -> track-vs-view chooser
+   (device linking hidden) -> Track = wizard whose first step offers "Set up my cycle" vs
+   "Restore from a backup". REMAINING (optional, deferred): a deeper interactive coach-mark
+   tour of the live menus/sharing was scoped out of v1 - revisit only if wanted.
 
 Code done, need **on-device confirmation** (bundle these into a hardware pass):
 - **iOS Local Network prompt**: install on the iPhone (`scripts/ios-dev-install.sh`),
@@ -45,8 +48,10 @@ Code done, need **on-device confirmation** (bundle these into a hardware pass):
 - **Invite/share URL**: copy a link on one phone, open/paste on another.
 - **Petal dial in the partner view + ring day-scrub**: owner taps a past tick ->
   editor jumps; partner sees the dial.
-- **About page Bitcoin flow**: Android opens a wallet or the sheet; iOS hides Support
-  development.
+- ~~**About page Bitcoin flow**~~ Android CONFIRMED 2026-07-10 (donation sheet reworked
+  into a chooser, PR #54; on the TCL the BTC button opens the Lightning-address / Strike-QR
+  / on-chain / install-wallet chooser). iOS hides Support-development (App Store 3.1.1), so
+  nothing to confirm there.
 - **User profile**: live two-phone owner->partner name display (propagation is
   unit-covered; needs the Pixel as partner).
 - ~~**Sharing ended (soft-close revoke tombstone)**~~ CONFIRMED 2026-07-09 (two-phone,
@@ -86,11 +91,13 @@ Website-side (not in-app):
   custom "reminders" channel not expo's fallback). First-run opt-in now folded into the
   onboarding wizard (2026-07-09) and the monochrome tray glyph confirmed (2026-07-09) - both
   DONE. REMAINING: confirm on iOS next hardware pass.
-- **JSON export encryption - optional passphrase?** Slice 4 shipped plain JSON
-  deliberately (recovery-first). Revisit an OPTIONAL passphrase-encrypted export (KDF
-  -> XChaCha20-Poly1305) so backups aren't plaintext at rest, keeping plain export the
-  default. Decide: default on/off, lost-passphrase = no recovery, import auto-detect
-  encrypted vs plain.
+- ~~**JSON export encryption - optional passphrase?**~~ DONE 2026-07-10 (T3, proposal +
+  reviews 2026-07-10-encrypted-backups, PR #55): optional password on export - Argon2id
+  (sodium `crypto_pwhash`) -> XSalsa20-Poly1305 secretbox over the existing
+  `{days,periods,prefs}` payload, self-describing wrapper (`enc` key). Plaintext export
+  stays the DEFAULT (blank password); import auto-detects `enc` and prompts; a wrong
+  password errors before any write (no partial import); a forgotten password is
+  unrecoverable by design (UI says so). See DONE.md.
 
 ## Deferred - security / scale
 

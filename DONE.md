@@ -6,6 +6,44 @@ work lives in `TODO.md`.
 
 ## 2026-07-10
 
+- **Optional password-encrypted JSON backups** (T3, proposal + review
+  2026-07-10-encrypted-backups, PR #55): export can seal the file under a password.
+  Worklet `encryptBackup`/`decryptBackup` on the already-bundled `sodium-universal` -
+  Argon2id (`crypto_pwhash`, interactive limits) -> XSalsa20-Poly1305 secretbox over the
+  exact `{days,periods,prefs}` payload; self-describing wrapper (salt/nonce/kdf params
+  in-file). `export:data`/`import:data` gained an optional `password` (additive);
+  decryption completes BEFORE any DB write so a wrong password never partial-imports; no
+  identity/secret key is ever in a backup; plaintext stays the default. `test/backup-
+  encryption.test.js` (real IPC path). verify green (89 tests). Reviews entry PR #56.
+- **Backup export/import UX** (PR #55, #54): export now saves to a real user-picked folder
+  via the Android Storage Access Framework (prompts each export, overwrites the same-name
+  file), NOT the share sheet (which can't reach Downloads/Files on scoped-storage /
+  GrapheneOS); iOS keeps the share sheet. Import errors are mapped to friendly copy (the
+  engine serializes `err.stack` over IPC, so match by substring, never show raw). Both
+  export and import confirm with a centered success modal (green check + folder / counts)
+  instead of a small green line. On-device verified on the TCL end to end (encrypted export
+  -> import round trip, folder save, wrong-password message, restore).
+- **Onboarding rework** (PR #55): welcome slide -> name/photo step for EVERYONE (moved out
+  of the tracking-only wizard so a partner-viewer and a restore-from-backup user set a name
+  too; the backup carries no profile; `profile:set` is device-local so it works before any
+  base) -> a track-vs-view chooser (device linking hidden/deferred) -> "Track my cycle" runs
+  the wizard whose first step offers "Set up my cycle" vs "Restore from a backup" (import
+  merges into the just-created base and boots into the populated app). Welcome copy -> "no
+  accounts, no servers. Your data stays on your device."; removed the Skip on the name step;
+  equal-width partner View/QR buttons.
+- **Two-tone PearPetal wordmark** (PR #55): a `Wordmark` component - a petal bloom (echoing
+  the dial) + "Pear" in rose (primary) and "Petal" in orchid (accent), theme-var driven so
+  light + dark adapt. Replaces the flat single-colour title on welcome / chooser / viewer
+  home / About (sizes 34/24/28). Verified in both themes on the TCL.
+- **System theme default that follows the OS** (PR #55): default pref is now `system`, and
+  `system` now actually tracks the phone. Root cause was `app.json`
+  `userInterfaceStyle:"dark"` forcing RN `Appearance.getColorScheme()` to always report dark
+  (LIKELY SUITE-WIDE - check sibling apps); fixed to `automatic`. The shell now injects the
+  real OS scheme (`window.__pearColorScheme`) into the WebView before the bundle, seeds the
+  pre-paint background from it, and pushes live updates via `Appearance.addChangeListener`;
+  `theme.js` prefers the injected scheme and re-stamps `data-theme` on OS flips. Verified
+  live on the TCL (OS light -> app light, flip to dark -> app dark, no relaunch); iPhone
+  rebuilt from a fresh prebuild so `automatic` is baked into Info.plist.
 - **Viewers join shared bases client-only** (T3, swarm-accumulation mitigation A;
   proposal 2026-07-09-swarm-topic-accumulation, DECISIONS + review 2026-07-10): fixes the
   pairing slowdown that grows as a device piles up bases. `@peerloom/core` `joinTopic`
