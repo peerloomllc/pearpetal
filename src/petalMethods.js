@@ -841,7 +841,13 @@ const methods = {
   // owner-write-only apply rule would reject them anyway).
   'partner:join': async ({ inviteKey }, ctx) => {
     if (typeof inviteKey !== 'string' || !inviteKey.trim()) throw new Error('inviteKey required')
-    const r = await ctx.joinGroup({ inviteKey: inviteKey.trim() })
+    // A partner is a pure VIEWER of the owner's shared base - it only ever connects
+    // to the owner, so join CLIENT-ONLY (announce:false). This avoids every viewer
+    // redundantly announcing the owner's topic, cutting the per-device topic pile-up
+    // that degrades pairing as bases accumulate (proposal 2026-07-09-swarm-topic-accumulation).
+    // Device linking (link:join) keeps the default announce:true (own devices stay
+    // mutually discoverable).
+    const r = await ctx.joinGroup({ inviteKey: inviteKey.trim(), announce: false })
     await tagKind(ctx, r.groupId, 'shared-in')
     // Tell the owner who joined (best-effort; may be too early if we are not yet a
     // writer - partner:view + member:publish re-attempt once writable).

@@ -2,6 +2,32 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-10 - Viewers join shared bases client-only (swarm accumulation, mitigation A) - IMPLEMENTED
+Tier: T3 (@peerloom/core swarm connectivity, suite-wide). Proposal
+`proposals/2026-07-09-swarm-topic-accumulation.md`; review
+`reviews/2026-07-10-viewer-client-only.md`.
+Context: pairing slowed/stalled as a device accumulated bases (QR-pairing testing);
+diagnosis = topic + connection PILE-UP (each persisted group rejoins its own topic
+every boot; viewers redundantly announce the owner's topic; pairing multiplexes over
+shared connections), NOT a topic collision. Fresh install resets it.
+Choice (proposal mitigation A): `@peerloom/core` `joinTopic` gains a
+`{ server, client }` option and `joinGroup` an `announce` flag (persisted, re-applied
+on init), default `true` so device-linking + legacy records are unchanged. PearPetal's
+`partner:join` passes `announce:false` so a partner (pure viewer) joins CLIENT-ONLY -
+it only connects to the owner and no longer announces the owner's topic. `link:join`
+(device linking) keeps the default (own devices stay mutually discoverable).
+Alternatives / not done here: B (shed dead topics) is additive and already possible via
+`share:remove`; C (announce back-off) deferred - it must keep one side discoverable; D
+(Hyperswarm cap) NOT changed - the default `maxPeers=64` is already a sane total-
+connection cap, and lowering it risks rejecting legit peers; A + shedding topics is the
+real lever.
+Consequences: additive optional `announce` field on the `groups:joined` row; fully
+back-compatible (old owner announces -> new viewer connects; old viewers still work); no
+wire/record-format break, no migration. Verify: core `npm test` green (43, incl. announce
+flow-through + restart-persistence + the two-peer pairing gate); app `npm run verify`
+green (86 + 3 bundles). Core change is `@peerloom/core` PR; PearList pairing smoke is the
+suite adoption gate. On-device: fresh-install pairing already fast; the win is materially
+fewer announced topics on a device holding many partner views.
 ## 2026-07-09 - Sharing ended (revoke tombstone) - IMPLEMENTED
 Tier: T2 (new optional field on the owner-signed `share:meta` + a revoke-flow change;
 NO privacy-boundary/crypto/admission change, fully back-compatible). Proposal
