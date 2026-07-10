@@ -15,10 +15,13 @@ Not yet built:
    for iOS; shell grants the WebView request). Removed the dead `shell:scanQr` stub. The
    QR now opens in a bottom sheet that auto-dismisses on real peer connection (`share:connected`);
    full-screen scanner (portal fix). PR #49. Android end-to-end scan CONFIRMED by Tim 2026-07-10.
-   REMAINING: confirm the WebView scanner on iOS hardware.
-2. **Store assets, release scripts, privacy page, listing copy** (the publish
-   mechanics). The privacy page is an App Store requirement. Port PearList/PearGuard
-   release scripts.
+   iOS WebView scanner CONFIRMED 2026-07-10. FULLY DONE.
+2. **Store assets, release scripts, listing copy** (the publish mechanics).
+   ~~Privacy page~~ DONE 2026-07-10 (`website/pearpetal/privacy.html`, health-data
+   specific: structural privacy boundary, on-device predictions, encrypted backups,
+   permissions, not-medical-advice) + a support page + app landing page. REMAINING:
+   store screenshots / feature graphics, listing copy, and porting the
+   PearList/PearGuard release scripts (AAB/IPA build + upload).
 3. ~~**First-run onboarding / guided demo**~~ BUILT + on-device VERIFIED 2026-07-09
    (see DONE): a skippable `SetupWizard` after "Start tracking" - welcome (hero dial) ->
    name/photo -> goal (incl. pregnancy) -> log last period (dial no longer empty) ->
@@ -29,55 +32,29 @@ Not yet built:
    "Restore from a backup". REMAINING (optional, deferred): a deeper interactive coach-mark
    tour of the live menus/sharing was scoped out of v1 - revisit only if wanted.
 
-Code done, need **on-device confirmation** (bundle these into a hardware pass):
-- **iOS Local Network prompt**: install on the iPhone (`scripts/ios-dev-install.sh`),
-  confirm the LN prompt appears + partner sync takes the LAN path.
-- ~~**App icon / notification icons**~~ CONFIRMED 2026-07-09. iOS home-screen icon: was a
-  stale blank `ios/` from before the art landed; regenerated `ios/` -> real cherry-blossom
-  icon on the iPhone SE. Android notification-tray glyph: was the colored launcher icon
-  because the built `android/` predated the expo-notifications icon config; a fresh `expo
-  prebuild -p android` wired `@drawable/notification_icon` (monochrome silhouette from
-  `monochrome-icon.png`) + the `default_notification_icon` manifest meta-data + tint color
-  `#f2789f`, and the rebuilt APK shows the correct WHITE monochrome glyph on the TCL (icon
-  resource is now a drawable, not the mipmap launcher icon). NO source change was needed -
-  the app.json config was already correct; it just needed a build from a fresh prebuild.
-  NOTE (build hygiene, below): the `.debug` config survives prebuild now (it lives in the
-  `with-android-debug-standalone` plugin), so `expo prebuild -p android --clean` is the
-  safe way to pick up any app.json/icon/plugin change. iOS notifications always use the app
-  icon (no custom small-icon), so nothing further there.
-- **Invite/share URL**: copy a link on one phone, open/paste on another.
-- **Petal dial in the partner view + ring day-scrub**: owner taps a past tick ->
-  editor jumps; partner sees the dial.
-- ~~**About page Bitcoin flow**~~ Android CONFIRMED 2026-07-10 (donation sheet reworked
-  into a chooser, PR #54; on the TCL the BTC button opens the Lightning-address / Strike-QR
-  / on-chain / install-wallet chooser). iOS hides Support-development (App Store 3.1.1), so
-  nothing to confirm there.
-- **User profile**: live two-phone owner->partner name display (propagation is
-  unit-covered; needs the Pixel as partner).
-- ~~**Sharing ended (soft-close revoke tombstone)**~~ CONFIRMED 2026-07-09 (two-phone,
-  TCL owner Ada -> Pixel partner Leah, Full scope): join + live full sync, owner revoke
-  soft-closes to an "Ended" section, partner shows the "sharing ended" banner over dimmed
-  last-known data LIVE (group:updated, no reload), partner Remove + owner Remove-permanently
-  both clear. Proposal 2026-07-09-sharing-ended, DECISIONS 2026-07-09.
+All on-device confirmation items are now DONE (see DONE.md 2026-07-10 hardware pass:
+iOS QR scanner, iOS Local Network prompt + LAN sync, invite/share URL copy-paste,
+two-phone owner->partner name display; earlier: petal dial in partner view 2026-07-07,
+app icon / notification glyph + About Bitcoin + sharing-ended 2026-07-09/10).
 
 Website-side (not in-app):
-- **Universal-link tap-to-open**: serve Android `/.well-known/assetlinks.json`
-  (SHA-256 of the `com.pearpetal` signing cert) + iOS `/.well-known/apple-app-site-
-  association` (`G79ALD29NA.com.pearpetal`, paths `/petal/*`) + a static `/petal/link`
-  + `/petal/join` landing page on peerloomllc.com. Plus `associatedDomains`
-  (`applinks:peerloomllc.com`) in the iOS config. Until then a tap shows a chooser;
-  the `pear://` scheme + paste-into-app already work.
+- ~~**Universal-link tap-to-open**~~ MOSTLY DONE 2026-07-10 (in the `website/` repo,
+  deploy pending): iOS `/.well-known/apple-app-site-association` (`G79ALD29NA.com.pearpetal`,
+  paths `/petal/link*` + `/petal/join*`); `/petal/link` + `/petal/join` landing pages that
+  reconstruct the `pear://pearpetal/...#<blob>` deep link (blob rides the #fragment);
+  `associatedDomains` (`applinks:peerloomllc.com`) added to the iOS app.json; PearPetal
+  card + `/pearpetal/` landing/privacy/support pages + website icon & OG art. Android
+  `assetlinks.json` has BOTH the RELEASE `com.pearpetal` fingerprint (key generated in
+  `/home/tim/keystore.jks` alias `pearpetal`, 2026-07-10) and `com.pearpetal.debug`.
+  REMAINING: `wrangler deploy` the `website/` repo, then confirm tap-to-open on hardware
+  (Android App Links verify against the live `assetlinks.json`; iOS against the live AASA).
+  Until deployed, a tap shows a chooser; `pear://` + paste-into-app already work.
 
 ## Nice-to-have / UX polish
 
-- **Adopt bottom sheets for day/symptom entry** (day log, flow/symptom entry) instead
-  of full-screen pushes - more native-feeling, keeps context. (The shared `BottomSheet`
-  already exists.)
-- **Partner-view scoped calendar**: a Month calendar in the PARTNER view (owner-only
-  today).
-- **Joiner avatar in per-person shares**: the owner shows an initials avatar for a
-  joiner; showing their photo needs the joiner's avatar blob to replicate to the owner
-  via the shared base's blob store (unverified). Name already works.
+All prior nice-to-haves shipped + verified 2026-07-10 (see DONE.md): bottom sheets for
+day/symptom entry, partner-view scoped Month calendar, joiner photo avatar in per-person
+shares.
 
 ## Design decisions to make (before building)
 
