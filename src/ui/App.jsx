@@ -1446,9 +1446,10 @@ function NotificationsCard () {
 
 function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
-  const [dataMsg, setDataMsg] = useState('')
+  const [dataMsg, setDataMsg] = useState(null) // { text, tone: 'success'|'error'|'muted' }
   const [exportPw, setExportPw] = useState('') // optional backup password (blank = plaintext)
   const [pendingImport, setPendingImport] = useState(null) // encrypted wrapper awaiting its password
+  const [importResult, setImportResult] = useState(null) // { days, periods } -> success modal
   // The advanced/occasional sections collapse independently (collapsed by default).
   const [openSection, setOpenSection] = useState({})
   const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
@@ -1477,31 +1478,33 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
       const fname = encrypted ? 'pearpetal-backup-encrypted.json' : 'pearpetal-backup.json'
       if (inShell) {
         const r = await call('shell:export', { filename: fname, json })
-        if (r && r.canceled) { setDataMsg('Export canceled.'); return }
-        setDataMsg(encrypted ? 'Encrypted backup saved.' : 'Backup saved.')
+        if (r && r.canceled) { setDataMsg({ text: 'Export canceled.', tone: 'muted' }); return }
+        setDataMsg({ text: encrypted ? 'Encrypted backup saved.' : 'Backup saved.' })
       } else {
         const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
         const a = document.createElement('a'); a.href = url; a.download = fname; a.click(); URL.revokeObjectURL(url)
-        setDataMsg(encrypted ? 'Exported an encrypted backup.' : `Exported ${data.days.length} days.`)
+        setDataMsg({ text: encrypted ? 'Exported an encrypted backup.' : `Exported ${data.days.length} days.` })
       }
       haptic('success')
-    } catch (e) { setDataMsg(e.message) }
+    } catch { setDataMsg({ text: 'Export failed. Please try again.', tone: 'error' }) }
   }
+  // Import succeeded: clear any stale message, surface the success modal, refresh.
+  const finishImport = (r) => { setDataMsg(''); setImportResult({ days: r.days, periods: r.periods }); haptic('success'); onSaved && onSaved() }
   const applyImport = async (json) => {
     let parsed
-    try { parsed = JSON.parse(json) } catch { setDataMsg('Import failed. Not a valid backup file.'); return }
+    try { parsed = JSON.parse(json) } catch { setDataMsg({ text: 'That file could not be read. Choose a valid PearPetal backup.', tone: 'error' }); return }
     // Encrypted backups need a password: stash the wrapper and prompt for it.
     if (parsed && parsed.enc) { setPendingImport(parsed); return }
-    try { const r = await call('import:data', { data: parsed }); setDataMsg(`Imported ${r.days} days and ${r.periods} periods.`); haptic('success'); onSaved && onSaved() } catch (e) { setDataMsg('Import failed. ' + e.message) }
+    try { const r = await call('import:data', { data: parsed }); finishImport(r) } catch (e) { setDataMsg({ text: friendlyImportError(e), tone: 'error' }) }
   }
   // Decrypt + import a stashed encrypted backup once the user enters its password.
-  // Wrong password keeps the sheet open (throws so the sheet shows the error).
+  // Wrong password keeps the sheet open (throws so the sheet shows a friendly error).
   const submitEncryptedImport = async (pw) => {
     const r = await call('import:data', { data: pendingImport, password: pw })
-    setPendingImport(null); setDataMsg(`Imported ${r.days} days and ${r.periods} periods.`); haptic('success'); onSaved && onSaved()
+    setPendingImport(null); finishImport(r)
   }
   const doImport = async () => {
-    if (inShell) { try { const r = await call('shell:import'); if (r && r.json) applyImport(r.json) } catch (e) { setDataMsg(e.message) } return }
+    if (inShell) { try { const r = await call('shell:import'); if (r && r.json) applyImport(r.json) } catch { setDataMsg({ text: 'Could not open that file. Please try again.', tone: 'error' }) } return }
     const input = document.createElement('input'); input.type = 'file'; input.accept = 'application/json,.json'
     input.onchange = () => { const f = input.files && input.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => applyImport(String(rd.result)); rd.readAsText(f) }
     input.click()
@@ -1584,9 +1587,42 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
           <Btn kind='ghost' onClick={doImport} style={{ flex: 1 }}>Import</Btn>
         </div>
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Set a password to save an <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>encrypted</strong> backup; leave it blank for a plain file. Either way the file only leaves your device if you share it, so keep it somewhere private. Import merges a backup into your log and will ask for the password if the file is encrypted. A forgotten password cannot be recovered.</div>
-        {dataMsg && <div style={{ color: colors.success, fontSize: 13 }}>{dataMsg}</div>}
+        {dataMsg && <div style={{ color: dataMsg.tone === 'error' ? colors.error : dataMsg.tone === 'muted' ? colors.text.muted : colors.success, fontSize: 13 }}>{dataMsg.text}</div>}
       </CollapsibleCard>
       {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
+      {importResult && <ImportSuccessModal result={importResult} onClose={() => setImportResult(null)} />}
+    </div>
+  )
+}
+
+// Map the worklet's terse import errors to friendly, non-technical copy. The
+// error arrives as a full stack string (the engine serializes err.stack over
+// IPC), so match on substrings, and always fall back to a generic line rather
+// than surfacing any raw/technical text.
+function friendlyImportError (e) {
+  const m = (e && e.message) || String(e || '')
+  if (m.includes('wrong password')) return "That password didn't work. Please try again."
+  if (m.includes('password required')) return 'This backup is encrypted. Enter its password to import.'
+  if (m.includes('corrupt backup') || m.includes('unsupported backup format')) return "This file couldn't be read. It may be damaged or not a PearPetal backup."
+  if (m.includes('not a PearPetal export')) return "This doesn't look like a PearPetal backup file."
+  return 'Import failed. Please try again with a valid backup file.'
+}
+
+// Prominent confirmation after a successful import. A centered modal (not the
+// small inline line) so the user clearly sees the merge landed.
+function ImportSuccessModal ({ result, onClose }) {
+  useBackHandler(!!result, onClose)
+  if (!result) return null
+  const dayN = result.days === 1 ? '1 day' : `${result.days} days`
+  const perN = result.periods === 1 ? '1 period' : `${result.periods} periods`
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
+      <div style={{ background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.xl, padding: spacing.xl, maxWidth: 360, width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: spacing.sm, alignItems: 'center' }}>
+        <CheckCircle size={48} weight='fill' color={colors.success} />
+        <div style={{ fontSize: 20, fontWeight: 600, color: colors.text.primary }}>Backup imported</div>
+        <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.5, marginBottom: spacing.sm }}>{dayN} and {perN} were merged into your log.</div>
+        <Btn onClick={onClose} style={{ width: '100%' }}>Done</Btn>
+      </div>
     </div>
   )
 }
@@ -1600,7 +1636,7 @@ function ImportPasswordSheet ({ onSubmit, onClose }) {
   const go = async () => {
     if (!pw || busy) return
     setBusy(true); setErr('')
-    try { await onSubmit(pw) } catch (e) { setErr(e && e.message === 'wrong password' ? 'Wrong password. Try again.' : ('Import failed. ' + (e && e.message ? e.message : e))); haptic('warn') } finally { setBusy(false) }
+    try { await onSubmit(pw) } catch (e) { setErr(friendlyImportError(e)); haptic('warn') } finally { setBusy(false) }
   }
   return (
     <BottomSheet onClose={onClose}>
