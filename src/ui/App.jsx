@@ -9,6 +9,7 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
+import { createPortal } from 'react-dom'
 import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
@@ -313,17 +314,21 @@ function ScannerView ({ open, onClose, onDecode }) {
     return stop
   }, [open])
   if (!open) return null
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: '#000' }}>
+  // Portal to <body>: when opened from inside a BottomSheet, the sheet's transform
+  // makes position:fixed resolve against the sheet (bottom half) instead of the
+  // viewport. Portaling escapes that so the camera is truly full-screen.
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 90, background: '#000' }}>
       <video ref={videoRef} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
         <div style={{ width: 240, height: 240, border: `3px solid ${colors.primary}`, borderRadius: radius.lg }} />
       </div>
-      <button onClick={onClose} aria-label='Close scanner' style={{ position: 'absolute', top: spacing.base, right: spacing.base, width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 20, lineHeight: 1, cursor: 'pointer' }}>✕</button>
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, textAlign: 'center', color: '#fff', fontSize: 14, padding: `${spacing.xl}px ${spacing.base}px`, background: 'linear-gradient(transparent, rgba(0,0,0,0.7))' }}>
+      <button onClick={onClose} aria-label='Close scanner' style={{ position: 'absolute', top: `calc(${spacing.base}px + var(--pear-safe-top, 0px))`, right: spacing.base, width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 20, lineHeight: 1, cursor: 'pointer' }}>✕</button>
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, textAlign: 'center', color: '#fff', fontSize: 14, padding: `${spacing.xl}px ${spacing.base}px calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, background: 'linear-gradient(transparent, rgba(0,0,0,0.7))' }}>
         {error || 'Point the camera at an invite QR code'}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -790,7 +795,13 @@ function JoinPartnerSheet ({ onClose, onJoined }) {
 function PartnerView ({ groupId, onClose, onLeft }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
-  const load = async () => { try { setData(await call('partner:view', { groupId })) } catch (e) { setErr(e.message) } }
+  // Once we've started leaving, the base is torn down, so a racing poll /
+  // group:updated must not flash a "partner share not found" error on the way out.
+  const leaving = useRef(false)
+  const load = async () => {
+    if (leaving.current) return
+    try { setData(await call('partner:view', { groupId })) } catch (e) { if (!leaving.current) setErr(e.message) }
+  }
   useEffect(() => { load() }, [groupId])
   useEffect(() => on('group:updated', (d) => { if (d?.groupId === groupId) load() }), [groupId])
   // The owner's projection may still be replicating when this view first opens:
@@ -809,7 +820,11 @@ function PartnerView ({ groupId, onClose, onLeft }) {
     const t = setInterval(load, 2000)
     return () => clearInterval(t)
   }, [groupId, synced])
-  const leave = async () => { try { await call('partner:leave', { groupId }); onLeft() } catch (e) { setErr(e.message) } }
+  const leave = async () => {
+    leaving.current = true; setErr('')
+    try { await call('partner:leave', { groupId }) } catch {}
+    onLeft()
+  }
 
   const phase = data?.phase
   const predict = data?.predict
