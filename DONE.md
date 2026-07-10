@@ -6,6 +6,21 @@ work lives in `TODO.md`.
 
 ## 2026-07-10
 
+- **iOS dev builds unblocked - strip the Associated Domains entitlement**
+  (`plugins/with-ios-no-associated-domains.js`): `ios.associatedDomains` (added for
+  Universal Links) made every iOS archive fail because the wildcard dev provisioning
+  profile can't sign the Associated Domains capability (same class as the aps-environment
+  issue). New config plugin deletes `com.apple.developer.associated-domains` from the
+  entitlements by DEFAULT (dev), gated so `PEARPETAL_ASSOCIATED_DOMAINS=1` keeps it for a
+  future provisioned build. Verified: generated `PearPetal.entitlements` is empty, archive
+  + export + USB install SUCCEEDED, iPhone SE got this session's build. Listed FIRST in the
+  app.json `plugins` array (entitlement mods run in reverse order). iOS tap-to-open stays
+  deferred until an explicit `com.pearpetal` App ID with the capability is provisioned.
+- **All three devices on the partner-mode build** (2026-07-10 device pass): rebuilt +
+  installed to the TCL + Pixel 9 Pro (Android debug APK, `adb install -r`, both launch
+  clean) and the iPhone SE (iOS, via `scripts/ios-dev-install.sh` on the Mac mini). The
+  WebView UI is a native build-time asset (`Asset.fromModule(require('assets/app-ui.bundle'))`
+  in `app/index.tsx`), so shipping UI changes needs a full native rebuild, not just build:ui.
 - **Partner (viewer) mode gets a real shell** (T1, UI-only, no wire change): the viewer
   side was a dead-end screen; now it mirrors the owner shell where it makes sense.
   - **Viewer bottom nav** (Shared / Settings / About). `BottomNav` generalized to take a
