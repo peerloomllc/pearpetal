@@ -200,6 +200,35 @@ function LinkSpan ({ onClick, children }) {
 
 // Round avatar with an initial fallback. `src` is a data URL (own or a partner's
 // replicated avatar), `name` supplies the fallback letter.
+// The PearPetal wordmark: a small bloom (echoing the dial) plus a two-tone
+// "Pear" (rose) + "Petal" (orchid) lockup. Colours come from theme CSS vars, so
+// it adapts to light/dark automatically. `size` is the text size in px; the
+// bloom and gap scale from it.
+function PetalMark ({ size = 28 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 32 32' aria-hidden='true' style={{ flexShrink: 0, display: 'block' }}>
+      <g fill={colors.primary}>
+        <ellipse cx='16' cy='7' rx='4.3' ry='7' />
+        <ellipse cx='16' cy='25' rx='4.3' ry='7' />
+        <ellipse cx='7' cy='16' rx='7' ry='4.3' />
+        <ellipse cx='25' cy='16' rx='7' ry='4.3' />
+        <ellipse cx='9.4' cy='9.4' rx='6' ry='4' transform='rotate(45 9.4 9.4)' />
+        <ellipse cx='22.6' cy='9.4' rx='6' ry='4' transform='rotate(-45 22.6 9.4)' />
+        <ellipse cx='9.4' cy='22.6' rx='6' ry='4' transform='rotate(-45 9.4 22.6)' />
+        <ellipse cx='22.6' cy='22.6' rx='6' ry='4' transform='rotate(45 22.6 22.6)' />
+      </g>
+      <circle cx='16' cy='16' r='4' fill={colors.primaryDark} />
+    </svg>
+  )
+}
+function Wordmark ({ size = 34 }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: Math.round(size * 0.26), fontSize: size, fontWeight: 600, letterSpacing: 0.3, lineHeight: 1.1 }}>
+      <PetalMark size={Math.round(size * 0.82)} />
+      <span><span style={{ color: colors.primary }}>Pear</span><span style={{ color: colors.accent }}>Petal</span></span>
+    </span>
+  )
+}
 function Avatar ({ src, name, size = 36 }) {
   const initial = ((name || '').trim()[0] || '♥').toUpperCase()
   return (
@@ -395,7 +424,7 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
           <PetalDial pred={samplePred} today={t0} flower='rose' />
         </div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
+          <Wordmark size={34} />
           <div style={{ color: colors.text.secondary, marginTop: spacing.sm, lineHeight: 1.5 }}>Your flower furls and blooms across your cycle, so a glance shows your phase. Private tracking - no accounts, no servers. Your data stays on your device.</div>
         </div>
         <Btn onClick={() => setPhase('name')}>Get started</Btn>
@@ -428,7 +457,7 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
   return wrap(
     <>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
+        <Wordmark size={34} />
         {phase === 'chooser' && <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>Are you tracking your own cycle, or viewing a partner's?</div>}
       </div>
       {phase === 'chooser' && (
@@ -1104,7 +1133,7 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   useSynced(load)
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
+      <Wordmark size={24} />
       <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Shared with you</div>
       {partners.map((p) => (
         <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
@@ -1971,7 +2000,7 @@ function AboutScreen ({ onClose }) {
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
       <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>About</div>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 28, fontWeight: 600, color: colors.primary }}>PearPetal</div>
+        <Wordmark size={28} />
         <div style={{ color: colors.text.muted, fontSize: 14, marginTop: spacing.xs }}>Private cycle tracking. No account, no server.</div>
       </div>
 
