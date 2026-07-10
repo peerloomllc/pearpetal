@@ -74,8 +74,15 @@ export function injectGlobalStyles () {
 // the OS via matchMedia; dark is the default. resolveTheme collapses a pref to the
 // concrete 'dark'/'light' that drives the data-theme attribute (and the flowers).
 const THEME_KEY = 'pearpetal:theme'
+// The RN shell injects the real OS colour scheme as window.__pearColorScheme
+// (reliable on Android, where the WebView's prefers-color-scheme is not). Prefer
+// it; fall back to matchMedia for the browser preview; default to dark on error.
 function systemIsDark () {
-  try { return typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches } catch { return true }
+  try {
+    const s = typeof window !== 'undefined' ? window.__pearColorScheme : null
+    if (s === 'dark' || s === 'light') return s === 'dark'
+    return typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches
+  } catch { return true }
 }
 export function resolveTheme (pref) {
   if (pref === 'system') return systemIsDark() ? 'dark' : 'light'
@@ -83,7 +90,7 @@ export function resolveTheme (pref) {
 }
 export function loadThemePref () {
   try { const s = localStorage.getItem(THEME_KEY); if (s === 'light' || s === 'dark' || s === 'system') return s } catch {}
-  return 'dark'
+  return 'system'
 }
 // Apply a preference: stamp the resolved theme on <html> and persist the pref.
 // Returns the resolved 'dark'/'light'.
@@ -94,14 +101,24 @@ export function applyThemePref (pref) {
   return resolved
 }
 // Subscribe to OS light/dark changes (only meaningful while the pref is 'system').
-// Returns an unsubscribe fn.
+// Listens for the shell's injected `pearcolorscheme` event (Android-reliable) and,
+// as a browser-preview fallback, matchMedia. Returns an unsubscribe fn.
 export function onSystemThemeChange (cb) {
+  const cleanups = []
+  try {
+    if (typeof window !== 'undefined') {
+      const h = () => cb(window.__pearColorScheme === 'light' ? 'light' : 'dark')
+      window.addEventListener('pearcolorscheme', h)
+      cleanups.push(() => window.removeEventListener('pearcolorscheme', h))
+    }
+  } catch {}
   try {
     const mq = matchMedia('(prefers-color-scheme: dark)')
     const h = () => cb(mq.matches ? 'dark' : 'light')
     mq.addEventListener ? mq.addEventListener('change', h) : mq.addListener(h)
-    return () => { mq.removeEventListener ? mq.removeEventListener('change', h) : mq.removeListener(h) }
-  } catch { return () => {} }
+    cleanups.push(() => { mq.removeEventListener ? mq.removeEventListener('change', h) : mq.removeListener(h) })
+  } catch {}
+  return () => { for (const fn of cleanups) fn() }
 }
 // Back-compat helpers (pre-paint boot + any direct callers).
 export function setTheme (mode) { applyThemePref(mode === 'light' ? 'light' : 'dark') }

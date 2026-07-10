@@ -200,6 +200,35 @@ function LinkSpan ({ onClick, children }) {
 
 // Round avatar with an initial fallback. `src` is a data URL (own or a partner's
 // replicated avatar), `name` supplies the fallback letter.
+// The PearPetal wordmark: a small bloom (echoing the dial) plus a two-tone
+// "Pear" (rose) + "Petal" (orchid) lockup. Colours come from theme CSS vars, so
+// it adapts to light/dark automatically. `size` is the text size in px; the
+// bloom and gap scale from it.
+function PetalMark ({ size = 28 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 32 32' aria-hidden='true' style={{ flexShrink: 0, display: 'block' }}>
+      <g fill={colors.primary}>
+        <ellipse cx='16' cy='7' rx='4.3' ry='7' />
+        <ellipse cx='16' cy='25' rx='4.3' ry='7' />
+        <ellipse cx='7' cy='16' rx='7' ry='4.3' />
+        <ellipse cx='25' cy='16' rx='7' ry='4.3' />
+        <ellipse cx='9.4' cy='9.4' rx='6' ry='4' transform='rotate(45 9.4 9.4)' />
+        <ellipse cx='22.6' cy='9.4' rx='6' ry='4' transform='rotate(-45 22.6 9.4)' />
+        <ellipse cx='9.4' cy='22.6' rx='6' ry='4' transform='rotate(-45 9.4 22.6)' />
+        <ellipse cx='22.6' cy='22.6' rx='6' ry='4' transform='rotate(45 22.6 22.6)' />
+      </g>
+      <circle cx='16' cy='16' r='4' fill={colors.primaryDark} />
+    </svg>
+  )
+}
+function Wordmark ({ size = 34 }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: Math.round(size * 0.26), fontSize: size, fontWeight: 600, letterSpacing: 0.3, lineHeight: 1.1 }}>
+      <PetalMark size={Math.round(size * 0.82)} />
+      <span><span style={{ color: colors.primary }}>Pear</span><span style={{ color: colors.accent }}>Petal</span></span>
+    </span>
+  )
+}
 function Avatar ({ src, name, size = 36 }) {
   const initial = ((name || '').trim()[0] || '♥').toUpperCase()
   return (
@@ -344,92 +373,126 @@ function ScannerView ({ open, onClose, onDecode }) {
 
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
-  const [intro, setIntro] = useState(true) // the blooming-dial welcome, shown before the chooser
-  const [mode, setMode] = useState(null) // null | 'link' | 'partner'
+  // intro (welcome) -> name (profile, everyone) -> chooser (track/view) -> partner (paste/scan)
+  const [phase, setPhase] = useState('intro')
+  const [name, setName] = useState('')
+  const [avatar, setAvatar] = useState(null) // avatar data URL
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [scanning, setScanning] = useState(false)
 
+  // Name/photo is collected up front, before the track-vs-view choice, so it
+  // applies to everyone - a partner-viewer, and a restore-from-backup user whose
+  // backup carries cycle data but not their profile. profile:set is device-local
+  // (no base needed), so it is safe to call before any cycle exists.
+  const saveProfile = async () => {
+    const dn = name.trim()
+    if (dn || avatar) { try { await call('profile:set', { displayName: dn, avatar: avatar || undefined }) } catch {} }
+    setErr(''); setPhase('chooser')
+  }
   const start = async () => {
     setErr('')
-    // Create the private base, then hand off to the guided setup wizard (name /
-    // goal / last period / reminders) instead of dropping onto an empty dial.
+    // Create the private base, then hand off to the guided setup wizard (which
+    // also offers restoring a backup) instead of dropping onto an empty dial.
     try { await call('cycle:create'); haptic('success'); onStartSetup() } catch (e) { setErr(e.message) }
-  }
-  const link = async (raw) => {
-    setErr('')
-    try { await call('link:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
   }
   const joinPartner = async (raw) => {
     setErr('')
     try { await call('partner:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
   }
-  const submit = () => (mode === 'link' ? link() : joinPartner())
-  const onScanned = (txt) => { setScanning(false); (mode === 'link' ? link : joinPartner)(txt) }
-  const back = () => { setMode(null); setErr(''); setCode(''); setScanning(false) }
-  // Android Back: from a paste sub-mode -> the chooser; from the chooser -> the intro.
-  useBackHandler(!intro || mode !== null, () => { if (mode !== null) back(); else setIntro(true) })
+  const submit = () => joinPartner()
+  const onScanned = (txt) => { setScanning(false); joinPartner(txt) }
+  // Android Back walks the phases back: partner -> chooser -> name -> intro.
+  const back = () => {
+    setErr(''); setCode(''); setScanning(false)
+    setPhase((p) => (p === 'partner' ? 'chooser' : p === 'chooser' ? 'name' : 'intro'))
+  }
+  useBackHandler(phase !== 'intro', back)
 
-  // First-run intro: the blooming-dial welcome shown BEFORE the Start / Link / View
-  // chooser, so the app introduces itself first. "Get started" reveals the chooser.
-  const t0 = todayIso()
-  const samplePred = { known: true, phase: 'fertile', dayOfCycle: 14, cycleLen: 28, ovulationEst: t0, nextPeriodStart: addDaysIso(t0, 14), fertileStart: addDaysIso(t0, -4), fertileEnd: addDaysIso(t0, 1) }
-  if (intro) {
-    return (
-      <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
+  const wrap = (children) => (
+    <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>{children}</div>
+  )
+
+  // First-run intro: the blooming-dial welcome shown BEFORE anything else, so the
+  // app introduces itself first. "Get started" moves on to the name/profile step.
+  if (phase === 'intro') {
+    const t0 = todayIso()
+    const samplePred = { known: true, phase: 'fertile', dayOfCycle: 14, cycleLen: 28, ovulationEst: t0, nextPeriodStart: addDaysIso(t0, 14), fertileStart: addDaysIso(t0, -4), fertileEnd: addDaysIso(t0, 1) }
+    return wrap(
+      <>
         <div style={{ ...card, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
           <PetalDial pred={samplePred} today={t0} flower='rose' />
         </div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
-          <div style={{ color: colors.text.secondary, marginTop: spacing.sm, lineHeight: 1.5 }}>Your flower furls and blooms across your cycle, so a glance shows your phase. Private tracking - no account, no server, your data stays on your devices.</div>
+          <Wordmark size={34} />
+          <div style={{ color: colors.text.secondary, marginTop: spacing.sm, lineHeight: 1.5 }}>Your flower furls and blooms across your cycle, so a glance shows your phase. Private tracking - no accounts, no servers. Your data stays on your device.</div>
         </div>
-        <Btn onClick={() => setIntro(false)}>Get started</Btn>
-      </div>
+        <Btn onClick={() => setPhase('name')}>Get started</Btn>
+      </>,
     )
   }
 
-  return (
-    <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
+  // Name + photo, for everyone (a viewer's name is shown to the partner they join).
+  if (phase === 'name') {
+    return wrap(
+      <>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 24, fontWeight: 600 }}>What should we call you?</div>
+          <div style={{ color: colors.text.secondary, fontSize: 14, marginTop: spacing.sm, lineHeight: 1.5 }}>Shown to partners you share with; otherwise it stays on your device.</div>
+        </div>
+        <div style={{ ...card, display: 'flex', alignItems: 'center', gap: spacing.md }}>
+          <label style={{ cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
+            <Avatar src={avatar} name={name} size={56} />
+            <span style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderRadius: '50%', background: colors.primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Camera size={13} color={colors.text.onPrimary} /></span>
+            <input type='file' accept='image/*' style={{ display: 'none' }} onChange={async (e) => { const f = e.target.files?.[0]; if (f) { try { setAvatar(await fileToAvatarDataUrl(f)) } catch {} } }} />
+          </label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder='Your name' maxLength={64}
+            style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '10px 12px', fontSize: 15, flex: 1, minWidth: 0 }} />
+        </div>
+        <Btn onClick={saveProfile}>Continue</Btn>
+      </>,
+    )
+  }
+
+  return wrap(
+    <>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
-        {mode === null && <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>How would you like to begin?</div>}
+        <Wordmark size={34} />
+        {phase === 'chooser' && <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>Are you tracking your own cycle, or viewing a partner's?</div>}
       </div>
-      {mode === null && (
+      {phase === 'chooser' && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-          <Btn onClick={start}>Start tracking</Btn>
-          <Btn kind='ghost' onClick={() => { setMode('link'); setErr('') }}>Link another device</Btn>
-          <Btn kind='ghost' onClick={() => { setMode('partner'); setErr('') }}>View a partner's cycle</Btn>
+          <Btn onClick={start}>Track my cycle</Btn>
+          <Btn kind='ghost' onClick={() => { setPhase('partner'); setErr('') }}>View a partner's cycle</Btn>
         </div>
       )}
-      {(mode === 'link' || mode === 'partner') && (
+      {phase === 'partner' && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
           <div style={{ color: colors.text.secondary, fontSize: 14 }}>
-            {mode === 'link'
-              ? 'On your other device, open Devices and copy its link code. Paste it here.'
-              : "Paste the share code your partner gave you. You'll see only what they chose to share."}
+            Paste the share code your partner gave you. You'll see only what they chose to share.
           </div>
           <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder='Paste code' rows={3}
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
           <div style={{ display: 'flex', gap: spacing.sm }}>
-            <Btn onClick={submit} style={{ flex: 1 }}>{mode === 'link' ? 'Link this device' : 'View their cycle'}</Btn>
-            <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }}>Scan QR</Btn>
+            <Btn onClick={submit} style={{ flex: 1 }}>View their cycle</Btn>
+            <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }} style={{ flex: 1 }}>Scan QR</Btn>
           </div>
           <Btn kind='ghost' onClick={back}>Back</Btn>
         </div>
       )}
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
       <ScannerView open={scanning} onClose={() => setScanning(false)} onDecode={onScanned} />
-    </div>
+    </>,
   )
 }
 
 // --- first-run setup wizard --------------------------------------------------
-// Runs right after "Start tracking" (which created the private base). A short,
-// fully skippable sequence sets up the essentials - name/photo, goal, last period,
-// reminders - so the user lands on a MEANINGFUL dial instead of an empty "Learning
-// your cycle". Reuses the same controls as Settings; T1, no wire change.
-const SETUP_STEPS = ['name', 'goal', 'period', 'reminders', 'done']
+// Runs right after "Track my cycle" (which created the private base). Name/photo
+// is collected earlier in Onboarding (it applies to viewers too), so this covers
+// goal, last period, and reminders - or restoring a backup on the first step - so
+// the user lands on a MEANINGFUL dial instead of an empty "Learning your cycle".
+// Reuses the same controls as Settings; T1, no wire change.
+const SETUP_STEPS = ['start', 'goal', 'period', 'reminders', 'done']
 
 function StepDots ({ n, i }) {
   return (
@@ -444,23 +507,46 @@ function StepDots ({ n, i }) {
 function SetupWizard ({ onDone }) {
   const [step, setStep] = useState(0)
   const [prefs, setPrefs] = useState({ goal: 'track' })
-  const [name, setName] = useState('')
-  const [avatar, setAvatar] = useState(null) // avatar data URL
   const [periodStart, setPeriodStart] = useState('')
   const [notif, setNotif] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [pendingImport, setPendingImport] = useState(null) // encrypted backup awaiting its password
+  const [restoreErr, setRestoreErr] = useState('')
 
   const total = SETUP_STEPS.length
   const s = SETUP_STEPS[step]
   const go = (d) => setStep((v) => Math.max(0, Math.min(total - 1, v + d)))
   useBackHandler(step > 0, () => go(-1)) // Android Back steps back through the wizard
 
-  const savePrefs = async (patch) => { setPrefs((p) => ({ ...p, ...patch })); await call('prefs:set', patch).catch(() => {}) }
-  const saveName = async () => {
-    const dn = name.trim()
-    if (dn || avatar) { try { await call('profile:set', { displayName: dn, avatar: avatar || undefined }) } catch {} }
-    go(1)
+  // Restore path from the first step: import a backup instead of manual setup.
+  // import:data merges into the base start() just created; on success we skip the
+  // rest of the wizard straight into the (now populated) app. Encrypted backups
+  // route through the password sheet.
+  const doRestore = async () => {
+    setRestoreErr('')
+    const inShell = typeof window !== 'undefined' && !!window.ReactNativeWebView
+    if (inShell) {
+      let json = null
+      try { const r = await call('shell:import'); json = r && r.json } catch { setRestoreErr('Could not open that file. Please try again.'); return }
+      if (json) restoreJson(json)
+      return
+    }
+    const input = document.createElement('input'); input.type = 'file'; input.accept = 'application/json,.json'
+    input.onchange = () => { const f = input.files && input.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => restoreJson(String(rd.result)); rd.readAsText(f) }
+    input.click()
   }
+  const restoreJson = async (json) => {
+    let parsed
+    try { parsed = JSON.parse(json) } catch { setRestoreErr('That file could not be read. Choose a valid PearPetal backup.'); return }
+    if (parsed && parsed.enc) { setPendingImport(parsed); return }
+    try { await call('import:data', { data: parsed }); haptic('success'); onDone() } catch (e) { setRestoreErr(friendlyImportError(e)) }
+  }
+  const submitRestore = async (pw) => {
+    await call('import:data', { data: pendingImport, password: pw }) // throws 'wrong password' -> sheet shows a friendly error
+    setPendingImport(null); haptic('success'); onDone()
+  }
+
+  const savePrefs = async (patch) => { setPrefs((p) => ({ ...p, ...patch })); await call('prefs:set', patch).catch(() => {}) }
   const logPeriod = async () => {
     if (periodStart) { setBusy(true); try { await call('period:log', { start: periodStart, end: null }) } catch {} setBusy(false) }
     go(1)
@@ -487,19 +573,15 @@ function SetupWizard ({ onDone }) {
   )
 
   let body
-  if (s === 'name') {
+  if (s === 'start') {
     body = (
       <>
-        {title('What should we call you?', 'Shown to partners you share with; otherwise it stays on your device. Optional.')}
-        <div style={{ ...card, display: 'flex', alignItems: 'center', gap: spacing.md }}>
-          <label style={{ cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
-            <Avatar src={avatar} name={name} size={56} />
-            <span style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderRadius: '50%', background: colors.primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Camera size={13} color={colors.text.onPrimary} /></span>
-            <input type='file' accept='image/*' style={{ display: 'none' }} onChange={async (e) => { const f = e.target.files?.[0]; if (f) { try { setAvatar(await fileToAvatarDataUrl(f)) } catch {} } }} />
-          </label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder='Your name' maxLength={64} style={{ ...field, flex: 1, minWidth: 0 }} />
+        {title('Set up your cycle', 'A few quick questions so your dial starts out accurate. New to PearPetal, or picking up from a backup?')}
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+          <Btn onClick={() => go(1)}>Set up my cycle</Btn>
+          <Btn kind='ghost' onClick={doRestore}>Restore from a backup</Btn>
         </div>
-        {nextRow('Continue', saveName)}
+        {restoreErr && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{restoreErr}</div>}
       </>
     )
   } else if (s === 'goal') {
@@ -552,6 +634,7 @@ function SetupWizard ({ onDone }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         <div style={{ margin: 'auto 0', display: 'flex', flexDirection: 'column', gap: spacing.lg }}>{body}</div>
       </div>
+      {pendingImport && <ImportPasswordSheet onSubmit={submitRestore} onClose={() => setPendingImport(null)} />}
     </div>
   )
 }
@@ -1050,7 +1133,7 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   useSynced(load)
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>PearPetal</div>
+      <Wordmark size={24} />
       <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Shared with you</div>
       {partners.map((p) => (
         <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
@@ -1446,7 +1529,10 @@ function NotificationsCard () {
 
 function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
-  const [dataMsg, setDataMsg] = useState('')
+  const [dataMsg, setDataMsg] = useState(null) // { text, tone: 'success'|'error'|'muted' }
+  const [exportPw, setExportPw] = useState('') // optional backup password (blank = plaintext)
+  const [pendingImport, setPendingImport] = useState(null) // encrypted wrapper awaiting its password
+  const [successModal, setSuccessModal] = useState(null) // { title, message } -> export/import result popup
   // The advanced/occasional sections collapse independently (collapsed by default).
   const [openSection, setOpenSection] = useState({})
   const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
@@ -1468,21 +1554,55 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
   const inShell = typeof window !== 'undefined' && !!window.ReactNativeWebView
   const doExport = async () => {
     try {
-      const data = await call('export:data')
+      const pw = exportPw.trim()
+      const data = await call('export:data', pw ? { password: pw } : {})
       const json = JSON.stringify(data, null, 2)
-      if (inShell) { await call('shell:export', { filename: 'pearpetal-backup.json', json }); setDataMsg('Backup ready to save.') } else {
+      const encrypted = !!data.enc
+      const fname = encrypted ? 'pearpetal-backup-encrypted.json' : 'pearpetal-backup.json'
+      if (inShell) {
+        const r = await call('shell:export', { filename: fname, json })
+        if (r && r.canceled) { setDataMsg({ text: 'Export canceled.', tone: 'muted' }); return }
+        setDataMsg(null)
+        const dest = r && r.folder ? ` to ${r.folder}` : ''
+        setSuccessModal({
+          title: encrypted ? 'Encrypted backup saved' : 'Backup saved',
+          message: encrypted
+            ? `Your encrypted backup was saved${dest || ' successfully'}. Keep its password safe: it cannot be recovered.`
+            : (dest ? `Your backup was saved${dest}.` : 'Your backup was saved successfully.'),
+        })
+      } else {
         const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
-        const a = document.createElement('a'); a.href = url; a.download = 'pearpetal-backup.json'; a.click(); URL.revokeObjectURL(url)
-        setDataMsg(`Exported ${data.days.length} days.`)
+        const a = document.createElement('a'); a.href = url; a.download = fname; a.click(); URL.revokeObjectURL(url)
+        setDataMsg(null)
+        setSuccessModal({
+          title: encrypted ? 'Encrypted backup exported' : 'Backup exported',
+          message: encrypted ? 'Your encrypted backup file was downloaded.' : `Your backup with ${data.days.length} ${data.days.length === 1 ? 'day' : 'days'} was downloaded.`,
+        })
       }
       haptic('success')
-    } catch (e) { setDataMsg(e.message) }
+    } catch { setDataMsg({ text: 'Export failed. Please try again.', tone: 'error' }) }
+  }
+  // Import succeeded: clear any stale message, surface the success modal, refresh.
+  const finishImport = (r) => {
+    const dayN = r.days === 1 ? '1 day' : `${r.days} days`
+    const perN = r.periods === 1 ? '1 period' : `${r.periods} periods`
+    setDataMsg(null); setSuccessModal({ title: 'Backup imported', message: `${dayN} and ${perN} were merged into your log.` }); haptic('success'); onSaved && onSaved()
   }
   const applyImport = async (json) => {
-    try { const r = await call('import:data', { data: JSON.parse(json) }); setDataMsg(`Imported ${r.days} days and ${r.periods} periods.`); haptic('success'); onSaved && onSaved() } catch (e) { setDataMsg('Import failed. ' + e.message) }
+    let parsed
+    try { parsed = JSON.parse(json) } catch { setDataMsg({ text: 'That file could not be read. Choose a valid PearPetal backup.', tone: 'error' }); return }
+    // Encrypted backups need a password: stash the wrapper and prompt for it.
+    if (parsed && parsed.enc) { setPendingImport(parsed); return }
+    try { const r = await call('import:data', { data: parsed }); finishImport(r) } catch (e) { setDataMsg({ text: friendlyImportError(e), tone: 'error' }) }
+  }
+  // Decrypt + import a stashed encrypted backup once the user enters its password.
+  // Wrong password keeps the sheet open (throws so the sheet shows a friendly error).
+  const submitEncryptedImport = async (pw) => {
+    const r = await call('import:data', { data: pendingImport, password: pw })
+    setPendingImport(null); finishImport(r)
   }
   const doImport = async () => {
-    if (inShell) { try { const r = await call('shell:import'); if (r && r.json) applyImport(r.json) } catch (e) { setDataMsg(e.message) } return }
+    if (inShell) { try { const r = await call('shell:import'); if (r && r.json) applyImport(r.json) } catch { setDataMsg({ text: 'Could not open that file. Please try again.', tone: 'error' }) } return }
     const input = document.createElement('input'); input.type = 'file'; input.accept = 'application/json,.json'
     input.onchange = () => { const f = input.files && input.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => applyImport(String(rd.result)); rd.readAsText(f) }
     input.click()
@@ -1552,14 +1672,88 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
         {prefs.birthControl && <Explainer>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal hides them and leads with your period dates.</Explainer>}
       </CollapsibleCard>
       <CollapsibleCard title='Your data' icon={Database} open={openSection.data} onToggle={() => toggleSection('data')}>
+        <input
+          type='password'
+          value={exportPw}
+          onChange={(e) => setExportPw(e.target.value)}
+          placeholder='Backup password (optional)'
+          autoComplete='new-password'
+          style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '8px 12px', fontSize: 14 }}
+        />
         <div style={{ display: 'flex', gap: spacing.sm }}>
           <Btn onClick={doExport} style={{ flex: 1 }}>Export</Btn>
           <Btn kind='ghost' onClick={doImport} style={{ flex: 1 }}>Import</Btn>
         </div>
-        <div style={{ color: colors.text.muted, fontSize: 11 }}>Export saves a plain file to your device. It is not encrypted and never leaves your device on its own, so keep it somewhere private. Import merges a backup into your log.</div>
-        {dataMsg && <div style={{ color: colors.success, fontSize: 13 }}>{dataMsg}</div>}
+        <div style={{ color: colors.text.muted, fontSize: 11 }}>Set a password to save an <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>encrypted</strong> backup; leave it blank for a plain file. Either way the file only leaves your device if you share it, so keep it somewhere private. Import merges a backup into your log and will ask for the password if the file is encrypted. A forgotten password cannot be recovered.</div>
+        {dataMsg && <div style={{ color: dataMsg.tone === 'error' ? colors.error : dataMsg.tone === 'muted' ? colors.text.muted : colors.success, fontSize: 13 }}>{dataMsg.text}</div>}
       </CollapsibleCard>
+      {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
+      {successModal && <BackupSuccessModal title={successModal.title} message={successModal.message} onClose={() => setSuccessModal(null)} />}
     </div>
+  )
+}
+
+// Map the worklet's terse import errors to friendly, non-technical copy. The
+// error arrives as a full stack string (the engine serializes err.stack over
+// IPC), so match on substrings, and always fall back to a generic line rather
+// than surfacing any raw/technical text.
+function friendlyImportError (e) {
+  const m = (e && e.message) || String(e || '')
+  if (m.includes('wrong password')) return "That password didn't work. Please try again."
+  if (m.includes('password required')) return 'This backup is encrypted. Enter its password to import.'
+  if (m.includes('corrupt backup') || m.includes('unsupported backup format')) return "This file couldn't be read. It may be damaged or not a PearPetal backup."
+  if (m.includes('not a PearPetal export')) return "This doesn't look like a PearPetal backup file."
+  return 'Import failed. Please try again with a valid backup file.'
+}
+
+// Prominent confirmation for a successful backup export or import. A centered
+// modal (not the small inline line) so the user clearly sees the result.
+function BackupSuccessModal ({ title, message, onClose }) {
+  useBackHandler(true, onClose)
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
+      <div style={{ background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.xl, padding: spacing.xl, maxWidth: 360, width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: spacing.sm, alignItems: 'center' }}>
+        <CheckCircle size={48} weight='fill' color={colors.success} />
+        <div style={{ fontSize: 20, fontWeight: 600, color: colors.text.primary }}>{title}</div>
+        <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.5, marginBottom: spacing.sm }}>{message}</div>
+        <Btn onClick={onClose} style={{ width: '100%' }}>Done</Btn>
+      </div>
+    </div>
+  )
+}
+
+// Password prompt for importing an encrypted backup. Kept open on a wrong
+// password (onSubmit throws), showing the error inline, so no partial import.
+function ImportPasswordSheet ({ onSubmit, onClose }) {
+  const [pw, setPw] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const go = async () => {
+    if (!pw || busy) return
+    setBusy(true); setErr('')
+    try { await onSubmit(pw) } catch (e) { setErr(friendlyImportError(e)); haptic('warn') } finally { setBusy(false) }
+  }
+  return (
+    <BottomSheet onClose={onClose}>
+      {(close) => (
+        <>
+          <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Encrypted backup</div>
+          <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Enter the password this backup was saved with.</div>
+          <input
+            type='password'
+            value={pw}
+            autoFocus
+            onChange={(e) => { setPw(e.target.value); setErr('') }}
+            onKeyDown={(e) => { if (e.key === 'Enter') go() }}
+            placeholder='Backup password'
+            style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${err ? colors.error : colors.border}`, borderRadius: radius.md, padding: '10px 12px', fontSize: 15 }}
+          />
+          {err && <div style={{ color: colors.error, fontSize: 13, textAlign: 'center' }}>{err}</div>}
+          <Btn onClick={go} disabled={!pw || busy}>{busy ? 'Decrypting…' : 'Import'}</Btn>
+          <Btn kind='ghost' onClick={close}>Cancel</Btn>
+        </>
+      )}
+    </BottomSheet>
   )
 }
 
@@ -1806,7 +2000,7 @@ function AboutScreen ({ onClose }) {
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
       <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>About</div>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 28, fontWeight: 600, color: colors.primary }}>PearPetal</div>
+        <Wordmark size={28} />
         <div style={{ color: colors.text.muted, fontSize: 14, marginTop: spacing.xs }}>Private cycle tracking. No account, no server.</div>
       </div>
 
@@ -1911,7 +2105,9 @@ export default function App () {
   const changeTheme = (pref) => { setThemePref(pref); setThemeResolved(applyThemePref(pref)); haptic('light') }
   useEffect(() => {
     if (themePref !== 'system') return undefined
-    return onSystemThemeChange((resolved) => setThemeResolved(resolved))
+    // Re-apply through applyThemePref so the OS flip re-stamps data-theme on <html>
+    // (which drives the CSS-var colours), not just the React theme state.
+    return onSystemThemeChange(() => setThemeResolved(applyThemePref('system')))
   }, [themePref])
   // Tell the shell our resolved theme so it persists it and paints the pre-JS
   // background to match on the next cold start (no dark flash for light users).
