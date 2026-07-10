@@ -28,10 +28,20 @@ Not yet built:
    - ~~Listing copy drafted~~ 2026-07-10: `metadata/listing-play.md` (Play),
      `metadata/listing-appstore.md` (App Store - subtitle/keywords/privacy-label/
      age-rating/export-compliance guidance), `release_notes.md` (v1.0.0 what's-new).
+   - ~~Screenshot harness + scripts~~ DONE 2026-07-10: a fixtures harness
+     (`src/ui/screenshot-fixtures.js`, 6 deterministic scenes computed by the real
+     prediction; wired through ipc.js/App.jsx/shell/`app/screenshot/[n].tsx`) + ported
+     capture scripts (`android-screenshots.sh`, `ios-screenshots.sh`, `screenshots.sh`,
+     `frame-android-screenshots.sh`). **Android Pixel_9 screenshots captured** (all 6
+     scenes render correctly: dial hero, calendar, sharing, partner view, flower picker,
+     settings) in `metadata/android/screenshots/`.
    REMAINING:
-   - **Screenshots + feature graphic**: port the sibling screenshot scripts
-     (`android-screenshots.sh` / `ios-screenshots.sh` / framing) and capture the required
-     sizes (6.9" iPhone, Pixel), plus a 1024x512 Play feature graphic.
+   - **iOS simulator screenshots**: run `scripts/screenshots.sh` (drives the Mac's
+     iPhone-17-Pro-Max 6.9" simulator; set that sim's UDID in `app.conf`
+     `IOS_SCREENSHOT_DEVICES`) to get the App Store 6.9" set.
+   - **Play feature graphic** (1024x500) + optional dark-mode screenshot set.
+   - Minor polish: `PartnerView` shows raw ISO dates (`2026-07-23`) vs the owner view's
+     `Jul 23` - swap to `fmtDate` for a nicer scene 4 (and app).
    - **iOS App Store distribution profile**: create "PearPetal App Store" (App Store dist
      profile for com.pearpetal; the App ID already has Associated Domains) for
      `ios-appstore.sh` manual signing.

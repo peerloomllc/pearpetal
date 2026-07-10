@@ -18,6 +18,7 @@ import { colors, spacing, radius, MONO, applyThemePref, loadThemePref, resolveTh
 import { projectCalendar } from '../prediction.js'
 import PetalDial, { PregnancyDial, FlowerThumb, ThemeContext, isoDiff, addDaysIso } from './PetalDial.jsx'
 import { FLOWER_KEYS, flowerLabel } from './flowers.js'
+import { SCREENSHOT_SCENE, SCREENSHOT_ROUTE } from './screenshot-fixtures.js'
 
 const FLOWS = [
   { key: 'spotting', label: 'Spotting' },
@@ -2193,6 +2194,20 @@ export default function App () {
 
   useEffect(() => { boot() }, [boot])
   useEffect(() => on('group:updated', () => { if (mode === 'owner') refresh() }), [mode, refresh])
+
+  // Screenshot mode: once booted into owner, open the screen/sheet this scene
+  // wants (see screenshot-fixtures.js) so each capture lands on the right frame.
+  const shotApplied = useRef(false)
+  useEffect(() => {
+    if (SCREENSHOT_SCENE == null || shotApplied.current || mode !== 'owner') return
+    shotApplied.current = true
+    const r = SCREENSHOT_ROUTE || {}
+    if (r.view) setView(r.view)
+    if (r.screen) setScreen(r.screen)
+    if (r.partner) setPartnerGroup(r.partner)
+    if (r.sheet === 'flower') setFlowerSheet(true)
+    if (r.sheet === 'period') setPeriodSheet(true)
+  }, [mode])
 
   // Invite deep link: the shell forwards the opened URL (https://peerloomllc.com/
   // petal/link|join#<blob> or pear://pearpetal/link|join?...). Route by path -
