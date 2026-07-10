@@ -304,10 +304,6 @@ export default function Shell () {
           } catch {}
           return reply(id, { ok: true })
         }
-        case 'shell:scanQr': {
-          // Native camera QR scan is a later slice; the UI falls back to paste.
-          return reply(id, { code: null })
-        }
         case 'shell:export': {
           // Write the JSON to a file and open the share sheet so the user saves it
           // wherever they want (Files, Drive, etc). Nothing is uploaded by us.

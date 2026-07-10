@@ -9,7 +9,8 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
+import { createPortal } from 'react-dom'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -313,17 +314,21 @@ function ScannerView ({ open, onClose, onDecode }) {
     return stop
   }, [open])
   if (!open) return null
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: '#000' }}>
+  // Portal to <body>: when opened from inside a BottomSheet, the sheet's transform
+  // makes position:fixed resolve against the sheet (bottom half) instead of the
+  // viewport. Portaling escapes that so the camera is truly full-screen.
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 90, background: '#000' }}>
       <video ref={videoRef} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
         <div style={{ width: 240, height: 240, border: `3px solid ${colors.primary}`, borderRadius: radius.lg }} />
       </div>
-      <button onClick={onClose} aria-label='Close scanner' style={{ position: 'absolute', top: spacing.base, right: spacing.base, width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 20, lineHeight: 1, cursor: 'pointer' }}>✕</button>
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, textAlign: 'center', color: '#fff', fontSize: 14, padding: `${spacing.xl}px ${spacing.base}px`, background: 'linear-gradient(transparent, rgba(0,0,0,0.7))' }}>
+      <button onClick={onClose} aria-label='Close scanner' style={{ position: 'absolute', top: `calc(${spacing.base}px + var(--pear-safe-top, 0px))`, right: spacing.base, width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 20, lineHeight: 1, cursor: 'pointer' }}>✕</button>
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, textAlign: 'center', color: '#fff', fontSize: 14, padding: `${spacing.xl}px ${spacing.base}px calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, background: 'linear-gradient(transparent, rgba(0,0,0,0.7))' }}>
         {error || 'Point the camera at an invite QR code'}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -630,12 +635,11 @@ function Sharing ({ onClose, onOpenPartner }) {
                     <div style={{ color: colors.text.muted, fontSize: 12, textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.scope} · shared {sharedOn(s.createdAt)}</div>
                   </div>
                   <div style={{ display: 'flex', gap: spacing.xs, flexShrink: 0 }}>
-                    <IconBtn label={on ? 'Hide QR' : 'Show QR'} onClick={() => setQrFor(on ? null : s.groupId)} active={on}><QrCode size={18} weight={on ? 'fill' : 'regular'} /></IconBtn>
+                    <IconBtn label='Show QR' onClick={() => setQrFor(s.groupId)} active={on}><QrCode size={18} weight={on ? 'fill' : 'regular'} /></IconBtn>
                     <IconBtn label='Copy link' onClick={() => copy(shareUrl(s.inviteKey))}><Copy size={18} /></IconBtn>
                     <IconBtn label='Revoke share' onClick={() => revoke(s.groupId)} disabled={busyRevoke === s.groupId} color={colors.error}><Trash size={18} /></IconBtn>
                   </div>
                 </div>
-                {on && <QrImage text={shareUrl(s.inviteKey)} />}
               </div>
             )
           })}
@@ -680,7 +684,71 @@ function Sharing ({ onClose, onOpenPartner }) {
       </div>
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
       {joinOpen && <JoinPartnerSheet onClose={() => setJoinOpen(false)} onJoined={(groupId) => { setJoinOpen(false); onOpenPartner(groupId) }} />}
+      {qrFor && (() => { const sh = shares.find((s) => s.groupId === qrFor); return sh ? <ShareQrSheet share={sh} onClose={() => setQrFor(null)} /> : null })()}
     </div>
+  )
+}
+
+// The invite QR as a bottom sheet, opened from a share row's QR button. It watches
+// the (live, parent-polled) share for a NEW joiner - when the partner scans + joins,
+// it flips to a "Connected" confirmation and auto-dismisses. Copy-link is offered as
+// a fallback for when a scan is not possible.
+function ShareQrSheet ({ share, onClose }) {
+  return (
+    <BottomSheet onClose={onClose}>
+      {(close) => <ShareQrBody share={share} close={close} />}
+    </BottomSheet>
+  )
+}
+function ShareQrBody ({ share, close }) {
+  const [connected, setConnected] = useState(false)
+  const joinerName = (share.joiners || []).map((j) => j.name).filter(Boolean)[0]
+  // Poll for a real peer connection to THIS shared base (share:connected). This
+  // fires the moment the partner scans + reaches us - well before their identity
+  // row replicates back (which lags), so the confirmation is prompt and reliable.
+  useEffect(() => {
+    if (connected) return undefined
+    let alive = true; let timer = null
+    const tick = async () => {
+      if (!alive) return
+      let ok = false
+      try { ok = !!(await call('share:connected', { groupId: share.groupId }))?.connected } catch {}
+      if (!alive) return
+      if (ok) { setConnected(true); haptic('success') } else timer = setTimeout(tick, 1200)
+    }
+    timer = setTimeout(tick, 700)
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+  }, [share.groupId, connected])
+  // Show the "Connected" confirmation briefly, then slide the sheet away.
+  useEffect(() => {
+    if (!connected) return undefined
+    const t = setTimeout(close, 1600)
+    return () => clearTimeout(t)
+  }, [connected, close])
+  const link = shareUrl(share.inviteKey)
+  const copy = async () => { try { await navigator.clipboard.writeText(link); haptic('success') } catch { call('shell:share', { text: link }).catch(() => {}) } }
+
+  if (connected) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.md, padding: `${spacing.lg}px 0`, animation: 'pearpetal-fade 260ms ease' }}>
+        <span style={{ width: 60, height: 60, borderRadius: '50%', background: colors.primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Check size={32} color={colors.text.onPrimary} weight='bold' /></span>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>Connected</div>
+        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>{joinerName ? `You're now sharing with ${joinerName}.` : 'They can now see what you chose to share.'}</div>
+      </div>
+    )
+  }
+  return (
+    <>
+      <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Scan to connect</div>
+      <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>On their phone: PearPetal → View a partner's cycle → Scan QR.</div>
+      <QrImage text={link} size={220} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, color: colors.text.secondary, fontSize: 13 }}>
+        <span style={{ width: 15, height: 15, borderRadius: '50%', border: `2px solid ${colors.border}`, borderTopColor: colors.primary, animation: 'pearpetal-spin 0.8s linear infinite' }} />
+        Waiting for them to scan…
+      </div>
+      <Btn kind='ghost' onClick={copy}>Copy link instead</Btn>
+      <Btn kind='ghost' onClick={close}>Done</Btn>
+    </>
   )
 }
 
@@ -727,7 +795,13 @@ function JoinPartnerSheet ({ onClose, onJoined }) {
 function PartnerView ({ groupId, onClose, onLeft }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
-  const load = async () => { try { setData(await call('partner:view', { groupId })) } catch (e) { setErr(e.message) } }
+  // Once we've started leaving, the base is torn down, so a racing poll /
+  // group:updated must not flash a "partner share not found" error on the way out.
+  const leaving = useRef(false)
+  const load = async () => {
+    if (leaving.current) return
+    try { setData(await call('partner:view', { groupId })) } catch (e) { if (!leaving.current) setErr(e.message) }
+  }
   useEffect(() => { load() }, [groupId])
   useEffect(() => on('group:updated', (d) => { if (d?.groupId === groupId) load() }), [groupId])
   // The owner's projection may still be replicating when this view first opens:
@@ -746,7 +820,11 @@ function PartnerView ({ groupId, onClose, onLeft }) {
     const t = setInterval(load, 2000)
     return () => clearInterval(t)
   }, [groupId, synced])
-  const leave = async () => { try { await call('partner:leave', { groupId }); onLeft() } catch (e) { setErr(e.message) } }
+  const leave = async () => {
+    leaving.current = true; setErr('')
+    try { await call('partner:leave', { groupId }) } catch {}
+    onLeft()
+  }
 
   const phase = data?.phase
   const predict = data?.predict

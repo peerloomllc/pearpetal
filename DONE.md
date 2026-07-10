@@ -6,6 +6,15 @@ work lives in `TODO.md`.
 
 ## 2026-07-09
 
+- **QR scan + render verified (release blocker #1)** + dead-stub cleanup: the invite
+  QR render (`QrImage` via the `qrcode` lib; Sharing + Devices) and scan (`ScannerView`
+  via WebView getUserMedia + `jsQR`; Onboarding + JoinPartnerSheet) were already built
+  in-WebView - the "stub" the TODO cited (`shell:scanQr`) was unused dead code. Confirmed
+  on the TCL: a real invite QR renders, and tapping Scan QR fires the OS CAMERA prompt ->
+  grant -> a live scanner (permission wiring: CAMERA in app.json + AndroidManifest;
+  NSCameraUsageDescription for iOS; shell grants the WebView camera request). Removed the
+  dead `shell:scanQr` from the shell + browser mock. Remaining: a physical aim-at-a-QR
+  decode confirm (same jsQR frame path) + the iOS WebView scanner on hardware.
 - **First-run onboarding wizard** (release blocker #3; T1, UI-only, no wire change):
   "Start tracking" now creates the private base and hands off to a short, fully
   skippable `SetupWizard` (new root mode `setup`) instead of dropping onto an empty

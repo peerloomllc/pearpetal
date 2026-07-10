@@ -7,9 +7,14 @@ blockers first, then nice-to-haves, design decisions, deferred, dev-infra.
 ## Release blockers (v1) - do before shipping
 
 Not yet built:
-1. **Native QR scan + QR render** for link/share codes. Currently paste/copy only;
-   the "Scan" button is a stub (`shell:scanQr` returns null). Builds on the invite
-   URL format.
+1. ~~**Native QR scan + QR render**~~ BUILT (in-WebView) + Android on-device VERIFIED
+   2026-07-09. `QrImage` renders a real invite QR via the `qrcode` lib (Sharing share
+   rows + Devices); `ScannerView` scans via WebView getUserMedia + `jsQR` (Onboarding +
+   JoinPartnerSheet). Camera path confirmed on the TCL: tap Scan QR -> OS CAMERA prompt
+   -> grant -> live scanner (CAMERA in app.json + AndroidManifest; NSCameraUsageDescription
+   for iOS; shell grants the WebView request). Removed the dead `shell:scanQr` stub.
+   REMAINING: (a) a physical aim-at-a-QR end-to-end decode confirm (jsQR runs the same
+   frame path - not remotely drivable); (b) confirm the WebView scanner on iOS hardware.
 2. **Store assets, release scripts, privacy page, listing copy** (the publish
    mechanics). The privacy page is an App Store requirement. Port PearList/PearGuard
    release scripts.
