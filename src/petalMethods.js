@@ -789,11 +789,17 @@ const methods = {
   'share:connected': async ({ groupId }, ctx) => {
     const base = ctx.bases.get(groupId)
     if (!base) return { connected: false }
+    // Check every core this base replicates so we catch a peer at the earliest
+    // moment (a joining partner pulls the system/oplog core before the writer
+    // core). A shared-out base only ever has partners as peers.
     const cores = []
-    if (base.local) cores.push(base.local)
-    try { for (const w of base.activeWriters) if (w && w.core) cores.push(w.core) } catch {}
+    const add = (c) => { if (c && typeof c.peers !== 'undefined') cores.push(c) }
+    add(base.local)
+    try { for (const w of base.activeWriters) if (w) add(w.core) } catch {}
+    try { add(base.system && base.system.core) } catch {}
+    try { add(base.view && base.view.core) } catch {}
     for (const c of cores) {
-      try { if (c && c.peers && c.peers.length > 0) return { connected: true } } catch {}
+      try { if (c.peers && c.peers.length > 0) return { connected: true } } catch {}
     }
     return { connected: false }
   },
