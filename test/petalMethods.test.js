@@ -231,6 +231,16 @@ test('notifications:schedule: empty when disabled; events once enabled + history
   await engine.close()
 })
 
+test('share:connected: false for a fresh share (no peer) and an unknown group', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const { groupId } = await call('share:create', { scope: 'phase' })
+  assert.deepEqual(await call('share:connected', { groupId }), { connected: false })
+  assert.deepEqual(await call('share:connected', { groupId: 'nope' }), { connected: false })
+  await engine.close()
+})
+
 test('share:list includes an empty joiners list until someone joins', async () => {
   const { engine, call } = driver()
   await call('init', {})

@@ -163,6 +163,7 @@ const mockMethods = {
   // Soft-close: flag revoked (keep the row) so the "Sharing ended" UI renders.
   'share:revoke': async ({ groupId }) => { const s = mock.shares.get(groupId); if (s) { s.revoked = true; s.revokedAt = Date.now() } return { ok: true, revoked: true } },
   'share:remove': async ({ groupId }) => { mock.shares.delete(groupId); return { ok: true } },
+  'share:connected': async () => ({ connected: false }), // no real peers in the browser preview
   'partner:join': async ({ inviteKey }) => {
     if (!inviteKey) throw new Error('inviteKey required')
     const m = /mock-share-(phase|fertility|full)/.exec(inviteKey)

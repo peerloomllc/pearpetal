@@ -697,19 +697,29 @@ function ShareQrSheet ({ share, onClose }) {
 }
 function ShareQrBody ({ share, close }) {
   const [connected, setConnected] = useState(false)
-  const baseline = useRef((share.joiners || []).length)
   const joinerName = (share.joiners || []).map((j) => j.name).filter(Boolean)[0]
-  // A joiner count above the count when this sheet opened means someone just
-  // connected via the QR - confirm, then slide the sheet away.
+  // Poll for a real peer connection to THIS shared base (share:connected). This
+  // fires the moment the partner scans + reaches us - well before their identity
+  // row replicates back (which lags), so the confirmation is prompt and reliable.
   useEffect(() => {
     if (connected) return undefined
-    if ((share.joiners || []).length > baseline.current) {
-      setConnected(true); haptic('success')
-      const t = setTimeout(close, 1600)
-      return () => clearTimeout(t)
+    let alive = true; let timer = null
+    const tick = async () => {
+      if (!alive) return
+      let ok = false
+      try { ok = !!(await call('share:connected', { groupId: share.groupId }))?.connected } catch {}
+      if (!alive) return
+      if (ok) { setConnected(true); haptic('success') } else timer = setTimeout(tick, 1200)
     }
-    return undefined
-  }, [share.joiners, connected, close])
+    timer = setTimeout(tick, 700)
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+  }, [share.groupId, connected])
+  // Show the "Connected" confirmation briefly, then slide the sheet away.
+  useEffect(() => {
+    if (!connected) return undefined
+    const t = setTimeout(close, 1600)
+    return () => clearTimeout(t)
+  }, [connected, close])
   const link = shareUrl(share.inviteKey)
   const copy = async () => { try { await navigator.clipboard.writeText(link); haptic('success') } catch { call('shell:share', { text: link }).catch(() => {}) } }
 

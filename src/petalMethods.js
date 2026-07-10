@@ -779,6 +779,25 @@ const methods = {
     return out
   },
 
+  // Is a partner CURRENTLY connected to this shared base? True as soon as a remote
+  // peer is replicating the base's cores (i.e. they scanned + reached us) - the
+  // earliest, most reliable "connected" signal, well ahead of the joiner's identity
+  // row replicating back (which is subject to the known joiner->owner sync lag). Used
+  // by the share-QR sheet to auto-dismiss on connection. A shared-out base only ever
+  // has PARTNERS as peers (own devices live on the private base), so any peer = a
+  // partner connected.
+  'share:connected': async ({ groupId }, ctx) => {
+    const base = ctx.bases.get(groupId)
+    if (!base) return { connected: false }
+    const cores = []
+    if (base.local) cores.push(base.local)
+    try { for (const w of base.activeWriters) if (w && w.core) cores.push(w.core) } catch {}
+    for (const c of cores) {
+      try { if (c && c.peers && c.peers.length > 0) return { connected: true } } catch {}
+    }
+    return { connected: false }
+  },
+
   // Revoke a share (SOFT-CLOSE): write the "sharing ended" tombstone into the
   // owner-signed share:meta and flag the membership revoked so we stop projecting
   // to it, but KEEP the base + swarm alive so the tombstone still reaches a partner
