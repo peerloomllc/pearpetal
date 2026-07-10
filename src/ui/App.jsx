@@ -1475,7 +1475,11 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
       const json = JSON.stringify(data, null, 2)
       const encrypted = !!data.enc
       const fname = encrypted ? 'pearpetal-backup-encrypted.json' : 'pearpetal-backup.json'
-      if (inShell) { await call('shell:export', { filename: fname, json }); setDataMsg(encrypted ? 'Encrypted backup ready to save.' : 'Backup ready to save.') } else {
+      if (inShell) {
+        const r = await call('shell:export', { filename: fname, json })
+        if (r && r.canceled) { setDataMsg('Export canceled.'); return }
+        setDataMsg(encrypted ? 'Encrypted backup saved.' : 'Backup saved.')
+      } else {
         const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
         const a = document.createElement('a'); a.href = url; a.download = fname; a.click(); URL.revokeObjectURL(url)
         setDataMsg(encrypted ? 'Exported an encrypted backup.' : `Exported ${data.days.length} days.`)
