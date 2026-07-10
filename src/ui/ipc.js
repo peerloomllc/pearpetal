@@ -199,6 +199,13 @@ function seedIfRequested () {
   seeded = true
   if (typeof window === 'undefined') return
   if (!/(?:\?|&)seed/.test(window.location.search || '')) return
+  // ?seed=viewer: land as a partner (no own cycle) with one shared cycle, to
+  // preview viewer mode (Shared / Settings / About shell).
+  if (/(?:\?|&)seed=viewer/.test(window.location.search || '')) {
+    const gid = rid() // map key must equal groupId (partner:view looks up by key)
+    mock.partners.set(gid, { groupId: gid, scope: 'full', ownerPubkey: 'cd'.repeat(32), ownerName: 'Ada', joinedAt: Date.now() })
+    return
+  }
   mock.base = { groupId: rid(), inviteKey: 'mock-seed' }
   ensureSelfDevice()
   mock.devices.set('cd'.repeat(32), { pubkey: 'cd'.repeat(32), label: 'Tablet', self: false })

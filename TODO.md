@@ -54,17 +54,10 @@ Website-side (not in-app):
 
 ## Nice-to-have / UX polish
 
-- **Partner (viewer) mode is barebones - needs a real shell.** The owner side has
-  bottom nav + Settings + About, but the partner/viewer side does not:
-  - Give the viewer home bottom navigation with at least **Settings** and **About**
-    pages (reuse the owner components where they make sense; a viewer has no cycle to
-    configure, so scope Settings to what's relevant - theme/appearance, name/photo,
-    reminders if any, backup/export).
-  - **No way to open the "View a partner's cycle" bottom sheet** from viewer mode: the
-    `ViewerHome` only shows the shared-cycle row(s) + "start tracking my own cycle". A
-    viewer who wants to accept a NEW partner invite (paste link / scan QR) has no entry
-    point - surface the `JoinPartnerSheet` (it already exists; owners reach it from
-    Sharing) on the viewer home too.
+- ~~**Partner (viewer) mode is barebones - needs a real shell**~~ DONE 2026-07-10 (see
+  DONE.md): viewer bottom nav (Shared / Settings / About), a scoped ViewerSettings
+  (profile + appearance), and a "View a partner's cycle" JoinPartnerSheet entry point on
+  the viewer home. REMAINING: on-device confirm on the next hardware pass.
 
 Prior nice-to-haves shipped + verified 2026-07-10 (see DONE.md): bottom sheets for
 day/symptom entry, partner-view scoped Month calendar, joiner photo avatar in per-person
@@ -101,6 +94,23 @@ shares.
   blocked on the deferred ack channel) + C (announce back-off - deferred, needs care);
   suite adoption gate = re-run PearList's pairing smoke before other apps rely on the
   core change.
+- **Pairing/sync degradation after repeated share/revoke/re-share** (OBSERVED, needs
+  repro + root-cause; **UX-critical**). The FIRST pair almost always connects immediately,
+  but SUBSEQUENT shares/pairings take an indeterminate (sometimes long) time to sync. The
+  full lifecycle churn must NOT degrade performance: repeated **share -> revoke ->
+  re-share** (and multiple concurrent partners) should each pair as fast as the first.
+  Feels like accumulation-driven degradation - likely the same class as the swarm-topic/
+  connection-accumulation item above (each share spins up another base + swarm topic;
+  soft-revoke deliberately KEEPS the base + swarm alive so the tombstone reaches an
+  offline partner, so revoked shares keep announcing/holding connections; re-share adds yet
+  another). Mitigation A (viewers join client-only) helps but clearly does not fully fix
+  it, and B (auto-sweep soft-revoked shares) is exactly the revoke-side leak - still
+  blocked on the deferred ack channel. NEXT: instrument active topics/connections per
+  share, repro on hardware with N>=3 sequential shares AND a share/revoke/re-share loop,
+  and find the lever (C announce back-off, a per-base connection cap, tearing down swarm
+  for revoked shares once the tombstone is acked, and/or capping total simultaneous
+  topics). Until fixed, warn in release notes that a 2nd/3rd share may be slow to
+  first-sync. Relates to the swarm-accumulation proposal + the sharing-ended soft-close.
 
 ## Known limitation (deferred) - linked device's writes slow to sync back to founder
 
