@@ -38,8 +38,13 @@ Not yet built:
    - ~~iOS simulator screenshots~~ DONE 2026-07-10: `scripts/screenshots.sh` on the Mac's
      iPhone-17-Pro-Max sim (UDID in `app.conf`) -> `metadata/ios/screenshots/` (6 scenes
      at 1320x2868, the App Store 6.9" size; dynamic island + iOS status bar, all verified).
+   - ~~Play feature graphic + hi-res icon~~ DONE 2026-07-10:
+     `metadata/android/play-listing/feature-1024x500.png` (rose-glow dark banner: cherry
+     blossom + two-tone PearPetal wordmark + "Private cycle & fertility tracking / No
+     accounts. No servers. No cloud.") and `icon-512.png` (Play hi-res icon).
    REMAINING:
-   - **Play feature graphic** (1024x500) + optional dark-mode screenshot set.
+   - Optional: a dark-mode screenshot set (the harness supports it - add `dark` to
+     APPEARANCES in the screenshot scripts).
    - Minor polish: `PartnerView` shows raw ISO dates (`2026-07-23`) vs the owner view's
      `Jul 23` - swap to `fmtDate` for a nicer scene 4 (and app).
    - **iOS App Store distribution profile**: create "PearPetal App Store" (App Store dist
