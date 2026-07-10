@@ -9,7 +9,7 @@
 // slices). This proves the data path end to end: log on device A, see on B.
 
 import { useEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -630,12 +630,11 @@ function Sharing ({ onClose, onOpenPartner }) {
                     <div style={{ color: colors.text.muted, fontSize: 12, textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.scope} · shared {sharedOn(s.createdAt)}</div>
                   </div>
                   <div style={{ display: 'flex', gap: spacing.xs, flexShrink: 0 }}>
-                    <IconBtn label={on ? 'Hide QR' : 'Show QR'} onClick={() => setQrFor(on ? null : s.groupId)} active={on}><QrCode size={18} weight={on ? 'fill' : 'regular'} /></IconBtn>
+                    <IconBtn label='Show QR' onClick={() => setQrFor(s.groupId)} active={on}><QrCode size={18} weight={on ? 'fill' : 'regular'} /></IconBtn>
                     <IconBtn label='Copy link' onClick={() => copy(shareUrl(s.inviteKey))}><Copy size={18} /></IconBtn>
                     <IconBtn label='Revoke share' onClick={() => revoke(s.groupId)} disabled={busyRevoke === s.groupId} color={colors.error}><Trash size={18} /></IconBtn>
                   </div>
                 </div>
-                {on && <QrImage text={shareUrl(s.inviteKey)} />}
               </div>
             )
           })}
@@ -680,7 +679,61 @@ function Sharing ({ onClose, onOpenPartner }) {
       </div>
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
       {joinOpen && <JoinPartnerSheet onClose={() => setJoinOpen(false)} onJoined={(groupId) => { setJoinOpen(false); onOpenPartner(groupId) }} />}
+      {qrFor && (() => { const sh = shares.find((s) => s.groupId === qrFor); return sh ? <ShareQrSheet share={sh} onClose={() => setQrFor(null)} /> : null })()}
     </div>
+  )
+}
+
+// The invite QR as a bottom sheet, opened from a share row's QR button. It watches
+// the (live, parent-polled) share for a NEW joiner - when the partner scans + joins,
+// it flips to a "Connected" confirmation and auto-dismisses. Copy-link is offered as
+// a fallback for when a scan is not possible.
+function ShareQrSheet ({ share, onClose }) {
+  return (
+    <BottomSheet onClose={onClose}>
+      {(close) => <ShareQrBody share={share} close={close} />}
+    </BottomSheet>
+  )
+}
+function ShareQrBody ({ share, close }) {
+  const [connected, setConnected] = useState(false)
+  const baseline = useRef((share.joiners || []).length)
+  const joinerName = (share.joiners || []).map((j) => j.name).filter(Boolean)[0]
+  // A joiner count above the count when this sheet opened means someone just
+  // connected via the QR - confirm, then slide the sheet away.
+  useEffect(() => {
+    if (connected) return undefined
+    if ((share.joiners || []).length > baseline.current) {
+      setConnected(true); haptic('success')
+      const t = setTimeout(close, 1600)
+      return () => clearTimeout(t)
+    }
+    return undefined
+  }, [share.joiners, connected, close])
+  const link = shareUrl(share.inviteKey)
+  const copy = async () => { try { await navigator.clipboard.writeText(link); haptic('success') } catch { call('shell:share', { text: link }).catch(() => {}) } }
+
+  if (connected) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.md, padding: `${spacing.lg}px 0`, animation: 'pearpetal-fade 260ms ease' }}>
+        <span style={{ width: 60, height: 60, borderRadius: '50%', background: colors.primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Check size={32} color={colors.text.onPrimary} weight='bold' /></span>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>Connected</div>
+        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>{joinerName ? `You're now sharing with ${joinerName}.` : 'They can now see what you chose to share.'}</div>
+      </div>
+    )
+  }
+  return (
+    <>
+      <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Scan to connect</div>
+      <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>On their phone: PearPetal → View a partner's cycle → Scan QR.</div>
+      <QrImage text={link} size={220} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, color: colors.text.secondary, fontSize: 13 }}>
+        <span style={{ width: 15, height: 15, borderRadius: '50%', border: `2px solid ${colors.border}`, borderTopColor: colors.primary, animation: 'pearpetal-spin 0.8s linear infinite' }} />
+        Waiting for them to scan…
+      </div>
+      <Btn kind='ghost' onClick={copy}>Copy link instead</Btn>
+      <Btn kind='ghost' onClick={close}>Done</Btn>
+    </>
   )
 }
 
