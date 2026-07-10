@@ -82,6 +82,7 @@
       ]
     },
     "plugins": [
+      "./plugins/with-ios-no-associated-domains",
       [
         "expo-router"
       ],
