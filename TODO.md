@@ -123,6 +123,14 @@ may need an app reopen to finish syncing its first edits."
 
 ## Dev infra / build durability
 
+- **APK size audit** (same pass recently done for PearCircle + PearGuard). The debug
+  APK is ~476MB (`android/app/build/outputs/apk/debug/app-debug.apk`) - audit what's
+  bloating it and confirm the release build is lean. Usual suspects: both ABIs shipped in
+  one universal APK (split per-ABI or ship an AAB), unstripped native `.so`s / debug
+  symbols, duplicated holepunch/bare native addons, bundled fonts (`src/ui/fonts.js` is
+  ~57KB of embedded glyph data), and any dev-only deps leaking into the release graph.
+  Compare `unzip -l` of debug vs release, check `enableProguardInReleaseBuilds` /
+  `shrinkResources`, and mirror whatever fixes landed for PearCircle/PearGuard.
 - **`@peerloom/core` nested node_modules can drift from the app's** (LIKELY SUITE-WIDE).
   Core is file:-symlinked; its own node_modules had version-mismatched native addons vs
   the app's top-level -> iOS `ADDON_NOT_FOUND` at engine init. FIX IN PLACE: `overrides`
