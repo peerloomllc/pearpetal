@@ -345,59 +345,28 @@ function ScannerView ({ open, onClose, onDecode }) {
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
   const [intro, setIntro] = useState(true) // the blooming-dial welcome, shown before the chooser
-  const [mode, setMode] = useState(null) // null | 'link' | 'partner'
+  const [mode, setMode] = useState(null) // null (tracker/viewer chooser) | 'partner' (paste/scan a share code)
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [scanning, setScanning] = useState(false)
-  const [pendingImport, setPendingImport] = useState(null) // encrypted backup awaiting its password
 
   const start = async () => {
     setErr('')
-    // Create the private base, then hand off to the guided setup wizard (name /
-    // goal / last period / reminders) instead of dropping onto an empty dial.
+    // Create the private base, then hand off to the guided setup wizard (which
+    // also offers restoring a backup) instead of dropping onto an empty dial.
     try { await call('cycle:create'); haptic('success'); onStartSetup() } catch (e) { setErr(e.message) }
-  }
-  // Recovery / migration: restore a JSON backup. import:data creates the private
-  // base if this device has none (the all-devices-lost case), then boots into the
-  // app. Encrypted backups route through the password sheet first.
-  const restore = async () => {
-    setErr('')
-    const inShell = typeof window !== 'undefined' && !!window.ReactNativeWebView
-    if (inShell) {
-      let json = null
-      try { const r = await call('shell:import'); json = r && r.json } catch { setErr('Could not open that file. Please try again.'); return }
-      if (json) restoreJson(json)
-      return
-    }
-    const input = document.createElement('input'); input.type = 'file'; input.accept = 'application/json,.json'
-    input.onchange = () => { const f = input.files && input.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => restoreJson(String(rd.result)); rd.readAsText(f) }
-    input.click()
-  }
-  const restoreJson = async (json) => {
-    let parsed
-    try { parsed = JSON.parse(json) } catch { setErr('That file could not be read. Choose a valid PearPetal backup.'); return }
-    if (parsed && parsed.enc) { setPendingImport(parsed); return }
-    try { await call('import:data', { data: parsed }); haptic('success'); onReady() } catch (e) { setErr(friendlyImportError(e)) }
-  }
-  const submitRestore = async (pw) => {
-    await call('import:data', { data: pendingImport, password: pw }) // throws 'wrong password' -> sheet shows friendly error
-    setPendingImport(null); haptic('success'); onReady()
-  }
-  const link = async (raw) => {
-    setErr('')
-    try { await call('link:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
   }
   const joinPartner = async (raw) => {
     setErr('')
     try { await call('partner:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
   }
-  const submit = () => (mode === 'link' ? link() : joinPartner())
-  const onScanned = (txt) => { setScanning(false); (mode === 'link' ? link : joinPartner)(txt) }
+  const submit = () => joinPartner()
+  const onScanned = (txt) => { setScanning(false); joinPartner(txt) }
   const back = () => { setMode(null); setErr(''); setCode(''); setScanning(false) }
   // Android Back: from a paste sub-mode -> the chooser; from the chooser -> the intro.
   useBackHandler(!intro || mode !== null, () => { if (mode !== null) back(); else setIntro(true) })
 
-  // First-run intro: the blooming-dial welcome shown BEFORE the Start / Link / View
+  // First-run intro: the blooming-dial welcome shown BEFORE the track-vs-view
   // chooser, so the app introduces itself first. "Get started" reveals the chooser.
   const t0 = todayIso()
   const samplePred = { known: true, phase: 'fertile', dayOfCycle: 14, cycleLen: 28, ovulationEst: t0, nextPeriodStart: addDaysIso(t0, 14), fertileStart: addDaysIso(t0, -4), fertileEnd: addDaysIso(t0, 1) }
@@ -420,27 +389,23 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
     <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
-        {mode === null && <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>How would you like to begin?</div>}
+        {mode === null && <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>Are you tracking your own cycle, or viewing a partner's?</div>}
       </div>
       {mode === null && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-          <Btn onClick={start}>Start tracking</Btn>
-          <Btn kind='ghost' onClick={() => { setMode('link'); setErr('') }}>Link another device</Btn>
+          <Btn onClick={start}>Track my cycle</Btn>
           <Btn kind='ghost' onClick={() => { setMode('partner'); setErr('') }}>View a partner's cycle</Btn>
-          <Btn kind='ghost' onClick={restore}>Restore from a backup</Btn>
         </div>
       )}
-      {(mode === 'link' || mode === 'partner') && (
+      {mode === 'partner' && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
           <div style={{ color: colors.text.secondary, fontSize: 14 }}>
-            {mode === 'link'
-              ? 'On your other device, open Devices and copy its link code. Paste it here.'
-              : "Paste the share code your partner gave you. You'll see only what they chose to share."}
+            Paste the share code your partner gave you. You'll see only what they chose to share.
           </div>
           <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder='Paste code' rows={3}
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
           <div style={{ display: 'flex', gap: spacing.sm }}>
-            <Btn onClick={submit} style={{ flex: 1 }}>{mode === 'link' ? 'Link this device' : 'View their cycle'}</Btn>
+            <Btn onClick={submit} style={{ flex: 1 }}>View their cycle</Btn>
             <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }}>Scan QR</Btn>
           </div>
           <Btn kind='ghost' onClick={back}>Back</Btn>
@@ -448,7 +413,6 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
       )}
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
       <ScannerView open={scanning} onClose={() => setScanning(false)} onDecode={onScanned} />
-      {pendingImport && <ImportPasswordSheet onSubmit={submitRestore} onClose={() => setPendingImport(null)} />}
     </div>
   )
 }
@@ -458,7 +422,7 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
 // fully skippable sequence sets up the essentials - name/photo, goal, last period,
 // reminders - so the user lands on a MEANINGFUL dial instead of an empty "Learning
 // your cycle". Reuses the same controls as Settings; T1, no wire change.
-const SETUP_STEPS = ['name', 'goal', 'period', 'reminders', 'done']
+const SETUP_STEPS = ['start', 'name', 'goal', 'period', 'reminders', 'done']
 
 function StepDots ({ n, i }) {
   return (
@@ -478,11 +442,41 @@ function SetupWizard ({ onDone }) {
   const [periodStart, setPeriodStart] = useState('')
   const [notif, setNotif] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [pendingImport, setPendingImport] = useState(null) // encrypted backup awaiting its password
+  const [restoreErr, setRestoreErr] = useState('')
 
   const total = SETUP_STEPS.length
   const s = SETUP_STEPS[step]
   const go = (d) => setStep((v) => Math.max(0, Math.min(total - 1, v + d)))
   useBackHandler(step > 0, () => go(-1)) // Android Back steps back through the wizard
+
+  // Restore path from the first step: import a backup instead of manual setup.
+  // import:data merges into the base start() just created; on success we skip the
+  // rest of the wizard straight into the (now populated) app. Encrypted backups
+  // route through the password sheet.
+  const doRestore = async () => {
+    setRestoreErr('')
+    const inShell = typeof window !== 'undefined' && !!window.ReactNativeWebView
+    if (inShell) {
+      let json = null
+      try { const r = await call('shell:import'); json = r && r.json } catch { setRestoreErr('Could not open that file. Please try again.'); return }
+      if (json) restoreJson(json)
+      return
+    }
+    const input = document.createElement('input'); input.type = 'file'; input.accept = 'application/json,.json'
+    input.onchange = () => { const f = input.files && input.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => restoreJson(String(rd.result)); rd.readAsText(f) }
+    input.click()
+  }
+  const restoreJson = async (json) => {
+    let parsed
+    try { parsed = JSON.parse(json) } catch { setRestoreErr('That file could not be read. Choose a valid PearPetal backup.'); return }
+    if (parsed && parsed.enc) { setPendingImport(parsed); return }
+    try { await call('import:data', { data: parsed }); haptic('success'); onDone() } catch (e) { setRestoreErr(friendlyImportError(e)) }
+  }
+  const submitRestore = async (pw) => {
+    await call('import:data', { data: pendingImport, password: pw }) // throws 'wrong password' -> sheet shows a friendly error
+    setPendingImport(null); haptic('success'); onDone()
+  }
 
   const savePrefs = async (patch) => { setPrefs((p) => ({ ...p, ...patch })); await call('prefs:set', patch).catch(() => {}) }
   const saveName = async () => {
@@ -516,7 +510,18 @@ function SetupWizard ({ onDone }) {
   )
 
   let body
-  if (s === 'name') {
+  if (s === 'start') {
+    body = (
+      <>
+        {title('Set up your cycle', 'A few quick questions so your dial starts out accurate. New to PearPetal, or picking up from a backup?')}
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+          <Btn onClick={() => go(1)}>Set up my cycle</Btn>
+          <Btn kind='ghost' onClick={doRestore}>Restore from a backup</Btn>
+        </div>
+        {restoreErr && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{restoreErr}</div>}
+      </>
+    )
+  } else if (s === 'name') {
     body = (
       <>
         {title('What should we call you?', 'Shown to partners you share with; otherwise it stays on your device. Optional.')}
@@ -581,6 +586,7 @@ function SetupWizard ({ onDone }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         <div style={{ margin: 'auto 0', display: 'flex', flexDirection: 'column', gap: spacing.lg }}>{body}</div>
       </div>
+      {pendingImport && <ImportPasswordSheet onSubmit={submitRestore} onClose={() => setPendingImport(null)} />}
     </div>
   )
 }
