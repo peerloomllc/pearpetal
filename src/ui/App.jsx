@@ -344,12 +344,23 @@ function ScannerView ({ open, onClose, onDecode }) {
 
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
-  const [intro, setIntro] = useState(true) // the blooming-dial welcome, shown before the chooser
-  const [mode, setMode] = useState(null) // null (tracker/viewer chooser) | 'partner' (paste/scan a share code)
+  // intro (welcome) -> name (profile, everyone) -> chooser (track/view) -> partner (paste/scan)
+  const [phase, setPhase] = useState('intro')
+  const [name, setName] = useState('')
+  const [avatar, setAvatar] = useState(null) // avatar data URL
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [scanning, setScanning] = useState(false)
 
+  // Name/photo is collected up front, before the track-vs-view choice, so it
+  // applies to everyone - a partner-viewer, and a restore-from-backup user whose
+  // backup carries cycle data but not their profile. profile:set is device-local
+  // (no base needed), so it is safe to call before any cycle exists.
+  const saveProfile = async () => {
+    const dn = name.trim()
+    if (dn || avatar) { try { await call('profile:set', { displayName: dn, avatar: avatar || undefined }) } catch {} }
+    setErr(''); setPhase('chooser')
+  }
   const start = async () => {
     setErr('')
     // Create the private base, then hand off to the guided setup wizard (which
@@ -362,42 +373,71 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
   }
   const submit = () => joinPartner()
   const onScanned = (txt) => { setScanning(false); joinPartner(txt) }
-  const back = () => { setMode(null); setErr(''); setCode(''); setScanning(false) }
-  // Android Back: from a paste sub-mode -> the chooser; from the chooser -> the intro.
-  useBackHandler(!intro || mode !== null, () => { if (mode !== null) back(); else setIntro(true) })
+  // Android Back walks the phases back: partner -> chooser -> name -> intro.
+  const back = () => {
+    setErr(''); setCode(''); setScanning(false)
+    setPhase((p) => (p === 'partner' ? 'chooser' : p === 'chooser' ? 'name' : 'intro'))
+  }
+  useBackHandler(phase !== 'intro', back)
 
-  // First-run intro: the blooming-dial welcome shown BEFORE the track-vs-view
-  // chooser, so the app introduces itself first. "Get started" reveals the chooser.
-  const t0 = todayIso()
-  const samplePred = { known: true, phase: 'fertile', dayOfCycle: 14, cycleLen: 28, ovulationEst: t0, nextPeriodStart: addDaysIso(t0, 14), fertileStart: addDaysIso(t0, -4), fertileEnd: addDaysIso(t0, 1) }
-  if (intro) {
-    return (
-      <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
+  const wrap = (children) => (
+    <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>{children}</div>
+  )
+
+  // First-run intro: the blooming-dial welcome shown BEFORE anything else, so the
+  // app introduces itself first. "Get started" moves on to the name/profile step.
+  if (phase === 'intro') {
+    const t0 = todayIso()
+    const samplePred = { known: true, phase: 'fertile', dayOfCycle: 14, cycleLen: 28, ovulationEst: t0, nextPeriodStart: addDaysIso(t0, 14), fertileStart: addDaysIso(t0, -4), fertileEnd: addDaysIso(t0, 1) }
+    return wrap(
+      <>
         <div style={{ ...card, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
           <PetalDial pred={samplePred} today={t0} flower='rose' />
         </div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
-          <div style={{ color: colors.text.secondary, marginTop: spacing.sm, lineHeight: 1.5 }}>Your flower furls and blooms across your cycle, so a glance shows your phase. Private tracking - no account, no server, your data stays on your devices.</div>
+          <div style={{ color: colors.text.secondary, marginTop: spacing.sm, lineHeight: 1.5 }}>Your flower furls and blooms across your cycle, so a glance shows your phase. Private tracking - no accounts, no servers. Your data stays on your device.</div>
         </div>
-        <Btn onClick={() => setIntro(false)}>Get started</Btn>
-      </div>
+        <Btn onClick={() => setPhase('name')}>Get started</Btn>
+      </>,
     )
   }
 
-  return (
-    <div style={{ maxWidth: 460, margin: '0 auto', boxSizing: 'border-box', paddingLeft: spacing.xl, paddingRight: spacing.xl, paddingTop: screenPadTop, paddingBottom: `calc(${spacing.xl}px + var(--pear-safe-bottom, 0px))`, display: 'flex', flexDirection: 'column', gap: spacing.lg, minHeight: '100dvh', justifyContent: 'center' }}>
+  // Name + photo, for everyone (a viewer's name is shown to the partner they join).
+  if (phase === 'name') {
+    return wrap(
+      <>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 24, fontWeight: 600 }}>What should we call you?</div>
+          <div style={{ color: colors.text.secondary, fontSize: 14, marginTop: spacing.sm, lineHeight: 1.5 }}>Shown to partners you share with; otherwise it stays on your device.</div>
+        </div>
+        <div style={{ ...card, display: 'flex', alignItems: 'center', gap: spacing.md }}>
+          <label style={{ cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
+            <Avatar src={avatar} name={name} size={56} />
+            <span style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderRadius: '50%', background: colors.primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Camera size={13} color={colors.text.onPrimary} /></span>
+            <input type='file' accept='image/*' style={{ display: 'none' }} onChange={async (e) => { const f = e.target.files?.[0]; if (f) { try { setAvatar(await fileToAvatarDataUrl(f)) } catch {} } }} />
+          </label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder='Your name' maxLength={64}
+            style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '10px 12px', fontSize: 15, flex: 1, minWidth: 0 }} />
+        </div>
+        <Btn onClick={saveProfile}>Continue</Btn>
+      </>,
+    )
+  }
+
+  return wrap(
+    <>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 34, fontWeight: 600, color: colors.primary, letterSpacing: 0.3 }}>PearPetal</div>
-        {mode === null && <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>Are you tracking your own cycle, or viewing a partner's?</div>}
+        {phase === 'chooser' && <div style={{ color: colors.text.secondary, marginTop: spacing.sm }}>Are you tracking your own cycle, or viewing a partner's?</div>}
       </div>
-      {mode === null && (
+      {phase === 'chooser' && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
           <Btn onClick={start}>Track my cycle</Btn>
-          <Btn kind='ghost' onClick={() => { setMode('partner'); setErr('') }}>View a partner's cycle</Btn>
+          <Btn kind='ghost' onClick={() => { setPhase('partner'); setErr('') }}>View a partner's cycle</Btn>
         </div>
       )}
-      {mode === 'partner' && (
+      {phase === 'partner' && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
           <div style={{ color: colors.text.secondary, fontSize: 14 }}>
             Paste the share code your partner gave you. You'll see only what they chose to share.
@@ -406,23 +446,24 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
           <div style={{ display: 'flex', gap: spacing.sm }}>
             <Btn onClick={submit} style={{ flex: 1 }}>View their cycle</Btn>
-            <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }}>Scan QR</Btn>
+            <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }} style={{ flex: 1 }}>Scan QR</Btn>
           </div>
           <Btn kind='ghost' onClick={back}>Back</Btn>
         </div>
       )}
       {err && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{err}</div>}
       <ScannerView open={scanning} onClose={() => setScanning(false)} onDecode={onScanned} />
-    </div>
+    </>,
   )
 }
 
 // --- first-run setup wizard --------------------------------------------------
-// Runs right after "Start tracking" (which created the private base). A short,
-// fully skippable sequence sets up the essentials - name/photo, goal, last period,
-// reminders - so the user lands on a MEANINGFUL dial instead of an empty "Learning
-// your cycle". Reuses the same controls as Settings; T1, no wire change.
-const SETUP_STEPS = ['start', 'name', 'goal', 'period', 'reminders', 'done']
+// Runs right after "Track my cycle" (which created the private base). Name/photo
+// is collected earlier in Onboarding (it applies to viewers too), so this covers
+// goal, last period, and reminders - or restoring a backup on the first step - so
+// the user lands on a MEANINGFUL dial instead of an empty "Learning your cycle".
+// Reuses the same controls as Settings; T1, no wire change.
+const SETUP_STEPS = ['start', 'goal', 'period', 'reminders', 'done']
 
 function StepDots ({ n, i }) {
   return (
@@ -437,8 +478,6 @@ function StepDots ({ n, i }) {
 function SetupWizard ({ onDone }) {
   const [step, setStep] = useState(0)
   const [prefs, setPrefs] = useState({ goal: 'track' })
-  const [name, setName] = useState('')
-  const [avatar, setAvatar] = useState(null) // avatar data URL
   const [periodStart, setPeriodStart] = useState('')
   const [notif, setNotif] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -479,11 +518,6 @@ function SetupWizard ({ onDone }) {
   }
 
   const savePrefs = async (patch) => { setPrefs((p) => ({ ...p, ...patch })); await call('prefs:set', patch).catch(() => {}) }
-  const saveName = async () => {
-    const dn = name.trim()
-    if (dn || avatar) { try { await call('profile:set', { displayName: dn, avatar: avatar || undefined }) } catch {} }
-    go(1)
-  }
   const logPeriod = async () => {
     if (periodStart) { setBusy(true); try { await call('period:log', { start: periodStart, end: null }) } catch {} setBusy(false) }
     go(1)
@@ -519,21 +553,6 @@ function SetupWizard ({ onDone }) {
           <Btn kind='ghost' onClick={doRestore}>Restore from a backup</Btn>
         </div>
         {restoreErr && <div style={{ color: colors.error, textAlign: 'center', fontSize: 14 }}>{restoreErr}</div>}
-      </>
-    )
-  } else if (s === 'name') {
-    body = (
-      <>
-        {title('What should we call you?', 'Shown to partners you share with; otherwise it stays on your device. Optional.')}
-        <div style={{ ...card, display: 'flex', alignItems: 'center', gap: spacing.md }}>
-          <label style={{ cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
-            <Avatar src={avatar} name={name} size={56} />
-            <span style={{ position: 'absolute', bottom: -2, right: -2, width: 22, height: 22, borderRadius: '50%', background: colors.primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Camera size={13} color={colors.text.onPrimary} /></span>
-            <input type='file' accept='image/*' style={{ display: 'none' }} onChange={async (e) => { const f = e.target.files?.[0]; if (f) { try { setAvatar(await fileToAvatarDataUrl(f)) } catch {} } }} />
-          </label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder='Your name' maxLength={64} style={{ ...field, flex: 1, minWidth: 0 }} />
-        </div>
-        {nextRow('Continue', saveName)}
       </>
     )
   } else if (s === 'goal') {
