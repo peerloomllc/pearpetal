@@ -35,10 +35,10 @@ Not yet built:
      `frame-android-screenshots.sh`). **Android Pixel_9 screenshots captured** (all 6
      scenes render correctly: dial hero, calendar, sharing, partner view, flower picker,
      settings) in `metadata/android/screenshots/`.
+   - ~~iOS simulator screenshots~~ DONE 2026-07-10: `scripts/screenshots.sh` on the Mac's
+     iPhone-17-Pro-Max sim (UDID in `app.conf`) -> `metadata/ios/screenshots/` (6 scenes
+     at 1320x2868, the App Store 6.9" size; dynamic island + iOS status bar, all verified).
    REMAINING:
-   - **iOS simulator screenshots**: run `scripts/screenshots.sh` (drives the Mac's
-     iPhone-17-Pro-Max 6.9" simulator; set that sim's UDID in `app.conf`
-     `IOS_SCREENSHOT_DEVICES`) to get the App Store 6.9" set.
    - **Play feature graphic** (1024x500) + optional dark-mode screenshot set.
    - Minor polish: `PartnerView` shows raw ISO dates (`2026-07-23`) vs the owner view's
      `Jul 23` - swap to `fmtDate` for a nicer scene 4 (and app).
