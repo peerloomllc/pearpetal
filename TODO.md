@@ -12,9 +12,10 @@ Not yet built:
    rows + Devices); `ScannerView` scans via WebView getUserMedia + `jsQR` (Onboarding +
    JoinPartnerSheet). Camera path confirmed on the TCL: tap Scan QR -> OS CAMERA prompt
    -> grant -> live scanner (CAMERA in app.json + AndroidManifest; NSCameraUsageDescription
-   for iOS; shell grants the WebView request). Removed the dead `shell:scanQr` stub.
-   REMAINING: (a) a physical aim-at-a-QR end-to-end decode confirm (jsQR runs the same
-   frame path - not remotely drivable); (b) confirm the WebView scanner on iOS hardware.
+   for iOS; shell grants the WebView request). Removed the dead `shell:scanQr` stub. The
+   QR now opens in a bottom sheet that auto-dismisses on real peer connection (`share:connected`);
+   full-screen scanner (portal fix). PR #49. Android end-to-end scan CONFIRMED by Tim 2026-07-10.
+   REMAINING: confirm the WebView scanner on iOS hardware.
 2. **Store assets, release scripts, privacy page, listing copy** (the publish
    mechanics). The privacy page is an App Store requirement. Port PearList/PearGuard
    release scripts.
@@ -82,10 +83,9 @@ Website-side (not in-app):
   ON-DEVICE VERIFIED on the TCL (opt-in prompt + grant persist, scheduling across a
   2-cycle horizon, backgrounded fire for both descriptive + discreet content, reschedule
   on change, disable-cancels; fixed channelId-on-trigger so scheduled notifications use the
-  custom "reminders" channel not expo's fallback). REMAINING: (a) first-run opt-in prompt
-  folds into the guided-onboarding blocker; (b) confirm on iOS next hardware pass; (c) the
-  notification status-bar icon shows the colored app icon, not a monochrome glyph - needs
-  the `expo prebuild` notification-icon item (pair with durable-debug-config).
+  custom "reminders" channel not expo's fallback). First-run opt-in now folded into the
+  onboarding wizard (2026-07-09) and the monochrome tray glyph confirmed (2026-07-09) - both
+  DONE. REMAINING: confirm on iOS next hardware pass.
 - **JSON export encryption - optional passphrase?** Slice 4 shipped plain JSON
   deliberately (recovery-first). Revisit an OPTIONAL passphrase-encrypted export (KDF
   -> XChaCha20-Poly1305) so backups aren't plaintext at rest, keeping plain export the
