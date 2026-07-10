@@ -50,6 +50,63 @@ const avatarCache = new Map()   // contentHash -> data URL
 const avatarPending = new Set()  // contentHash currently being fetched
 
 function blobHash (buf) { const out = b4a.alloc(32); sodium.crypto_generichash(out, buf); return b4a.toString(out, 'hex') }
+
+// --- optional password-encrypted backups (proposal 2026-07-10) ---------------
+// Seal an export payload under a password: Argon2id (interactive limits) derives
+// a secretbox key from the password + a random salt; XSalsa20-Poly1305 encrypts
+// the JSON under a random nonce. All KDF params + salt/nonce travel in the file
+// so it is self-describing (a later cost bump still decrypts old files). No
+// identity/secret key is ever placed in a backup - this protects only the same
+// user-entered payload the plaintext export already carries.
+function encryptBackup (payload, password) {
+  const pw = b4a.from(String(password), 'utf8')
+  const salt = b4a.alloc(sodium.crypto_pwhash_SALTBYTES)
+  sodium.randombytes_buf(salt)
+  const opslimit = sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE
+  const memlimit = sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE
+  const key = b4a.alloc(sodium.crypto_secretbox_KEYBYTES)
+  sodium.crypto_pwhash(key, pw, salt, opslimit, memlimit, sodium.crypto_pwhash_ALG_ARGON2ID13)
+  const msg = b4a.from(JSON.stringify(payload), 'utf8')
+  const nonce = b4a.alloc(sodium.crypto_secretbox_NONCEBYTES)
+  sodium.randombytes_buf(nonce)
+  const ct = b4a.alloc(msg.length + sodium.crypto_secretbox_MACBYTES)
+  sodium.crypto_secretbox_easy(ct, msg, nonce, key)
+  return {
+    app: 'pearpetal',
+    version: 1,
+    enc: {
+      kdf: 'argon2id',
+      opslimit,
+      memlimit,
+      salt: b4a.toString(salt, 'base64'),
+      nonce: b4a.toString(nonce, 'base64'),
+      cipher: 'xsalsa20poly1305',
+      ct: b4a.toString(ct, 'base64'),
+    },
+  }
+}
+
+// Open a wrapper produced by encryptBackup. A failed MAC (wrong password OR a
+// tampered file) throws 'wrong password'; decryption completes before any DB
+// write in import:data, so a bad password never leaves a partial import.
+function decryptBackup (wrapper, password) {
+  const e = wrapper && wrapper.enc
+  if (!e || e.kdf !== 'argon2id' || e.cipher !== 'xsalsa20poly1305') throw new Error('unsupported backup format')
+  let salt, nonce, ct
+  try {
+    salt = b4a.from(String(e.salt), 'base64')
+    nonce = b4a.from(String(e.nonce), 'base64')
+    ct = b4a.from(String(e.ct), 'base64')
+  } catch { throw new Error('corrupt backup') }
+  if (salt.length !== sodium.crypto_pwhash_SALTBYTES || nonce.length !== sodium.crypto_secretbox_NONCEBYTES || ct.length < sodium.crypto_secretbox_MACBYTES) throw new Error('corrupt backup')
+  const opslimit = Number.isFinite(e.opslimit) ? e.opslimit : sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE
+  const memlimit = Number.isFinite(e.memlimit) ? e.memlimit : sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE
+  const key = b4a.alloc(sodium.crypto_secretbox_KEYBYTES)
+  sodium.crypto_pwhash(key, b4a.from(String(password), 'utf8'), salt, opslimit, memlimit, sodium.crypto_pwhash_ALG_ARGON2ID13)
+  const msg = b4a.alloc(ct.length - sodium.crypto_secretbox_MACBYTES)
+  if (!sodium.crypto_secretbox_open_easy(msg, ct, nonce, key)) throw new Error('wrong password')
+  try { return JSON.parse(b4a.toString(msg, 'utf8')) } catch { throw new Error('corrupt backup') }
+}
 function parseDataUrl (s) {
   const m = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(String(s))
   if (!m) return null
@@ -478,7 +535,7 @@ const methods = {
   // Return the full cycle log as a plain JSON object. The shell writes this to a
   // local file the user saves themselves. No secrets (no identity/keys), no
   // internal fields - just the data the user entered. Never uploaded anywhere.
-  'export:data': async (_args, ctx) => {
+  'export:data': async ({ password } = {}, ctx) => {
     const days = []; const periods = []
     const m = await privateMembership(ctx)
     if (m) {
@@ -502,14 +559,23 @@ const methods = {
     const p = await getPrefs(ctx)
     const prefs = {}
     for (const k of ['avgCycleLength', 'avgPeriodLength', 'lutealLength', 'goal', 'flower']) if (p[k] != null) prefs[k] = p[k]
-    return { app: 'pearpetal', version: 1, exportedAt: Date.now(), days, periods, prefs }
+    const payload = { app: 'pearpetal', version: 1, exportedAt: Date.now(), days, periods, prefs }
+    // A non-empty password seals the payload; blank keeps the plaintext file.
+    return (password != null && String(password).length) ? encryptBackup(payload, password) : payload
   },
 
   // Import a previously exported JSON object into this device's private base
   // (creating one if this device has none - the recovery case). Entries are
   // re-signed by this device; on a date collision the imported entry wins
   // (fresh timestamp). Returns how many rows were written.
-  'import:data': async ({ data }, ctx) => {
+  'import:data': async ({ data, password }, ctx) => {
+    // Encrypted backups carry an `enc` wrapper; decrypt (password required) into
+    // the same plaintext shape before the existing import logic runs. Decryption
+    // happens before any write, so a wrong password never leaves a partial import.
+    if (data && data.enc) {
+      if (password == null || !String(password).length) throw new Error('password required')
+      data = decryptBackup(data, password)
+    }
     if (!data || data.app !== 'pearpetal' || !Array.isArray(data.days)) throw new Error('not a PearPetal export')
     let m = await privateMembership(ctx)
     if (!m) {

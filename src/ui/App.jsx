@@ -1447,6 +1447,8 @@ function NotificationsCard () {
 function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState('')
+  const [exportPw, setExportPw] = useState('') // optional backup password (blank = plaintext)
+  const [pendingImport, setPendingImport] = useState(null) // encrypted wrapper awaiting its password
   // The advanced/occasional sections collapse independently (collapsed by default).
   const [openSection, setOpenSection] = useState({})
   const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
@@ -1468,18 +1470,31 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
   const inShell = typeof window !== 'undefined' && !!window.ReactNativeWebView
   const doExport = async () => {
     try {
-      const data = await call('export:data')
+      const pw = exportPw.trim()
+      const data = await call('export:data', pw ? { password: pw } : {})
       const json = JSON.stringify(data, null, 2)
-      if (inShell) { await call('shell:export', { filename: 'pearpetal-backup.json', json }); setDataMsg('Backup ready to save.') } else {
+      const encrypted = !!data.enc
+      const fname = encrypted ? 'pearpetal-backup-encrypted.json' : 'pearpetal-backup.json'
+      if (inShell) { await call('shell:export', { filename: fname, json }); setDataMsg(encrypted ? 'Encrypted backup ready to save.' : 'Backup ready to save.') } else {
         const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
-        const a = document.createElement('a'); a.href = url; a.download = 'pearpetal-backup.json'; a.click(); URL.revokeObjectURL(url)
-        setDataMsg(`Exported ${data.days.length} days.`)
+        const a = document.createElement('a'); a.href = url; a.download = fname; a.click(); URL.revokeObjectURL(url)
+        setDataMsg(encrypted ? 'Exported an encrypted backup.' : `Exported ${data.days.length} days.`)
       }
       haptic('success')
     } catch (e) { setDataMsg(e.message) }
   }
   const applyImport = async (json) => {
-    try { const r = await call('import:data', { data: JSON.parse(json) }); setDataMsg(`Imported ${r.days} days and ${r.periods} periods.`); haptic('success'); onSaved && onSaved() } catch (e) { setDataMsg('Import failed. ' + e.message) }
+    let parsed
+    try { parsed = JSON.parse(json) } catch { setDataMsg('Import failed. Not a valid backup file.'); return }
+    // Encrypted backups need a password: stash the wrapper and prompt for it.
+    if (parsed && parsed.enc) { setPendingImport(parsed); return }
+    try { const r = await call('import:data', { data: parsed }); setDataMsg(`Imported ${r.days} days and ${r.periods} periods.`); haptic('success'); onSaved && onSaved() } catch (e) { setDataMsg('Import failed. ' + e.message) }
+  }
+  // Decrypt + import a stashed encrypted backup once the user enters its password.
+  // Wrong password keeps the sheet open (throws so the sheet shows the error).
+  const submitEncryptedImport = async (pw) => {
+    const r = await call('import:data', { data: pendingImport, password: pw })
+    setPendingImport(null); setDataMsg(`Imported ${r.days} days and ${r.periods} periods.`); haptic('success'); onSaved && onSaved()
   }
   const doImport = async () => {
     if (inShell) { try { const r = await call('shell:import'); if (r && r.json) applyImport(r.json) } catch (e) { setDataMsg(e.message) } return }
@@ -1552,14 +1567,58 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
         {prefs.birthControl && <Explainer>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal hides them and leads with your period dates.</Explainer>}
       </CollapsibleCard>
       <CollapsibleCard title='Your data' icon={Database} open={openSection.data} onToggle={() => toggleSection('data')}>
+        <input
+          type='password'
+          value={exportPw}
+          onChange={(e) => setExportPw(e.target.value)}
+          placeholder='Backup password (optional)'
+          autoComplete='new-password'
+          style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '8px 12px', fontSize: 14 }}
+        />
         <div style={{ display: 'flex', gap: spacing.sm }}>
           <Btn onClick={doExport} style={{ flex: 1 }}>Export</Btn>
           <Btn kind='ghost' onClick={doImport} style={{ flex: 1 }}>Import</Btn>
         </div>
-        <div style={{ color: colors.text.muted, fontSize: 11 }}>Export saves a plain file to your device. It is not encrypted and never leaves your device on its own, so keep it somewhere private. Import merges a backup into your log.</div>
+        <div style={{ color: colors.text.muted, fontSize: 11 }}>Set a password to save an <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>encrypted</strong> backup; leave it blank for a plain file. Either way the file only leaves your device if you share it, so keep it somewhere private. Import merges a backup into your log and will ask for the password if the file is encrypted. A forgotten password cannot be recovered.</div>
         {dataMsg && <div style={{ color: colors.success, fontSize: 13 }}>{dataMsg}</div>}
       </CollapsibleCard>
+      {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
     </div>
+  )
+}
+
+// Password prompt for importing an encrypted backup. Kept open on a wrong
+// password (onSubmit throws), showing the error inline, so no partial import.
+function ImportPasswordSheet ({ onSubmit, onClose }) {
+  const [pw, setPw] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const go = async () => {
+    if (!pw || busy) return
+    setBusy(true); setErr('')
+    try { await onSubmit(pw) } catch (e) { setErr(e && e.message === 'wrong password' ? 'Wrong password. Try again.' : ('Import failed. ' + (e && e.message ? e.message : e))); haptic('warn') } finally { setBusy(false) }
+  }
+  return (
+    <BottomSheet onClose={onClose}>
+      {(close) => (
+        <>
+          <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Encrypted backup</div>
+          <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Enter the password this backup was saved with.</div>
+          <input
+            type='password'
+            value={pw}
+            autoFocus
+            onChange={(e) => { setPw(e.target.value); setErr('') }}
+            onKeyDown={(e) => { if (e.key === 'Enter') go() }}
+            placeholder='Backup password'
+            style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${err ? colors.error : colors.border}`, borderRadius: radius.md, padding: '10px 12px', fontSize: 15 }}
+          />
+          {err && <div style={{ color: colors.error, fontSize: 13, textAlign: 'center' }}>{err}</div>}
+          <Btn onClick={go} disabled={!pw || busy}>{busy ? 'Decrypting…' : 'Import'}</Btn>
+          <Btn kind='ghost' onClick={close}>Cancel</Btn>
+        </>
+      )}
+    </BottomSheet>
   )
 }
 
