@@ -6,6 +6,22 @@ work lives in `TODO.md`.
 
 ## 2026-07-10
 
+- **Partner (viewer) mode gets a real shell** (T1, UI-only, no wire change): the viewer
+  side was a dead-end screen; now it mirrors the owner shell where it makes sense.
+  - **Viewer bottom nav** (Shared / Settings / About). `BottomNav` generalized to take a
+    tab set + width-aware active indicator; new `VIEWER_NAV_TABS`. App routes viewer
+    `main/settings/about` and Android Back walks viewer sub-screens -> main like the owner.
+  - **Scoped `ViewerSettings`**: profile (name + photo, shown to owners they view) +
+    appearance (theme). Deliberately omits cycle prefs / reminders / backup - a viewer has
+    no private base, so reminders produce no events, there's nothing to export, and
+    `PartnerView` hardcodes the flower. Extracted a shared `AppearanceCard` (owner + viewer);
+    reused the self-contained `ProfileCard`. About reuses `AboutScreen` as-is.
+  - **"View a partner's cycle" entry point** on `ViewerHome`: opens the existing
+    `JoinPartnerSheet` (paste link / scan QR), so a viewer can accept invites from more than
+    one owner - not just at first install. On join it refreshes the list and opens the new
+    partner's cycle.
+  - Dev: `?seed=viewer` browser-preview seed in `ipc.js`. verify green (build:ui clean,
+    89 tests). REMAINING: on-device confirm on the next hardware pass.
 - **Website: universal links + privacy/support/landing pages** (in the `website/`
   repo; deploy pending). Closes most of the website-side release work and the App
   Store privacy-page requirement.

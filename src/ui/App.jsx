@@ -1129,6 +1129,7 @@ function Devices ({ onClose }) {
 // --- viewer-only home (a device that only watches partners, no own cycle) ---
 function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   const [partners, setPartners] = useState([])
+  const [joinOpen, setJoinOpen] = useState(false)
   const load = useCallback(async () => setPartners(await call('partner:list').catch(() => [])), [])
   useSynced(load)
   return (
@@ -1144,7 +1145,11 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
           <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: p.revoked ? colors.text.secondary : colors.text.muted, fontSize: 12, flexShrink: 0 }}>{p.revoked ? 'Sharing ended' : (p.scope || '...')}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
         </button>
       ))}
+      {/* Accept a NEW invite (paste link / scan QR) - a viewer can be shared with by
+          more than one owner, so this is always available, not just at first join. */}
+      <Btn onClick={() => setJoinOpen(true)}>View a partner's cycle</Btn>
       <Btn kind='ghost' onClick={onBecomeOwner}>Start tracking my own cycle</Btn>
+      {joinOpen && <JoinPartnerSheet onClose={() => setJoinOpen(false)} onJoined={(groupId) => { setJoinOpen(false); load(); onOpenPartner(groupId) }} />}
     </div>
   )
 }
@@ -1527,6 +1532,38 @@ function NotificationsCard () {
   )
 }
 
+// Appearance (theme) picker - shared by the owner's Cycle settings and the
+// viewer's Settings (theme is a device-local visual pref, relevant to both).
+function AppearanceCard ({ themePref = 'dark', onTheme }) {
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+      <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Appearance</div>
+      <div style={{ display: 'flex', background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
+        {[['dark', 'Dark'], ['light', 'Light'], ['system', 'System']].map(([k, l]) => {
+          const on = (themePref || 'dark') === k
+          return (
+            <button key={k} onClick={() => onTheme && onTheme(k)} aria-pressed={on} style={{ flex: 1, border: 'none', borderRadius: radius.full, padding: '8px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>{l}</button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Settings for a partner (viewer). A viewer has no cycle of their own, so this is
+// scoped to the device-local bits that still apply: their profile (name + photo,
+// shown to the people whose cycle they view) and appearance. Cycle prefs, reminders
+// and backup are owner-only - a viewer has no private base to predict from or export.
+function ViewerSettings ({ themePref, onTheme }) {
+  return (
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+      <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Settings</div>
+      <ProfileCard />
+      <AppearanceCard themePref={themePref} onTheme={onTheme} />
+    </div>
+  )
+}
+
 function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState(null) // { text, tone: 'success'|'error'|'muted' }
@@ -1625,17 +1662,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your flower</div>
         <FlowerPicker value={prefs.flower} onPick={pickFlower} />
       </div>
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Appearance</div>
-        <div style={{ display: 'flex', background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
-          {[['dark', 'Dark'], ['light', 'Light'], ['system', 'System']].map(([k, l]) => {
-            const on = (themePref || 'dark') === k
-            return (
-              <button key={k} onClick={() => onTheme && onTheme(k)} aria-pressed={on} style={{ flex: 1, border: 'none', borderRadius: radius.full, padding: '8px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>{l}</button>
-            )
-          })}
-        </div>
-      </div>
+      <AppearanceCard themePref={themePref} onTheme={onTheme} />
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
         <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>What are you tracking for?</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
@@ -2061,13 +2088,21 @@ const NAV_TABS = [
   { key: 'settings', label: 'Settings', Icon: Gear },
   { key: 'about', label: 'About', Icon: Info },
 ]
-function BottomNav ({ active, onTab }) {
-  const activeIndex = Math.max(0, NAV_TABS.findIndex((t) => t.key === active))
+// A viewer (partner) has no cycle of their own and cannot share, so their shell is
+// Shared (the cycles shared with them) / Settings / About.
+const VIEWER_NAV_TABS = [
+  { key: 'main', label: 'Shared', Icon: Flower },
+  { key: 'settings', label: 'Settings', Icon: Gear },
+  { key: 'about', label: 'About', Icon: Info },
+]
+function BottomNav ({ active, onTab, tabs = NAV_TABS }) {
+  const activeIndex = Math.max(0, tabs.findIndex((t) => t.key === active))
+  const pct = 100 / tabs.length // tab width (owner has 4 tabs, viewer 3)
   return (
     <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, display: 'flex', background: 'rgba(20,15,17,0.94)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderTop: `1px solid ${colors.border}`, paddingBottom: 'var(--pear-safe-bottom)' }}>
-      {/* A single accent that slides to the active tab. */}
-      <div style={{ position: 'absolute', top: 0, height: 2, width: 26, borderRadius: 2, background: colors.primary, left: `calc(${activeIndex * 25 + 12.5}% - 13px)`, transition: 'left 280ms cubic-bezier(0.4,0,0.2,1)' }} />
-      {NAV_TABS.map((t) => {
+      {/* A single accent that slides to the active tab (centered over it). */}
+      <div style={{ position: 'absolute', top: 0, height: 2, width: 26, borderRadius: 2, background: colors.primary, left: `calc(${(activeIndex + 0.5) * pct}% - 13px)`, transition: 'left 280ms cubic-bezier(0.4,0,0.2,1)' }} />
+      {tabs.map((t) => {
         const on = active === t.key
         const Icon = t.Icon
         return (
@@ -2125,12 +2160,12 @@ export default function App () {
     return () => { const i = backHandlers.current.indexOf(fn); if (i >= 0) backHandlers.current.splice(i, 1); setBackCount(backHandlers.current.length) }
   }, [])
   const backCtx = useMemo(() => ({ register: registerBack }), [registerBack])
-  const canBack = !!(backCount > 0 || partnerGroup || (mode === 'owner' && screen !== 'main'))
+  const canBack = !!(backCount > 0 || partnerGroup || ((mode === 'owner' || mode === 'viewer') && screen !== 'main'))
   useEffect(() => { call('shell:navState', { canBack }).catch(() => {}) }, [canBack])
   useEffect(() => on('back', () => {
     for (let i = backHandlers.current.length - 1; i >= 0; i--) { if (backHandlers.current[i]()) return } // deepest overlay first
     if (partnerGroup) return setPartnerGroup(null)
-    if (mode === 'owner' && screen !== 'main') return setScreen('main')
+    if ((mode === 'owner' || mode === 'viewer') && screen !== 'main') return setScreen('main')
   }), [partnerGroup, mode, screen])
   const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
   const [cycleView, setCycleView] = useState(() => { try { return localStorage.getItem('pearpetal:cycleView') === 'calendar' ? 'calendar' : 'dial' } catch { return 'dial' } })
@@ -2191,7 +2226,11 @@ export default function App () {
   else if (mode === 'onboard') content = <Onboarding onReady={boot} onViewerReady={boot} onStartSetup={() => setMode('setup')} />
   else if (mode === 'setup') content = <SetupWizard onDone={boot} />
   else if (partnerGroup) content = <PartnerView groupId={partnerGroup} onClose={() => setPartnerGroup(null)} onLeft={() => { setPartnerGroup(null); boot() }} />
-  else if (mode === 'viewer') content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { await call('cycle:create').catch(() => {}); setMode('setup') }} />
+  else if (mode === 'viewer') {
+    if (screen === 'settings') content = <ViewerSettings themePref={themePref} onTheme={changeTheme} />
+    else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
+    else content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { setScreen('main'); await call('cycle:create').catch(() => {}); setMode('setup') }} />
+  }
   else if (screen === 'devices') content = <Devices onClose={() => setScreen('main')} />
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
   else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onDevices={() => setScreen('devices')} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} themePref={themePref} onTheme={changeTheme} />
@@ -2221,13 +2260,14 @@ export default function App () {
     </div>
   )
 
-  const showNav = mode === 'owner' && !partnerGroup
-  const navActive = ['share', 'settings', 'about'].includes(screen) ? screen : 'main'
+  const showNav = !partnerGroup && (mode === 'owner' || mode === 'viewer')
+  const navTabs = mode === 'viewer' ? VIEWER_NAV_TABS : NAV_TABS
+  const navActive = (mode === 'viewer' ? ['settings', 'about'] : ['share', 'settings', 'about']).includes(screen) ? screen : 'main'
   return (
     <ThemeContext.Provider value={theme}>
      <BackContext.Provider value={backCtx}>
       <div style={showNav ? { paddingBottom: 'calc(64px + var(--pear-safe-bottom))' } : undefined}>{content}</div>
-      {showNav && <BottomNav active={navActive} onTab={setScreen} />}
+      {showNav && <BottomNav active={navActive} onTab={setScreen} tabs={navTabs} />}
       <DonationReminderModal open={donateReminder} onDonate={() => { setDonateReminder(false); setScreen('about') }} onDismiss={() => setDonateReminder(false)} />
       {periodSheet && <PeriodSheet defaultStart={pred?.known ? addDaysIso(todayIso(), -((pred.dayOfCycle || 1) - 1)) : todayIso()} onClose={() => setPeriodSheet(false)} onSaved={(start) => { setView('dial'); setDate(start <= todayIso() ? start : todayIso()); refresh() }} />}
       {dialInfo && <DialInfoSheet onClose={() => setDialInfo(false)} />}
