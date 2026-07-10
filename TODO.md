@@ -96,10 +96,13 @@ Website-side (not in-app):
 
 - Migrate `day:`/`period:` retention/paging once logs get long.
 - **Swarm topic + connection accumulation** (`@peerloom/core`, T3, suite-wide) -
-  proposal `proposals/2026-07-09-swarm-topic-accumulation.md`. Pairing slows/stalls as a
-  device piles up bases (each rejoins its own topic every boot + shares connections
-  during pairing); fresh install resets it. NOT a topic collision. Recommended fix:
-  viewers join client-only (A) + Hyperswarm cap (D). Surfaced by QR-pairing testing.
+  proposal `proposals/2026-07-09-swarm-topic-accumulation.md`. Mitigation **A DONE**
+  2026-07-10 (viewers join client-only via a persisted `announce` flag; core PR #14 +
+  app `partner:join`; DECISIONS + review 2026-07-10). D not changed (Hyperswarm
+  `maxPeers=64` default already sane). REMAINING: B (auto-sweep soft-revoked shares -
+  blocked on the deferred ack channel) + C (announce back-off - deferred, needs care);
+  suite adoption gate = re-run PearList's pairing smoke before other apps rely on the
+  core change.
 
 ## Known limitation (deferred) - linked device's writes slow to sync back to founder
 

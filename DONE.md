@@ -4,6 +4,19 @@ Chronological log of shipped work, newest first. One line (or few) per item with
 its date + PR. Deep rationale for T2/T3 changes lives in `DECISIONS.md`; open
 work lives in `TODO.md`.
 
+## 2026-07-10
+
+- **Viewers join shared bases client-only** (T3, swarm-accumulation mitigation A;
+  proposal 2026-07-09-swarm-topic-accumulation, DECISIONS + review 2026-07-10): fixes the
+  pairing slowdown that grows as a device piles up bases. `@peerloom/core` `joinTopic`
+  gains a `{server,client}` option + `joinGroup` an `announce` flag (persisted, re-applied
+  on init; default true = unchanged); PearPetal `partner:join` passes `announce:false` so a
+  partner (pure viewer) joins CLIENT-ONLY and stops redundantly announcing the owner's
+  topic. `link:join` keeps the default. Additive + back-compat (no wire/record break).
+  Core `npm test` green (43, incl. announce + restart-persistence + two-peer pairing gate);
+  app verify green (86 + 3 bundles). Core PR #14. D (Hyperswarm cap) not changed - default
+  maxPeers=64 already sane.
+
 ## 2026-07-09
 
 - **QR scan + render verified (release blocker #1)** + dead-stub cleanup: the invite
