@@ -2,7 +2,7 @@
   "expo": {
     "name": "PearPetal",
     "slug": "pearpetal",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "newArchEnabled": true,
     "orientation": "portrait",
     "scheme": "pear",
@@ -10,7 +10,7 @@
     "icon": "./assets/images/icon.png",
     "ios": {
       "bundleIdentifier": "com.pearpetal",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "associatedDomains": [
         "applinks:peerloomllc.com"
       ],
