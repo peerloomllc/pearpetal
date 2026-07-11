@@ -181,14 +181,16 @@ may need an app reopen to finish syncing its first edits."
 
 ## Dev infra / build durability
 
-- **APK size audit** (same pass recently done for PearCircle + PearGuard). The debug
-  APK is ~476MB (`android/app/build/outputs/apk/debug/app-debug.apk`) - audit what's
-  bloating it and confirm the release build is lean. Usual suspects: both ABIs shipped in
-  one universal APK (split per-ABI or ship an AAB), unstripped native `.so`s / debug
-  symbols, duplicated holepunch/bare native addons, bundled fonts (`src/ui/fonts.js` is
-  ~57KB of embedded glyph data), and any dev-only deps leaking into the release graph.
-  Compare `unzip -l` of debug vs release, check `enableProguardInReleaseBuilds` /
-  `shrinkResources`, and mirror whatever fixes landed for PearCircle/PearGuard.
+- ~~**APK size audit**~~ DONE 2026-07-10 (`plugins/with-android-abis.js`). Root cause of
+  the ~476MB was shipping ALL 4 ABIs; the Bare runtime carries a per-ABI native stack
+  (libbare-kit.so ~65MB alone). FIX: restrict to `arm64-v8a` (Google Play has required
+  64-bit since 2019), mirroring pearlist. **Measured: signed arm64 release APK = 120.8MB
+  (~75% smaller), lib/ contains arm64-v8a only, signed with the `pearpetal` key (cert
+  SHA-256 = the assetlinks fingerprint, so App Links verify).** Minify/R8 left OFF (all
+  siblings do - risky on the holepunch/Bare native stack). NOT fixed (acceptable, shared
+  with siblings): `react-native-bare-kit` bundles TWO librocksdb-native (3.17.0 + 3.17.2,
+  ~9.6MB redundant) in its addons - a bare-kit packaging quirk, unsafe to patch by hand.
+  For Play, `bundleRelease` (AAB) splits per-device regardless.
 - **`@peerloom/core` nested node_modules can drift from the app's** (LIKELY SUITE-WIDE).
   Core is file:-symlinked; its own node_modules had version-mismatched native addons vs
   the app's top-level -> iOS `ADDON_NOT_FOUND` at engine init. FIX IN PLACE: `overrides`
