@@ -47,11 +47,17 @@ Not yet built:
      APPEARANCES in the screenshot scripts).
    - Minor polish: `PartnerView` shows raw ISO dates (`2026-07-23`) vs the owner view's
      `Jul 23` - swap to `fmtDate` for a nicer scene 4 (and app).
-   - **iOS App Store distribution profile**: create "PearPetal App Store" (App Store dist
-     profile for com.pearpetal; the App ID already has Associated Domains) for
-     `ios-appstore.sh` manual signing.
-   - **Fill `scripts/.env`** (keystore + ASC + Play creds) and do a first signed
-     build + upload (TestFlight / Play internal).
+   - ~~iOS App Store distribution profile~~ DONE 2026-07-10: "PearPetal App Store"
+     (com.pearpetal, App Store type, carries `associated-domains` so UL works, expires
+     2027-03-18) installed on the Mac at `~/Library/MobileDevice/Provisioning Profiles/`.
+     Apple Distribution cert already present. `app.conf` `IOS_PROVISIONING_PROFILE` matches.
+   - ~~Fill `scripts/.env`~~ DONE 2026-07-10 (gitignored): keystore passwords in; ASC reuses
+     the shared PeerLoom-CI key (`ASC_APP_ID=6789721938`, key `28U2P9D99H`, verified via
+     `asc apps list`). Zapstore `SIGN_WITH` + Play creds still blank (optional; skippable).
+     NOTE: `.env` lives on this Linux box - it must reach the Mac for `ios-appstore.sh`
+     (the release/screenshots rsync carries it, or copy it over).
+   - **First signed build + upload**: iOS `./scripts/ios-appstore.sh` (on the Mac) ->
+     TestFlight; Android `./scripts/release.sh` -> GitHub/Zapstore(/Play). Not yet run.
    - Confirm current Play/App Store policy for menstrual/health trackers at submission.
 3. ~~**First-run onboarding / guided demo**~~ BUILT + on-device VERIFIED 2026-07-09
    (see DONE): a skippable `SetupWizard` after "Start tracking" - welcome (hero dial) ->
