@@ -18,3 +18,12 @@ corestore/
 
 # Release secrets (never commit)
 scripts/.env
+
+# Zapstore publish manifest (lives locally; patched at release time)
+zapstore.yaml
+
+# Build outputs (release artifacts)
+*.apk
+*.aab
+*.apk.sha256
+*.aab.sha256
