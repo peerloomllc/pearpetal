@@ -6,6 +6,15 @@ work lives in `TODO.md`.
 
 ## 2026-07-10
 
+- **iOS v1.0.0 SUBMITTED to the App Store — Waiting for Review**. First submission. Built
+  + uploaded via `scripts/ios-appstore.sh` on the Mac mini (prebuild keeping Universal
+  Links -> archive signed by the "PearPetal App Store" distribution profile -> export ->
+  upload via the shared ASC API key). app.json bumped to 1.0.0 / iOS build 2 (build 1 was a
+  0.1.0 test upload). Listing filled from `metadata/listing-appstore.md` (subtitle, promo
+  text, description, keywords), 6.9" screenshots from `metadata/ios/screenshots/`, privacy
+  = "Data Not Collected", category Health & Fitness, price Free. Now in Apple's review
+  queue. REMAINING (iOS): respond to any review feedback; then release. Android release
+  (`scripts/release.sh` -> GitHub/Zapstore/Play) not yet run.
 - **iOS Universal Links provisioned end-to-end + App Store Connect app created**: registered
   an EXPLICIT `com.pearpetal` App ID in the Apple Developer portal with the **Associated
   Domains** capability (wildcard App IDs can't carry it); created the PearPetal record in App

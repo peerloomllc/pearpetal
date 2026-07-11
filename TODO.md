@@ -56,8 +56,11 @@ Not yet built:
      `asc apps list`). Zapstore `SIGN_WITH` + Play creds still blank (optional; skippable).
      NOTE: `.env` lives on this Linux box - it must reach the Mac for `ios-appstore.sh`
      (the release/screenshots rsync carries it, or copy it over).
-   - **First signed build + upload**: iOS `./scripts/ios-appstore.sh` (on the Mac) ->
-     TestFlight; Android `./scripts/release.sh` -> GitHub/Zapstore(/Play). Not yet run.
+   - ~~iOS signed build + submission~~ DONE 2026-07-10: v1.0.0 (build 2) uploaded via
+     `ios-appstore.sh` and SUBMITTED - now **Waiting for Review** on the App Store.
+     REMAINING (iOS): await Apple's review; respond to any feedback; then release.
+   - **Android signed build + release**: `./scripts/release.sh` -> GitHub/Zapstore(/Play).
+     Not yet run. Signs with `~/keystore.jks` alias `pearpetal` (= assetlinks fingerprint).
    - Confirm current Play/App Store policy for menstrual/health trackers at submission.
 3. ~~**First-run onboarding / guided demo**~~ BUILT + on-device VERIFIED 2026-07-09
    (see DONE): a skippable `SetupWizard` after "Start tracking" - welcome (hero dial) ->
