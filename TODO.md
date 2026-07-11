@@ -4,9 +4,10 @@ Open work only. Completed work (dated, with PRs) lives in `DONE.md`; deep
 rationale for T2/T3 changes lives in `DECISIONS.md`. Priority order: release
 blockers first, then nice-to-haves, design decisions, deferred, dev-infra.
 
-## Release blockers (v1) - do before shipping
+## Release (v1) - SHIPPED 2026-07-11
 
-Not yet built:
+PearPetal 1.0.0 launched on the App Store (in review), GitHub, Zapstore, and Google Play
+(closed testing). The original v1 blockers, all now done:
 1. ~~**Native QR scan + QR render**~~ BUILT (in-WebView) + Android on-device VERIFIED
    2026-07-09. `QrImage` renders a real invite QR via the `qrcode` lib (Sharing share
    rows + Devices); `ScannerView` scans via WebView getUserMedia + `jsQR` (Onboarding +
@@ -16,52 +17,19 @@ Not yet built:
    QR now opens in a bottom sheet that auto-dismisses on real peer connection (`share:connected`);
    full-screen scanner (portal fix). PR #49. Android end-to-end scan CONFIRMED by Tim 2026-07-10.
    iOS WebView scanner CONFIRMED 2026-07-10. FULLY DONE.
-2. **Store assets + release** (the publish mechanics). DONE so far:
-   - ~~Privacy page~~ (+ support + landing) on peerloomllc.com (2026-07-10).
-   - ~~Release scripts ported~~ 2026-07-10: `scripts/release.sh` (Android AAB/APK +
-     GitHub/Zapstore/Play/Nostr), `scripts/ios-appstore.sh` (App Store archive+upload,
-     with a PearPetal `expo prebuild` step that keeps Universal Links),
-     `scripts/app.conf`, `scripts/.env.example`, `plugins/with-android-release-signing.js`
-     (wired in app.json; signs release with `~/keystore.jks` alias `pearpetal` =
-     assetlinks fingerprint). `release.sh --check-versions` green (detects com.pearpetal,
-     starts v1.0.0). NOT YET RUN a real signed build/upload (needs `scripts/.env` creds).
-   - ~~Listing copy drafted~~ 2026-07-10: `metadata/listing-play.md` (Play),
-     `metadata/listing-appstore.md` (App Store - subtitle/keywords/privacy-label/
-     age-rating/export-compliance guidance), `release_notes.md` (v1.0.0 what's-new).
-   - ~~Screenshot harness + scripts~~ DONE 2026-07-10: a fixtures harness
-     (`src/ui/screenshot-fixtures.js`, 6 deterministic scenes computed by the real
-     prediction; wired through ipc.js/App.jsx/shell/`app/screenshot/[n].tsx`) + ported
-     capture scripts (`android-screenshots.sh`, `ios-screenshots.sh`, `screenshots.sh`,
-     `frame-android-screenshots.sh`). **Android Pixel_9 screenshots captured** (all 6
-     scenes render correctly: dial hero, calendar, sharing, partner view, flower picker,
-     settings) in `metadata/android/screenshots/`.
-   - ~~iOS simulator screenshots~~ DONE 2026-07-10: `scripts/screenshots.sh` on the Mac's
-     iPhone-17-Pro-Max sim (UDID in `app.conf`) -> `metadata/ios/screenshots/` (6 scenes
-     at 1320x2868, the App Store 6.9" size; dynamic island + iOS status bar, all verified).
-   - ~~Play feature graphic + hi-res icon~~ DONE 2026-07-10:
-     `metadata/android/play-listing/feature-1024x500.png` (rose-glow dark banner: cherry
-     blossom + two-tone PearPetal wordmark + "Private cycle & fertility tracking / No
-     accounts. No servers. No cloud.") and `icon-512.png` (Play hi-res icon).
-   REMAINING:
-   - Optional: a dark-mode screenshot set (the harness supports it - add `dark` to
-     APPEARANCES in the screenshot scripts).
-   - Minor polish: `PartnerView` shows raw ISO dates (`2026-07-23`) vs the owner view's
-     `Jul 23` - swap to `fmtDate` for a nicer scene 4 (and app).
-   - ~~iOS App Store distribution profile~~ DONE 2026-07-10: "PearPetal App Store"
-     (com.pearpetal, App Store type, carries `associated-domains` so UL works, expires
-     2027-03-18) installed on the Mac at `~/Library/MobileDevice/Provisioning Profiles/`.
-     Apple Distribution cert already present. `app.conf` `IOS_PROVISIONING_PROFILE` matches.
-   - ~~Fill `scripts/.env`~~ DONE 2026-07-10 (gitignored): keystore passwords in; ASC reuses
-     the shared PeerLoom-CI key (`ASC_APP_ID=6789721938`, key `28U2P9D99H`, verified via
-     `asc apps list`). Zapstore `SIGN_WITH` + Play creds still blank (optional; skippable).
-     NOTE: `.env` lives on this Linux box - it must reach the Mac for `ios-appstore.sh`
-     (the release/screenshots rsync carries it, or copy it over).
-   - ~~iOS signed build + submission~~ DONE 2026-07-10: v1.0.0 (build 2) uploaded via
-     `ios-appstore.sh` and SUBMITTED - now **Waiting for Review** on the App Store.
-     REMAINING (iOS): await Apple's review; respond to any feedback; then release.
-   - **Android signed build + release**: `./scripts/release.sh` -> GitHub/Zapstore(/Play).
-     Not yet run. Signs with `~/keystore.jks` alias `pearpetal` (= assetlinks fingerprint).
-   - Confirm current Play/App Store policy for menstrual/health trackers at submission.
+2. ~~**Store assets + release (v1.0.0 launch)**~~ SHIPPED 2026-07-11 - full record in
+   DONE.md. PearPetal 1.0 is out on ALL channels: **App Store** (Waiting for Review),
+   **GitHub Releases** (120.8MB arm64 APK), **Zapstore**, **Google Play** (closed testing).
+   Everything done: privacy/support/landing pages; listing copy (`metadata/listing-*.md`);
+   iOS 6.9" + Android screenshots via the fixtures harness; Play feature graphic + hi-res
+   icon; release pipeline (`release.sh` + `ios-appstore.sh`) wired + run; iOS App Store
+   distribution profile + ASC key; Android App Links live with BOTH the `pearpetal` upload
+   key and Google's Play app-signing key in `assetlinks.json`.
+   REMAINING (not in our hands): await Apple's review verdict + Google's closed-test review;
+   then promote Play closed testing -> production (Google's 12-tester/14-day gate).
+   OPTIONAL polish (non-blocking): a dark-mode screenshot set (harness supports it - add
+   `dark` to APPEARANCES); `PartnerView` raw ISO dates (`2026-07-23`) -> `fmtDate`
+   (`Jul 23`) for a nicer scene 4 + app.
 3. ~~**First-run onboarding / guided demo**~~ BUILT + on-device VERIFIED 2026-07-09
    (see DONE): a skippable `SetupWizard` after "Start tracking" - welcome (hero dial) ->
    name/photo -> goal (incl. pregnancy) -> log last period (dial no longer empty) ->
