@@ -4,6 +4,41 @@ Chronological log of shipped work, newest first. One line (or few) per item with
 its date + PR. Deep rationale for T2/T3 changes lives in `DECISIONS.md`; open
 work lives in `TODO.md`.
 
+## 2026-07-11
+
+- **🚀 PearPetal 1.0.0 LAUNCHED on every channel.** First public release, live/submitted
+  everywhere:
+  - **App Store (iOS)**: v1.0.0 (build 2) submitted, Waiting for Review (see 2026-07-10).
+  - **GitHub Releases**: `release.sh` published v1.0.0 - the lean 120.8MB arm64 APK +
+    sha256, signed with the `pearpetal` key.
+  - **Zapstore**: published via `release.sh` (created `zapstore.yaml`, gitignored per suite
+    convention; reused the shared PeerLoom `SIGN_WITH` nsec). Nostr launch note posted.
+  - **Google Play**: first PeerLoom app on Play. Created the app, filled the store listing
+    (from `metadata/listing-play.md` + feature graphic + Android screenshots) and all App
+    content declarations (Data safety = No data collected/shared; target 18+; Health app
+    declaration; no ads), uploaded the 50.3MB AAB -> **Play App Signing enrolled**, released
+    to closed testing.
+- **Android App Links complete for Play + direct installs** (website PR #28): Play delivers
+  apps signed with Google's app-signing key (not the `pearpetal` upload key), so
+  `assetlinks.json` now lists BOTH fingerprints for `com.pearpetal` - the upload key
+  (`34:DA...`, GitHub/Zapstore) and Google's Play signing key (`F6:93...`, Play). Live-
+  verified on peerloomllc.com. Also deployed the iOS `pear://`->Keet landing-page fix
+  (`petal/{link,join}` show a "Get PearPetal" CTA on iOS instead of bouncing to a
+  Keet-claimed scheme).
+- **APK size audit** (`plugins/with-android-abis.js`, PR #71): 476MB -> 120.8MB by
+  restricting the release to `arm64-v8a` (mirrors pearlist; 64-bit required by Play since
+  2019). Signed arm64 APK's cert SHA-256 matches the assetlinks fingerprint. Minify left
+  off (matches siblings; risky on the Bare native stack). See DONE below / TODO for detail.
+- **Official README + MIT LICENSE** (PR #70): replaced the stale "pre-scaffold" README with
+  a proper public one; GitHub now shows the MIT license.
+- **Store-screenshot pipeline + assets** (PRs #65, #66, #67): a deterministic fixtures
+  harness (`src/ui/screenshot-fixtures.js`, 6 scenes off the real prediction) + ported
+  capture scripts; captured Android (Pixel_9) + iOS (iPhone 17 Pro Max, 6.9") sets; Play
+  feature graphic + 512 icon.
+- **iOS Universal Links provisioned end-to-end** (PR #63): explicit `com.pearpetal` App ID
+  with Associated Domains, Xcode account on the Mac + `-allowProvisioningUpdates`, App Store
+  Connect record. Apple's AASA CDN refreshed ~80min later, so UL is live.
+
 ## 2026-07-10
 
 - **iOS v1.0.0 SUBMITTED to the App Store — Waiting for Review**. First submission. Built
