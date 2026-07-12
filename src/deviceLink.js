@@ -18,9 +18,21 @@
 // gates them); the device-link mnemonic is purely the recovery + device-pairing
 // anchor for the personal base.
 
+const b4a = require('b4a')
 const { createDeviceLink } = require('@peerloom/device-link/personal')
 const { verifyValue } = require('@peerloom/core/records')
 const { rowApplyDecision } = require('./petalWire')
+
+// PearPetal's own device-pair channel + link scheme (per-app, per the proposal's
+// decision to keep pairing ids app-scoped). The pair URL device-link mints is
+// `pearpetal://pair?...`, rendered as a QR to link a second device (DECISIONS
+// 2026-07-12). protocol/id must match on both of a user's devices (they do -
+// same app build).
+const PAIR_CHANNEL = {
+  protocol: 'pearpetal/device-link/1',
+  id: b4a.from('pearpetal-device-link-v1'),
+  linkScheme: 'pearpetal',
+}
 
 // Master switch for the whole device-link path. OFF until the personal-base
 // linking is hardware-verified (esp. the B->A direction, proposal decision #6).
@@ -79,6 +91,7 @@ function getDeviceLink (ctx) {
       keystore: makeKeystore(ctx.localDb),
       records: makeRecords(),
       mirror: makeMirror(ctx.localDb),
+      channel: PAIR_CHANNEL,
       platform: '',
       onEvent: (event, data) => { try { ctx.emit(event, data) } catch {} },
     })
