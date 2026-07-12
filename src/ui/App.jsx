@@ -10,7 +10,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -1115,46 +1115,6 @@ function RecentDays ({ days, onPick }) {
   )
 }
 
-// --- devices ----------------------------------------------------------------
-function Devices ({ onClose }) {
-  const [devices, setDevices] = useState([])
-  const [invite, setInvite] = useState('')
-  const load = useCallback(async () => {
-    setDevices(await call('device:getAll').catch(() => []))
-    try { const r = await call('link:invite'); setInvite(r.inviteKey) } catch {}
-  }, [])
-  useSynced(load)
-  const inviteLink = linkUrl(invite)
-  const share = () => call('shell:share', { title: 'Link a device to PearPetal', text: inviteLink }).catch(() => {})
-  const copy = async () => { try { await navigator.clipboard.writeText(inviteLink); haptic('success') } catch { share() } }
-
-  return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 20, fontWeight: 600 }}>Your devices</div>
-        <Btn kind='ghost' onClick={onClose}>Done</Btn>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-        {devices.map((d) => (
-          <div key={d.pubkey} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.md }}>
-            <span style={{ color: colors.text.primary, fontWeight: 500 }}>{d.label}</span>
-            {d.self && <span style={{ color: colors.text.muted, fontSize: 12 }}>this device</span>}
-          </div>
-        ))}
-      </div>
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ fontSize: 14, color: colors.text.secondary }}>Link another of your devices: scan this QR on it, open this link on it, or paste it into "Link another device".</div>
-        <QrImage text={inviteLink} />
-        <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.text.secondary, wordBreak: 'break-all', maxHeight: 96, overflow: 'auto' }}>{inviteLink || '...'}</div>
-        <div style={{ display: 'flex', gap: spacing.sm }}>
-          <Btn onClick={copy} style={{ flex: 1 }}>Copy link</Btn>
-          <Btn kind='ghost' onClick={share}>Share</Btn>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // --- viewer-only home (a device that only watches partners, no own cycle) ---
 function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   const [partners, setPartners] = useState([])
@@ -1623,7 +1583,69 @@ function RecoveryPhraseCard () {
   )
 }
 
-function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
+// Linked devices, as a collapsible settings card (consistent with the other
+// settings sections; keeps the Settings tab active, unlike a separate screen).
+// Shows the roster (rename your own device - it self-attests + syncs), plus the
+// QR/link to add another device.
+function DevicesCard () {
+  const [devices, setDevices] = useState([])
+  const [invite, setInvite] = useState('')
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState('')
+  const load = useCallback(async () => {
+    setDevices(await call('device:getAll').catch(() => []))
+    try { const r = await call('link:invite'); setInvite(r.inviteKey) } catch {}
+  }, [])
+  useSynced(load)
+  const inviteLink = linkUrl(invite)
+  const share = () => call('shell:share', { title: 'Link a device to PearPetal', text: inviteLink }).catch(() => {})
+  const copy = async () => { try { await navigator.clipboard.writeText(inviteLink); haptic('success') } catch { share() } }
+  const startEdit = (label) => { setName((label && label !== 'This device' && label !== 'Device') ? label : ''); setEditing(true) }
+  const saveName = async () => {
+    const clean = name.trim()
+    if (clean) { try { await call('device:setLabel', { label: clean }); haptic('success') } catch {} }
+    setEditing(false); load()
+  }
+  return (
+    <CollapsibleCard title='Your devices' icon={DevicesIcon} open={open} onToggle={() => setOpen((o) => !o)}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        {devices.map((d) => (
+          <div key={d.pubkey} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+            {d.self && editing ? (
+              <>
+                <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} autoFocus placeholder='Name this device'
+                  style={{ flex: 1, minWidth: 0, background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '8px 10px', fontSize: 14 }} />
+                <Btn onClick={saveName} style={{ flexShrink: 0 }}>Save</Btn>
+              </>
+            ) : (
+              <>
+                <span style={{ color: colors.text.primary, fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.label}</span>
+                {d.self && <span style={{ color: colors.text.muted, fontSize: 12 }}>this device</span>}
+                {d.self && (
+                  <button onClick={() => startEdit(d.label)} aria-label='Rename this device' style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex', flexShrink: 0 }}>
+                    <PencilSimple size={16} color={colors.text.muted} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+        <div style={{ fontSize: 13, color: colors.text.secondary }}>Link another of your devices: scan this QR on it, or paste this link into "Link to my other device".</div>
+        <QrImage text={inviteLink} />
+        <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.text.secondary, wordBreak: 'break-all', maxHeight: 96, overflow: 'auto' }}>{inviteLink || '...'}</div>
+        <div style={{ display: 'flex', gap: spacing.sm }}>
+          <Btn onClick={copy} style={{ flex: 1 }}>Copy</Btn>
+          <Btn kind='ghost' onClick={share} style={{ flex: 1 }}>Share</Btn>
+        </div>
+      </div>
+    </CollapsibleCard>
+  )
+}
+
+function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState(null) // { text, tone: 'success'|'error'|'muted' }
   const [exportPw, setExportPw] = useState('') // optional backup password (blank = plaintext)
@@ -1778,12 +1800,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
         {dataMsg && <div style={{ color: dataMsg.tone === 'error' ? colors.error : dataMsg.tone === 'muted' ? colors.text.muted : colors.success, fontSize: 13 }}>{dataMsg.text}</div>}
       </CollapsibleCard>
       {dlEnabled && <RecoveryPhraseCard />}
-      {dlEnabled && (
-        <button onClick={onDevices} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', border: `1px solid ${colors.border}`, width: '100%', textAlign: 'left' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md, color: colors.text.primary }}><DevicesIcon size={20} color={colors.text.secondary} weight='regular' /> Your devices</span>
-          <CaretRight size={16} color={colors.text.muted} weight='regular' />
-        </button>
-      )}
+      {dlEnabled && <DevicesCard />}
       {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
       {successModal && <BackupSuccessModal title={successModal.title} message={successModal.message} onClose={() => setSuccessModal(null)} />}
     </div>
@@ -2315,9 +2332,8 @@ export default function App () {
     else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
     else content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { setScreen('main'); await call('cycle:create').catch(() => {}); setMode('setup') }} />
   }
-  else if (screen === 'devices') content = <Devices onClose={() => setScreen('main')} />
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
-  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onDevices={() => setScreen('devices')} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} themePref={themePref} onTheme={changeTheme} />
+  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} themePref={themePref} onTheme={changeTheme} />
   else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
