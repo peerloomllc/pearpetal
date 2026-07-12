@@ -17,6 +17,8 @@ const sodium = require('sodium-universal')
 const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, memberKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE, MEMBER_RANGE } = require('./petalWire')
 const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FLOW_VALUES } = require('./prediction')
 const { notificationEvents } = require('./notifications')
+const { isDeviceLinkEnabled } = require('./deviceLink')
+const ps = require('./privateStore')
 
 // Consent scopes (see DECISIONS.md 2026-07-06). Each governs which projection
 // fields the OWNER writes to a shared base; the partner structurally never
@@ -220,6 +222,63 @@ async function publishDevice (ctx, onlyGroupId) {
   return published
 }
 
+// ── PRIVATE-base seam (proposal 2026-07-12-adopt-device-link, SLICE 2b) ──────
+// Every private-base access below goes through these wrappers so the whole
+// private base can be served either by the legacy @peerloom/core group (flag
+// OFF, unchanged) or by @peerloom/device-link's personal base (flag ON, via
+// ./privateStore). Partner sharing (shared-out/shared-in bases) is unaffected -
+// it always stays on core, so its viewFor/putRow/readRow calls are untouched.
+
+// Does this device have a private base (cycle) yet?
+async function privHas (ctx) {
+  if (isDeviceLinkEnabled()) return ps.exists(ctx)
+  return !!(await privateMembership(ctx))
+}
+async function requirePrivate (ctx) {
+  if (!(await privHas(ctx))) throw new Error('no cycle on this device yet')
+}
+// Create the private base. Returns { groupId?, inviteKey? } - the device-link
+// path has no group invite (linking is QR pairing via link:invite), so those are
+// null there.
+async function enablePrivate (ctx) {
+  if (isDeviceLinkEnabled()) { await ps.enable(ctx); return { groupId: null, inviteKey: null } }
+  const r = await ctx.createGroup({ name: 'PearPetal' })
+  await tagKind(ctx, r.groupId, 'private')
+  await publishDevice(ctx, r.groupId)
+  return { groupId: r.groupId, inviteKey: r.inviteKey }
+}
+// Sign + write one private-base row (RAW value; signed by the core identity in
+// both paths per the coexist decision).
+async function privPut (ctx, key, value) {
+  if (isDeviceLinkEnabled()) { await ps.put(ctx, key, value); return }
+  await putRow(ctx, await privateGroupId(ctx), key, value)
+}
+// Read one private-base row (linearized/flushed first).
+async function privReadRow (ctx, key) {
+  if (isDeviceLinkEnabled()) return ps.readRow(ctx, key)
+  return readRow(viewFor(ctx, await privateGroupId(ctx)), key)
+}
+// Collect all rows in a private-base range (DAY_RANGE / PERIOD_RANGE), flushing
+// first. Returns an array of raw values (callers filter tombstones).
+async function privRows (ctx, range) {
+  const out = []
+  if (isDeviceLinkEnabled()) {
+    await ps.update(ctx)
+    for await (const { value } of ps.createReadStream(ctx, range)) out.push(value)
+    return out
+  }
+  const base = viewFor(ctx, await privateGroupId(ctx))
+  await base.update()
+  for await (const { value } of base.view.createReadStream(range)) out.push(value)
+  return out
+}
+// Publish this device's roster row. The device-link path keeps the roster as
+// native deviceMeta (auto-seeded), so there is nothing to publish there.
+async function privPublishDevice (ctx, onlyGroupId) {
+  if (isDeviceLinkEnabled()) return true
+  return publishDevice(ctx, onlyGroupId)
+}
+
 // Validate/normalize a 'YYYY-MM-DD' date to { iso, key(yyyymmdd) }. Fixed-width
 // key so lexicographic view scans return chronological order.
 function normDate (s) {
@@ -332,12 +391,8 @@ async function refreshMemberIdentity (ctx) {
 }
 
 async function computeProjection (ctx) {
-  const base = viewFor(ctx, await privateGroupId(ctx))
-  await base.update()
-  const dayRows = []
-  for await (const { value } of base.view.createReadStream(DAY_RANGE)) if (value && !value.deleted) dayRows.push(value)
-  const periodRows = []
-  for await (const { value } of base.view.createReadStream(PERIOD_RANGE)) if (value && !value.deleted) periodRows.push(value)
+  const dayRows = (await privRows(ctx, DAY_RANGE)).filter((v) => v && !v.deleted)
+  const periodRows = (await privRows(ctx, PERIOD_RANGE)).filter((v) => v && !v.deleted)
   const prefs = await getPrefs(ctx)
   return { proj: projectionFromRows(dayRows, periodRows, { prefs }), dayRows }
 }
@@ -386,6 +441,7 @@ const methods = {
   // --- cycle lifecycle + device linking ----------------------------------
   // Is this device already tracking a cycle (has a private base)?
   'cycle:status': async (_args, ctx) => {
+    if (isDeviceLinkEnabled()) return { hasBase: await ps.exists(ctx), groupId: null, pubkey: pubkeyHex(ctx) }
     const m = await privateMembership(ctx)
     return { hasBase: !!m, groupId: m?.groupId ?? null, pubkey: pubkeyHex(ctx) }
   },
@@ -397,7 +453,7 @@ const methods = {
     const prefs = await getPrefs(ctx)
     const goal = prefs.goal || 'track'
     const pregnancy = pregnancyProjection(prefs, todayIso())
-    if (!(await privateMembership(ctx))) return { known: false, phase: null, confidence: 'none', goal, pregnancy }
+    if (!(await privHas(ctx))) return { known: false, phase: null, confidence: 'none', goal, pregnancy }
     try { const { proj } = await computeProjection(ctx); return { ...proj, goal, pregnancy } } catch { return { known: false, phase: null, confidence: 'none', goal, pregnancy } }
   },
 
@@ -466,7 +522,7 @@ const methods = {
     if (!notif.enabled) return { enabled: false, events: [] }
     const prefs = await getPrefs(ctx)
     const goal = prefs.goal || 'track'
-    if (!(await privateMembership(ctx))) return { enabled: true, events: [] }
+    if (!(await privHas(ctx))) return { enabled: true, events: [] }
     try {
       const { proj } = await computeProjection(ctx)
       return { enabled: true, events: notificationEvents(proj, { notif, goal, today: todayIso() }) }
@@ -537,11 +593,8 @@ const methods = {
   // internal fields - just the data the user entered. Never uploaded anywhere.
   'export:data': async ({ password } = {}, ctx) => {
     const days = []; const periods = []
-    const m = await privateMembership(ctx)
-    if (m) {
-      const base = viewFor(ctx, m.groupId)
-      await base.update()
-      for await (const { value: v } of base.view.createReadStream(DAY_RANGE)) {
+    if (await privHas(ctx)) {
+      for (const v of await privRows(ctx, DAY_RANGE)) {
         if (!v || v.deleted) continue
         const d = { date: v.date }
         if (v.flow !== undefined) d.flow = v.flow
@@ -551,7 +604,7 @@ const methods = {
         if (typeof v.bbt === 'number') d.bbt = v.bbt
         days.push(d)
       }
-      for await (const { value: v } of base.view.createReadStream(PERIOD_RANGE)) {
+      for (const v of await privRows(ctx, PERIOD_RANGE)) {
         if (!v || v.deleted) continue
         periods.push({ start: v.start, end: v.end ?? null })
       }
@@ -577,14 +630,7 @@ const methods = {
       data = decryptBackup(data, password)
     }
     if (!data || data.app !== 'pearpetal' || !Array.isArray(data.days)) throw new Error('not a PearPetal export')
-    let m = await privateMembership(ctx)
-    if (!m) {
-      const r = await ctx.createGroup({ name: 'PearPetal' })
-      await tagKind(ctx, r.groupId, 'private')
-      await publishDevice(ctx, r.groupId)
-      m = { groupId: r.groupId }
-    }
-    const groupId = m.groupId
+    if (!(await privHas(ctx))) await enablePrivate(ctx)
     let dCount = 0; let pCount = 0
     for (const d of data.days) {
       const nd = normDate(d && d.date)
@@ -595,14 +641,14 @@ const methods = {
       if (Array.isArray(d.mood)) val.mood = d.mood.slice(0, 16).map((s) => String(s).slice(0, 40))
       if (typeof d.notes === 'string') val.notes = d.notes.slice(0, 2000)
       if (typeof d.bbt === 'number') val.bbt = d.bbt
-      await putRow(ctx, groupId, dayKey(nd.key), val)
+      await privPut(ctx, dayKey(nd.key), val)
       dCount++
     }
     for (const pr of (data.periods || [])) {
       const ns = normDate(pr && pr.start)
       if (!ns) continue
       const end = pr.end && normDate(pr.end) ? normDate(pr.end).iso : null
-      await putRow(ctx, groupId, periodKey(ns.key), { start: ns.iso, end, createdBy: pubkeyHex(ctx), createdAt: Date.now(), deleted: false })
+      await privPut(ctx, periodKey(ns.key), { start: ns.iso, end, createdBy: pubkeyHex(ctx), createdAt: Date.now(), deleted: false })
       pCount++
     }
     if (data.prefs && typeof data.prefs === 'object') {
@@ -624,17 +670,22 @@ const methods = {
   // Start tracking: create the private base (idempotent - returns the existing
   // one if this device already has a cycle). Own devices later link into it.
   'cycle:create': async (_args, ctx) => {
+    if (isDeviceLinkEnabled()) {
+      if (await ps.exists(ctx)) return { groupId: null, inviteKey: null, created: false }
+      await ps.enable(ctx)
+      return { groupId: null, inviteKey: null, created: true }
+    }
     const existing = await privateMembership(ctx)
     if (existing) return { groupId: existing.groupId, inviteKey: reencodeInvite(existing), created: false }
-    const r = await ctx.createGroup({ name: 'PearPetal' })
-    await tagKind(ctx, r.groupId, 'private')
-    await publishDevice(ctx, r.groupId)
+    const r = await enablePrivate(ctx)
     return { groupId: r.groupId, inviteKey: r.inviteKey, created: true }
   },
 
-  // Re-encode the private base invite so the UI can show a QR / copyable code to
-  // link another of the owner's devices.
+  // Mint a link/QR the UI shows to link another of the owner's devices. Core-group
+  // path re-encodes the private base invite; device-link path mints a fresh
+  // `pearpetal://pair?...` pair URL (QR-first, DECISIONS 2026-07-12).
   'link:invite': async (_args, ctx) => {
+    if (isDeviceLinkEnabled()) { await requirePrivate(ctx); return ps.linkInvite(ctx) }
     const m = await privateMembership(ctx)
     if (!m) throw new Error('start tracking on this device first')
     return { inviteKey: reencodeInvite(m) }
@@ -644,6 +695,10 @@ const methods = {
   // Refuses if this device already has its own cycle, to avoid a split identity.
   'link:join': async ({ inviteKey }, ctx) => {
     if (typeof inviteKey !== 'string' || !inviteKey.trim()) throw new Error('inviteKey required')
+    if (isDeviceLinkEnabled()) {
+      if (await ps.exists(ctx)) throw new Error('this device is already tracking a cycle')
+      return ps.linkJoin(ctx, inviteKey.trim())
+    }
     if (await privateMembership(ctx)) throw new Error('this device is already tracking a cycle')
     const r = await ctx.joinGroup({ inviteKey: inviteKey.trim() })
     await tagKind(ctx, r.groupId, 'private')
@@ -654,15 +709,18 @@ const methods = {
   // --- device roster ------------------------------------------------------
   'device:setLabel': async ({ label }, ctx) => {
     if (typeof label !== 'string' || !label.trim()) throw new Error('label required')
-    await ctx.localDb.put('deviceProfile', { label: label.trim().slice(0, 64), updatedAt: Date.now() })
+    const clean = label.trim().slice(0, 64)
+    if (isDeviceLinkEnabled()) { await ps.setDeviceLabel(ctx, clean); return { label: clean } }
+    await ctx.localDb.put('deviceProfile', { label: clean, updatedAt: Date.now() })
     await publishDevice(ctx)
-    return { label: label.trim().slice(0, 64) }
+    return { label: clean }
   },
 
   // Retry publishing our roster row (call after link:join once writable).
-  'device:publish': async (_args, ctx) => ({ published: await publishDevice(ctx) }),
+  'device:publish': async (_args, ctx) => ({ published: await privPublishDevice(ctx) }),
 
   'device:getAll': async (_args, ctx) => {
+    if (isDeviceLinkEnabled()) return ps.listDevices(ctx)
     const base = viewFor(ctx, await privateGroupId(ctx))
     await base.update()
     const self = pubkeyHex(ctx)
@@ -680,9 +738,8 @@ const methods = {
   'day:set': async ({ date, flow, symptoms, mood, notes, bbt }, ctx) => {
     const nd = normDate(date)
     if (!nd) throw new Error('date must be YYYY-MM-DD')
-    const groupId = await privateGroupId(ctx)
-    const base = viewFor(ctx, groupId)
-    const existing = await readRow(base, dayKey(nd.key))
+    await requirePrivate(ctx)
+    const existing = await privReadRow(ctx, dayKey(nd.key))
     const base0 = (existing && !existing.deleted) ? existing : { date: nd.iso, createdBy: pubkeyHex(ctx), createdAt: Date.now() }
     const patch = {}
     if (flow !== undefined) patch.flow = (flow === null) ? null : (FLOW_VALUES.has(flow) ? flow : (() => { throw new Error('invalid flow') })())
@@ -690,7 +747,7 @@ const methods = {
     if (mood !== undefined) patch.mood = Array.isArray(mood) ? mood.slice(0, 16).map((s) => String(s).slice(0, 40)) : []
     if (notes !== undefined) patch.notes = notes ? String(notes).slice(0, 2000) : ''
     if (bbt !== undefined) patch.bbt = (bbt === null) ? null : (Number.isFinite(bbt) ? bbt : (() => { throw new Error('invalid bbt') })())
-    await putRow(ctx, groupId, dayKey(nd.key), { ...base0, ...patch, deleted: false })
+    await privPut(ctx, dayKey(nd.key), { ...base0, ...patch, deleted: false })
     await refreshShares(ctx).catch(() => {}) // keep any partner projections current
     return { ok: true, date: nd.iso }
   },
@@ -698,19 +755,13 @@ const methods = {
   'day:get': async ({ date }, ctx) => {
     const nd = normDate(date)
     if (!nd) throw new Error('date must be YYYY-MM-DD')
-    const base = viewFor(ctx, await privateGroupId(ctx))
-    const row = await readRow(base, dayKey(nd.key))
+    const row = await privReadRow(ctx, dayKey(nd.key))
     return (row && !row.deleted) ? row : null
   },
 
   // Newest first. Slice 1 returns all days; retention/paging is a later concern.
   'day:getAll': async (_args, ctx) => {
-    const base = viewFor(ctx, await privateGroupId(ctx))
-    await base.update()
-    const out = []
-    for await (const { value } of base.view.createReadStream(DAY_RANGE)) {
-      if (value && !value.deleted) out.push(value)
-    }
+    const out = (await privRows(ctx, DAY_RANGE)).filter((v) => v && !v.deleted)
     out.sort((a, b) => String(b.date).localeCompare(String(a.date)))
     return out
   },
@@ -718,11 +769,10 @@ const methods = {
   'day:delete': async ({ date }, ctx) => {
     const nd = normDate(date)
     if (!nd) throw new Error('date must be YYYY-MM-DD')
-    const groupId = await privateGroupId(ctx)
-    const base = viewFor(ctx, groupId)
-    const existing = await readRow(base, dayKey(nd.key))
+    await requirePrivate(ctx)
+    const existing = await privReadRow(ctx, dayKey(nd.key))
     if (!existing) throw new Error('day not found')
-    await putRow(ctx, groupId, dayKey(nd.key), { ...existing, deleted: true })
+    await privPut(ctx, dayKey(nd.key), { ...existing, deleted: true })
     await refreshShares(ctx).catch(() => {})
     return { ok: true }
   },
@@ -737,11 +787,10 @@ const methods = {
       if (!ne) throw new Error('end must be YYYY-MM-DD')
       endIso = ne.iso
     }
-    const groupId = await privateGroupId(ctx)
-    const base = viewFor(ctx, groupId)
-    const existing = await readRow(base, periodKey(ns.key))
+    await requirePrivate(ctx)
+    const existing = await privReadRow(ctx, periodKey(ns.key))
     const base0 = (existing && !existing.deleted) ? existing : { start: ns.iso, createdBy: pubkeyHex(ctx), createdAt: Date.now() }
-    await putRow(ctx, groupId, periodKey(ns.key), { ...base0, start: ns.iso, end: endIso, deleted: false })
+    await privPut(ctx, periodKey(ns.key), { ...base0, start: ns.iso, end: endIso, deleted: false })
     await refreshShares(ctx).catch(() => {})
     return { ok: true }
   },
@@ -766,22 +815,21 @@ const methods = {
     } else if (today > ns.iso) {
       endIso = today // ongoing: bleed through today
     }
-    const groupId = await privateGroupId(ctx)
-    const base = viewFor(ctx, groupId)
+    await requirePrivate(ctx)
     // Record the explicit span (start anchors the cycle; end marks its length).
-    const existingP = await readRow(base, periodKey(ns.key))
+    const existingP = await privReadRow(ctx, periodKey(ns.key))
     const p0 = (existingP && !existingP.deleted) ? existingP : { start: ns.iso, createdBy: pubkeyHex(ctx), createdAt: Date.now() }
-    await putRow(ctx, groupId, periodKey(ns.key), { ...p0, start: ns.iso, end: ongoing ? null : endIso, deleted: false })
+    await privPut(ctx, periodKey(ns.key), { ...p0, start: ns.iso, end: ongoing ? null : endIso, deleted: false })
     // Stamp bleeding flow across the span (capped), preserving existing flow days.
     const MAX_SPAN = 15
     let marked = 0; let d = ns.iso
     for (let i = 0; i < MAX_SPAN && d <= endIso && d <= today; i++) {
       const nd = normDate(d)
-      const existing = await readRow(base, dayKey(nd.key))
+      const existing = await privReadRow(ctx, dayKey(nd.key))
       const hasFlow = existing && !existing.deleted && FLOW_VALUES.has(existing.flow)
       if (!hasFlow) {
         const base0 = (existing && !existing.deleted) ? existing : { date: nd.iso, createdBy: pubkeyHex(ctx), createdAt: Date.now() }
-        await putRow(ctx, groupId, dayKey(nd.key), { ...base0, flow: 'medium', deleted: false })
+        await privPut(ctx, dayKey(nd.key), { ...base0, flow: 'medium', deleted: false })
         marked++
       }
       d = addDays(d, 1)
@@ -791,12 +839,7 @@ const methods = {
   },
 
   'period:getAll': async (_args, ctx) => {
-    const base = viewFor(ctx, await privateGroupId(ctx))
-    await base.update()
-    const out = []
-    for await (const { value } of base.view.createReadStream(PERIOD_RANGE)) {
-      if (value && !value.deleted) out.push(value)
-    }
+    const out = (await privRows(ctx, PERIOD_RANGE)).filter((v) => v && !v.deleted)
     out.sort((a, b) => String(b.start).localeCompare(String(a.start)))
     return out
   },
@@ -807,7 +850,7 @@ const methods = {
   // invite grants ONLY this shared base - never the private base or its key.
   'share:create': async ({ scope }, ctx) => {
     if (!SCOPES.has(scope)) throw new Error('scope must be phase, fertility, or full')
-    if (!(await privateMembership(ctx))) throw new Error('start tracking on this device first')
+    if (!(await privHas(ctx))) throw new Error('start tracking on this device first')
     const r = await ctx.createGroup({ name: 'PearPetal share' })
     const rec = (await ctx.localDb.get('groups:joined:' + r.groupId))?.value || {}
     await ctx.localDb.put('groups:joined:' + r.groupId, { ...rec, kind: 'shared-out', scope })

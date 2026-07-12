@@ -14,14 +14,14 @@ const { mintAddWriter, authorizeWriter } = require('./admission')
 // NOW, even though it stays DORMANT until DEVICE_LINK_ENABLED flips. SLICE 2
 // reroutes cycle:create / link:join through it (QR-first, per DECISIONS
 // 2026-07-12) and constructs it on the shared runtime. See src/deviceLink.js.
-const { DEVICE_LINK_ENABLED } = require('./deviceLink')
+const { isDeviceLinkEnabled } = require('./deviceLink')
 // The device-link-backed private store (SLICE 2). Required so it is in the
-// worklet bundle; SLICE 2b threads petalMethods' private-base calls through it
-// behind the flag. Inert import while the flag is off.
+// worklet bundle; petalMethods routes its private-base calls through it when the
+// flag is on. Inert while the flag is off.
 require('./privateStore')
-if (DEVICE_LINK_ENABLED) {
-  // SLICE 2b threads cycle:create / link / day / period / device roster through
-  // ./privateStore here + at the method sites. Inert while the flag is off.
+if (isDeviceLinkEnabled()) {
+  // The method table (petalMethods) does the actual routing per-call; nothing
+  // extra is needed at bring-up. Kept as a marker for the flip point.
 }
 
 const engine = createGroupEngine({
