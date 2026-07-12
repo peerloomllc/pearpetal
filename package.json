@@ -21,11 +21,13 @@
   },
   "dependencies": {
     "@peerloom/core": "file:../peerloom-core",
+    "@peerloom/device-link": "file:../peerloom-device-link",
     "@phosphor-icons/react": "^2.1.10",
     "@react-native-async-storage/async-storage": "2.2.0",
     "autobase": "^7.25.1",
     "b4a": "^1.8.0",
     "babel-preset-expo": "~54.0.10",
+    "bip39-mnemonic": "^2.5.0",
     "compact-encoding": "^2.19.2",
     "corestore": "^7.8.0",
     "expo": "^54.0.10",
@@ -43,9 +45,11 @@
     "expo-system-ui": "^6.0.7",
     "hyperbee": "^2.27.3",
     "hyperblobs": "^2.12.1",
+    "hypercore": "^11.26.0",
     "hyperdht": "^6.29.0",
     "hyperswarm": "^4.17.0",
     "jsqr": "^1.4.0",
+    "keet-identity-key": "^3.1.0",
     "protomux": "^3.10.3",
     "qrcode": "^1.5.4",
     "react": "19.1.0",
@@ -59,7 +63,8 @@
     "sodium-universal": "^5.0.1"
   },
   "overrides": {
-    "rocksdb-native": "3.17.2"
+    "rocksdb-native": "3.17.2",
+    "bare-fs": "4.7.3"
   },
   "devDependencies": {
     "@hyperswarm/testnet": "^3.1.4",

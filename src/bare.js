@@ -9,6 +9,17 @@ const { applyPetalOp } = require('./petalWire')
 const petalMethods = require('./petalMethods')
 const { mintAddWriter, authorizeWriter } = require('./admission')
 
+// Device-link (private base + mnemonic identity + own-device linking) wiring.
+// Required here so it is part of the worklet bundle and its native deps resolve
+// NOW, even though it stays DORMANT until DEVICE_LINK_ENABLED flips. SLICE 2
+// reroutes cycle:create / link:join through it (QR-first, per DECISIONS
+// 2026-07-12) and constructs it on the shared runtime. See src/deviceLink.js.
+const { DEVICE_LINK_ENABLED } = require('./deviceLink')
+if (DEVICE_LINK_ENABLED) {
+  // SLICE 2 lands the personal-base construction + method routing here.
+  // Intentionally inert while the flag is off (shipped behaviour unchanged).
+}
+
 const engine = createGroupEngine({
   appId: 'pearpetal',
   applyOps: applyPetalOp,
