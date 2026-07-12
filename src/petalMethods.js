@@ -279,6 +279,54 @@ async function privPublishDevice (ctx, onlyGroupId) {
   return publishDevice(ctx, onlyGroupId)
 }
 
+// ── legacy -> personal migration (proposal decision #3, SLICE 3) ─────────────
+// One-time, on the first method call after the device-link flag is on: if this
+// device still has a legacy @peerloom/core-group private base but no personal
+// base yet, copy its day/period log into a freshly-minted personal base and mark
+// it done. Idempotent via a localDb marker. The legacy base is LEFT in place as a
+// rollback snapshot (the flag can be turned back off and the old base is intact).
+// prefs / profile / notifications / donation live in localDb and are
+// path-independent, so only the base-resident cycle rows move; the device roster
+// regenerates from device-link deviceMeta as devices re-link (hard-cut, #4).
+let _migrationChecked = false
+function _resetMigrationForTest () { _migrationChecked = false }
+
+async function migrateIfNeeded (ctx) {
+  if (_migrationChecked || !isDeviceLinkEnabled() || !ctx || !ctx.store) return
+  _migrationChecked = true
+  try {
+    if ((await ctx.localDb.get('deviceLink:migrated').catch(() => null))?.value) return
+    // Already on a personal base (fresh device-link install) - nothing to move.
+    if (await ps.exists(ctx)) { await ctx.localDb.put('deviceLink:migrated', { at: Date.now(), from: null }); return }
+    const legacy = await privateMembership(ctx)
+    if (!legacy) { await ctx.localDb.put('deviceLink:migrated', { at: Date.now(), from: null }); return }
+    const base = ctx.bases.get(legacy.groupId)
+    if (!base) { _migrationChecked = false; return } // legacy base not mounted yet; retry next call
+    await base.update()
+    const days = []; const periods = []
+    for await (const { value } of base.view.createReadStream(DAY_RANGE)) if (value) days.push(value)
+    for await (const { value } of base.view.createReadStream(PERIOD_RANGE)) if (value) periods.push(value)
+    await ps.enable(ctx)
+    for (const v of days) {
+      const nd = normDate(v.date); if (!nd) continue
+      const val = { date: nd.iso, createdBy: v.createdBy || pubkeyHex(ctx), createdAt: v.createdAt || Date.now(), deleted: !!v.deleted }
+      if (v.flow !== undefined) val.flow = v.flow
+      if (Array.isArray(v.symptoms)) val.symptoms = v.symptoms
+      if (Array.isArray(v.mood)) val.mood = v.mood
+      if (typeof v.notes === 'string') val.notes = v.notes
+      if (typeof v.bbt === 'number') val.bbt = v.bbt
+      await ps.put(ctx, dayKey(nd.key), val)
+    }
+    for (const v of periods) {
+      const ns = normDate(v.start); if (!ns) continue
+      await ps.put(ctx, periodKey(ns.key), { start: ns.iso, end: v.end ?? null, createdBy: v.createdBy || pubkeyHex(ctx), createdAt: v.createdAt || Date.now(), deleted: !!v.deleted })
+    }
+    await ctx.localDb.put('deviceLink:migrated', { at: Date.now(), from: legacy.groupId, days: days.length, periods: periods.length })
+  } catch {
+    _migrationChecked = false // transient failure - let a later call retry
+  }
+}
+
 // Validate/normalize a 'YYYY-MM-DD' date to { iso, key(yyyymmdd) }. Fixed-width
 // key so lexicographic view scans return chronological order.
 function normDate (s) {
@@ -1011,4 +1059,15 @@ const methods = {
   },
 }
 
-module.exports = methods
+// Run the one-time legacy->personal migration before the first private-base
+// access. migrateIfNeeded is a cheap no-op after the first call (and instant when
+// the flag is off), so wrapping every handler is free and needs no post-init hook
+// (which onEvent would otherwise cost us its IPC event forwarding).
+const wrapped = {}
+for (const name of Object.keys(methods)) {
+  const fn = methods[name]
+  wrapped[name] = (args, ctx) => migrateIfNeeded(ctx).then(() => fn(args, ctx))
+}
+wrapped._resetMigrationForTest = _resetMigrationForTest
+
+module.exports = wrapped
