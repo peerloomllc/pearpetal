@@ -374,13 +374,19 @@ function ScannerView ({ open, onClose, onDecode }) {
 
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
-  // intro (welcome) -> name (profile, everyone) -> chooser (track/view) -> partner (paste/scan)
+  // intro (welcome) -> name (profile, everyone) -> chooser (track/view/link) ->
+  // partner (paste/scan a share code) OR link (paste/scan a device-link URL)
   const [phase, setPhase] = useState('intro')
   const [name, setName] = useState('')
   const [avatar, setAvatar] = useState(null) // avatar data URL
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [scanning, setScanning] = useState(false)
+  const [scanMode, setScanMode] = useState('partner') // 'partner' | 'device' - which flow a scan feeds
+  // Own-device linking is offered only on the device-link path (hidden until the
+  // flag flips); a partner-viewer + core-group installs never see it.
+  const [dlEnabled, setDlEnabled] = useState(false)
+  useEffect(() => { call('deviceLink:status').then((r) => setDlEnabled(!!(r && r.enabled))).catch(() => {}) }, [])
 
   // Name/photo is collected up front, before the track-vs-view choice, so it
   // applies to everyone - a partner-viewer, and a restore-from-backup user whose
@@ -401,12 +407,19 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
     setErr('')
     try { await call('partner:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
   }
-  const submit = () => joinPartner()
-  const onScanned = (txt) => { setScanning(false); joinPartner(txt) }
-  // Android Back walks the phases back: partner -> chooser -> name -> intro.
+  // Link THIS fresh device to the owner's cycle by consuming a scanned/pasted
+  // `pearpetal://pair?...` URL (device-link path). link:join resolves once this
+  // device is a writer on the personal base, then we boot into the owner's cycle.
+  const joinDevice = async (raw) => {
+    setErr('')
+    try { await call('link:join', { inviteKey: (typeof raw === 'string' ? raw : code).trim() }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
+  }
+  const submit = () => (phase === 'link' ? joinDevice() : joinPartner())
+  const onScanned = (txt) => { setScanning(false); (scanMode === 'device' ? joinDevice : joinPartner)(txt) }
+  // Android Back walks the phases back: partner/link -> chooser -> name -> intro.
   const back = () => {
     setErr(''); setCode(''); setScanning(false)
-    setPhase((p) => (p === 'partner' ? 'chooser' : p === 'chooser' ? 'name' : 'intro'))
+    setPhase((p) => (p === 'partner' || p === 'link' ? 'chooser' : p === 'chooser' ? 'name' : 'intro'))
   }
   useBackHandler(phase !== 'intro', back)
 
@@ -465,6 +478,7 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
           <Btn onClick={start}>Track my cycle</Btn>
           <Btn kind='ghost' onClick={() => { setPhase('partner'); setErr('') }}>View a partner's cycle</Btn>
+          {dlEnabled && <Btn kind='ghost' onClick={() => { setPhase('link'); setErr('') }}>Link to my other device</Btn>}
         </div>
       )}
       {phase === 'partner' && (
@@ -476,7 +490,21 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
           <div style={{ display: 'flex', gap: spacing.sm }}>
             <Btn onClick={submit} style={{ flex: 1 }}>View their cycle</Btn>
-            <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }} style={{ flex: 1 }}>Scan QR</Btn>
+            <Btn kind='ghost' onClick={() => { setErr(''); setScanMode('partner'); setScanning(true) }} style={{ flex: 1 }}>Scan QR</Btn>
+          </div>
+          <Btn kind='ghost' onClick={back}>Back</Btn>
+        </div>
+      )}
+      {phase === 'link' && (
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+          <div style={{ color: colors.text.secondary, fontSize: 14 }}>
+            On your other device: PearPetal → Settings → Your devices. Scan the QR it shows, or paste its link here. Your full cycle then lives on both devices.
+          </div>
+          <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder='Paste device link' rows={3}
+            style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
+          <div style={{ display: 'flex', gap: spacing.sm }}>
+            <Btn onClick={submit} style={{ flex: 1 }}>Link this device</Btn>
+            <Btn kind='ghost' onClick={() => { setErr(''); setScanMode('device'); setScanning(true) }} style={{ flex: 1 }}>Scan QR</Btn>
           </div>
           <Btn kind='ghost' onClick={back}>Back</Btn>
         </div>
