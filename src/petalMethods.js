@@ -486,6 +486,11 @@ const methods = {
   // --- identity -----------------------------------------------------------
   'identity:get': async (_args, ctx) => ({ pubkey: pubkeyHex(ctx) }),
 
+  // Whether the device-link private-base path is active (drives whether the UI
+  // shows the recovery-phrase + device-linking surfaces). False in production
+  // until the flag flips, so those surfaces stay hidden.
+  'deviceLink:status': async (_args, _ctx) => ({ enabled: isDeviceLinkEnabled() }),
+
   // --- cycle lifecycle + device linking ----------------------------------
   // Is this device already tracking a cycle (has a private base)?
   'cycle:status': async (_args, ctx) => {
@@ -766,6 +771,17 @@ const methods = {
 
   // Retry publishing our roster row (call after link:join once writable).
   'device:publish': async (_args, ctx) => ({ published: await privPublishDevice(ctx) }),
+
+  // The device-link recovery phrase (SLIP-48 mnemonic), for the "save your
+  // recovery phrase" UI. Only available on the device-link path with a personal
+  // base; { available:false } otherwise (the UI then shows nothing). Anchor only
+  // (decision #5): the phrase recovers identity + re-pairs; data recovery still
+  // needs a backup file.
+  'recovery:getPhrase': async (_args, ctx) => {
+    if (!isDeviceLinkEnabled() || !(await ps.exists(ctx))) return { available: false, phrase: null }
+    const phrase = await ps.getRecoveryPhrase(ctx)
+    return { available: !!phrase, phrase: phrase || null }
+  },
 
   'device:getAll': async (_args, ctx) => {
     if (isDeviceLinkEnabled()) return ps.listDevices(ctx)

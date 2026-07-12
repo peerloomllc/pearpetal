@@ -23,7 +23,7 @@
 
 const b4a = require('b4a')
 const { signValue } = require('@peerloom/core/records')
-const { getDeviceLink } = require('./deviceLink')
+const { getDeviceLink, makeKeystore } = require('./deviceLink')
 
 function pubkeyHex (ctx) { return b4a.toString(ctx.identity.publicKey, 'hex') }
 
@@ -147,6 +147,15 @@ async function setDeviceLabel (ctx, label) {
   await dl.setDeviceNickname(String(label).slice(0, 64))
 }
 
+// --- recovery phrase (SLICE 4) --------------------------------------------
+
+// The device-link mnemonic (SLIP-48 recovery phrase). Anchor only (decision #5):
+// it recovers identity + re-pairs devices; recovering the cycle log itself still
+// needs a backup file. Read straight from the keystore.
+async function getRecoveryPhrase (ctx) {
+  return makeKeystore(ctx.localDb).getMnemonic()
+}
+
 module.exports = {
   typeForKey,
   parsePairUrl,
@@ -161,4 +170,5 @@ module.exports = {
   createReadStream,
   listDevices,
   setDeviceLabel,
+  getRecoveryPhrase,
 }

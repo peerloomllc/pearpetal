@@ -153,6 +153,34 @@ test('link:invite mints a scannable pearpetal:// pair URL', async () => {
   })
 })
 
+test('deviceLink:status reflects the flag (drives whether the UI shows the surfaces)', async () => {
+  await withDeviceLink(async ({ call }) => {
+    assert.equal((await call('deviceLink:status', {})).enabled, true)
+  })
+})
+
+test('recovery:getPhrase returns the mnemonic once a personal base exists', async () => {
+  await withDeviceLink(async ({ call }) => {
+    const before = await call('recovery:getPhrase', {})
+    assert.equal(before.available, false, 'no phrase before a cycle exists')
+    await call('cycle:create', {})
+    const after = await call('recovery:getPhrase', {})
+    assert.equal(after.available, true)
+    assert.equal(typeof after.phrase, 'string')
+    assert.ok(after.phrase.trim().split(/\s+/).length >= 12, 'a multi-word recovery phrase')
+  })
+})
+
+test('recovery:getPhrase is unavailable when the flag is off', async () => {
+  _resetForTest(); _setDeviceLinkEnabledForTest(false)
+  const { engine, call } = driver()
+  try {
+    await call('init', {})
+    await call('cycle:create', {})
+    assert.equal((await call('recovery:getPhrase', {})).available, false)
+  } finally { await engine.close().catch(() => {}) }
+})
+
 test('export:data returns the days logged on the personal base', async () => {
   await withDeviceLink(async ({ call }) => {
     await call('cycle:create', {})
