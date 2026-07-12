@@ -24,7 +24,7 @@
 
 1. **Private base -> device-link personal Autobase.** Instantiate `createDeviceLink({ store, swarm, localDb, keystore, records, mirror, platform, onEvent })` in the worklet, sharing the app's one Corestore + Hyperswarm + localDb with the core group engine. device-link namespaces `store.namespace('personal')`, distinct from core's group namespaces, so the two engines coexist on one runtime. `cycle:create` -> `dl.enable()`; the cycle/day/period record types register through device-link's `records` + `mirror` so the apply/mirror path writes them into the same local views the UI already reads.
 2. **Own-device linking -> device-link pairing.** `link:join` (and the device-linking UI) drive `dl.startPairing()` / `dl.consumePairLink()` (the `hello -> granted -> personalWriter -> complete` handshake). The `granted` leg carries the mnemonic to the new device, so linking a device also transfers the identity - no separate key export.
-3. **New: a recovery phrase.** Surface the device-link mnemonic in onboarding/settings as a "recovery phrase" the user can save, and a "restore from phrase" entry. This is the user-visible payoff of the whole change.
+3. **New: a recovery phrase.** Surface the device-link mnemonic in onboarding/settings as a "recovery phrase" the user can save, and a "restore from phrase" entry. This is the user-visible payoff of the whole change. **Scope (decided): anchor only for v1** - the phrase recovers identity + re-pairs devices; recovering the actual cycle log still needs a backup file. The phrase does not key the encrypted backup in v1 (that coupling is a possible later enhancement, kept separate to ship sooner).
 4. **Roster.** The Devices screen reads device-link's `listLinkedDevices()` / `setDeviceNickname()` (replacing the current `device:{pubkey}` roster rows on the private group).
 
 **What does NOT change**
@@ -48,24 +48,32 @@ Identity model - core keeps a per-device signing keypair; device-link introduces
 ## Compat / migration
 
 - **Existing installs** have a core-group private base (key format and namespace differ from a device-link personal base). Because multi-device is currently a minor, UI-hidden path, migrate the **single-device private log** locally, with no new wire protocol, by reusing the **existing export/import**: on first launch of the new build, if a legacy `kind:'private'` group exists and no personal base does, export the log in-process, `dl.enable()` a fresh personal base, import into it, then retire the legacy group. Partner shared bases are untouched and keep working throughout.
-- **Cross-version linking** happens only between one user's own devices. A new-code device cannot pair to an old-code device (different pairing protocol). Handle by (a) requiring both devices upgraded with a clear message, and/or (b) keeping the legacy `link:join` path available behind the migration flag for a transition window.
+- **Cross-version linking** happens only between one user's own devices. A new-code device cannot pair to an old-code device (different pairing protocol). **Hard-cut (decided)**: both devices must be on the new version to link; the older device shows a clear "update to link this device" message. No dual link path is kept - the legacy `link:join` is removed once the new flow lands, not carried behind the flag.
 - The whole private-base swap sits behind a **feature flag** so it can ship dark, be migrated in a staged build, and be reverted without stranding data.
 
 ## Verify
 
 - `npm run verify` green (existing node tests + all three bundles), plus new tests: recovery-phrase round trip (mnemonic -> restore reconstructs the identity + re-pairs), and a migration test (legacy-private-group export -> personal-base import reconstructs days/periods/prefs).
 - device-link's own gate stays green (`npm test` 21/21; `npm run test:integration` two-peer + group-plugin, exit 0).
-- On-hardware, the flow PearPetal has already run for its private base (TCL + Pixel + iPhone SE): device A `enable()` + log a day -> device B links by pasted code / QR -> B ends up a personal-base writer with the full log + a working recovery phrase; a later edit on A propagates live to B. Explicitly re-check the **B->A** direction that stalled under the old core-group linking.
+- On-hardware, the flow PearPetal has already run for its private base (TCL + Pixel + iPhone SE): device A `enable()` + log a day -> device B links by pasted code / QR -> B ends up a personal-base writer with the full log + a working recovery phrase; a later edit on A propagates live to B.
+- **Hard gate (decided): the B->A direction must be verified fixed on hardware before the feature flag flips on.** An edit made on the linked (second) device must reach the founder device without an app restart. If device-link's personal-base admission still exhibits the old churn stall, that is an engine fix to land in `@peerloom/device-link` first - the flag does not flip on until this passes.
 
 ## Rollback
 
 device-link instantiation is additive and feature-flagged. Reverting = stop constructing the device-link engine and fall back to the core-group private base; core, partner sharing, and existing data are untouched. Because migration is staged behind the same flag, a device that has not yet migrated loses nothing; a device that has migrated keeps a legacy-base snapshot (or an export) until the flag is retired, so rollback never strands the private log. The core `store`/`swarm` exposure (option A) is inert on its own and can stay.
 
-## Open questions
+## Decisions (2026-07-12, Tim)
 
-1. **Core boundary**: expose `store`/`swarm`/`keystore` on `createGroupEngine`'s return (A) or add a plugin seam (B)? (Rec: A - smallest, wire-neutral core change.)
-2. **Identity**: coexist (core per-device key signs rows, mnemonic is recovery/pairing anchor) or mnemonic-root (defer to a later core T3)? (Rec: coexist.)
-3. **Migration mechanics**: reuse export/import locally (rec) vs. an in-place adopt of the existing private base's cores as the personal base (avoids a copy but needs key/namespace compatibility work).
-4. **Recovery phrase scope**: is the phrase purely an identity/pairing anchor, or should it also key the encrypted backup so "phrase + backup file" is a complete offline recovery? (Interacts with the 2026-07-10 encrypted-backups design.)
-5. **B->A stall**: confirm device-link's personal-base admission actually resolves the deferred churn stall rather than re-homing it; if it persists, it becomes a device-link engine issue to fix before the flag flips on.
-6. **Transition window**: keep legacy `link:join` available during migration, or hard-cut once both devices are upgraded?
+All six open questions resolved before implementation:
+
+1. **Core boundary -> expose store/swarm on core.** Add a small additive, wire-neutral change to `@peerloom/core` so `createGroupEngine` surfaces the already-built `store`, `swarm`, and `keystore`; device-link and core run as peers on one runtime. (Not the plugin seam.)
+2. **Identity -> coexist.** Core's per-device keypair keeps signing rows exactly as today; the device-link mnemonic is purely the recovery + device-pairing anchor for the personal base. No change to how existing rows are signed or validated. (Mnemonic-root deferred to a possible later core T3.)
+3. **Migration -> reuse export/import.** On upgrade, export the legacy `kind:'private'` group log in-process and import it into a freshly minted device-link personal base, then retire the legacy group. No new wire protocol; leans on already-proven backup code. Partner shared bases untouched.
+4. **Transition -> hard-cut.** Both of a user's devices must be on the new version to link; the older device shows an "update to link" message. The legacy `link:join` path is removed with this change, not carried behind the flag.
+5. **Recovery phrase -> anchor only (v1).** The phrase recovers identity + re-pairs devices; recovering the cycle log still needs a backup file. The phrase does not key the encrypted backup in v1 (kept decoupled from the 2026-07-10 encrypted-backups design; couple later if wanted).
+6. **B->A stall -> hard gate.** The second-device-to-founder sync direction must be verified fixed on hardware before the feature flag flips on. If device-link's personal-base admission still stalls under churn, that is an engine fix to land in `@peerloom/device-link` first.
+
+## Follow-on work these decisions imply
+
+- A small `@peerloom/core` change (its own T-additive PR): expose `store`/`swarm`/`keystore` on `createGroupEngine`'s return. Wire-neutral, no group-behavior change.
+- A device-link hardware trace of the B->A direction; an engine fix there if the churn stall reproduces (gates the flag).
