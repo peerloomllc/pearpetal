@@ -1594,7 +1594,9 @@ function DevicesCard () {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState('')
   const load = useCallback(async () => {
-    setDevices(await call('device:getAll').catch(() => []))
+    const list = await call('device:getAll').catch(() => [])
+    list.sort((a, b) => (b.self ? 1 : 0) - (a.self ? 1 : 0)) // this device always on top
+    setDevices(list)
     try { const r = await call('link:invite'); setInvite(r.inviteKey) } catch {}
   }, [])
   useSynced(load)
