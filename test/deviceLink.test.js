@@ -15,7 +15,7 @@ const os = require('node:os')
 const path = require('node:path')
 const Corestore = require('corestore')
 const Hyperbee = require('hyperbee')
-const { makeKeystore, getDeviceLink, DEVICE_LINK_ENABLED, _resetForTest } = require('../src/deviceLink')
+const { makeKeystore, getDeviceLink, isDeviceLinkEnabled, _resetForTest } = require('../src/deviceLink')
 
 const _tmpDirs = []
 function tmpStore () {
@@ -42,7 +42,7 @@ async function mkCtx () {
 }
 
 test('the flag ships OFF (device-link path dormant until hardware-verified)', () => {
-  assert.equal(DEVICE_LINK_ENABLED, false)
+  assert.equal(isDeviceLinkEnabled(), false)
 })
 
 test('keystore adapter round-trips a mnemonic through localDb', async () => {

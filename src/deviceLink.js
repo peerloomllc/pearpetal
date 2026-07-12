@@ -37,7 +37,13 @@ const PAIR_CHANNEL = {
 // Master switch for the whole device-link path. OFF until the personal-base
 // linking is hardware-verified (esp. the B->A direction, proposal decision #6).
 // While false, the app runs the existing core-group private base unchanged.
-const DEVICE_LINK_ENABLED = false
+//
+// The single production flip point is the `_enabled` default below (change it to
+// true once the hardware gate passes). It is a mutable so tests can exercise the
+// device-link path via _setDeviceLinkEnabledForTest without shipping it on.
+let _enabled = false
+function isDeviceLinkEnabled () { return _enabled }
+function _setDeviceLinkEnabledForTest (v) { _enabled = !!v }
 
 // The mnemonic lives device-local in localDb, NEVER in any Autobase and NEVER in
 // a backup (matches PearPetal's "no secrets in export" rule). This is the whole
@@ -105,10 +111,11 @@ function getDeviceLink (ctx) {
 function _resetForTest () { _dlPromise = null }
 
 module.exports = {
-  DEVICE_LINK_ENABLED,
+  isDeviceLinkEnabled,
   makeKeystore,
   makeRecords,
   makeMirror,
   getDeviceLink,
   _resetForTest,
+  _setDeviceLinkEnabledForTest,
 }
