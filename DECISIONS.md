@@ -2,6 +2,21 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-12 - Device linking primary method is QR generate + scan
+Tier: T3 (part of the @peerloom/device-link adoption; proposal
+`proposals/2026-07-12-adopt-device-link.md`).
+Context: adopting `@peerloom/device-link` for the private base + own-device
+linking replaces the old `link:join` (core `group:join`) flow, so we must pick
+the primary way a user links a second device.
+Choice: **QR-code generation + scanning is the PRIMARY flow.** The founder device
+renders `dl.startPairing()`'s pair URL as a QR (reusing the existing `QrImage`);
+the new device scans it with the camera (existing `ScannerView`) and calls
+`dl.consumePairLink()`. Paste/copy-a-code stays only as a fallback.
+Alternatives: paste-code primary (kept as fallback); NFC / deep link (not now).
+Consequences: reuse PearPetal's existing WebView QR infra (`QrImage` +
+`ScannerView` from the QR blocker) - no new native module. The onboarding /
+settings "link a device" entry drives the QR flow first.
+
 ## 2026-07-10 - Viewers join shared bases client-only (swarm accumulation, mitigation A) - IMPLEMENTED
 Tier: T3 (@peerloom/core swarm connectivity, suite-wide). Proposal
 `proposals/2026-07-09-swarm-topic-accumulation.md`; review
