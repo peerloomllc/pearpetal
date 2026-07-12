@@ -10,7 +10,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -1565,6 +1565,36 @@ function ViewerSettings ({ themePref, onTheme }) {
   )
 }
 
+// The device-link recovery phrase (SLIP-48 mnemonic). Renders nothing unless the
+// device-link path is active and a phrase exists, so it stays hidden in
+// production until the flag flips. Reveal-on-tap; the phrase never leaves the
+// device unless the user copies it.
+function RecoveryPhraseCard () {
+  const [phrase, setPhrase] = useState(null)
+  const [open, setOpen] = useState(false)
+  const [revealed, setRevealed] = useState(false)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => { call('recovery:getPhrase').then((r) => { if (r && r.available) setPhrase(r.phrase) }).catch(() => {}) }, [])
+  if (!phrase) return null
+  const words = phrase.trim().split(/\s+/)
+  const copy = async () => { try { await navigator.clipboard.writeText(phrase); setCopied(true); haptic('success'); setTimeout(() => setCopied(false), 1500) } catch {} }
+  return (
+    <CollapsibleCard title='Recovery phrase' icon={Key} open={open} onToggle={() => setOpen((o) => !o)}>
+      <div style={{ color: colors.text.muted, fontSize: 12 }}>These {words.length} words are your identity. Write them down and keep them somewhere safe and private - they let you set up a new device. On their own they do <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>not</strong> restore your cycle log; for that keep a backup (Your data).</div>
+      {revealed ? (
+        <>
+          <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.xs, fontFamily: 'ui-monospace, monospace', fontSize: 13, color: colors.text.primary }}>
+            {words.map((w, i) => (<div key={i}><span style={{ color: colors.text.muted }}>{i + 1}. </span>{w}</div>))}
+          </div>
+          <Btn kind='ghost' onClick={copy}>{copied ? 'Copied' : 'Copy phrase'}</Btn>
+        </>
+      ) : (
+        <Btn onClick={() => setRevealed(true)}>Reveal phrase</Btn>
+      )}
+    </CollapsibleCard>
+  )
+}
+
 function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState(null) // { text, tone: 'success'|'error'|'muted' }
@@ -1574,6 +1604,10 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
   // The advanced/occasional sections collapse independently (collapsed by default).
   const [openSection, setOpenSection] = useState({})
   const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
+  // Device-link surfaces (recovery phrase + linked devices) show only when the
+  // device-link path is active; hidden in production until the flag flips.
+  const [dlEnabled, setDlEnabled] = useState(false)
+  useEffect(() => { call('deviceLink:status').then((r) => setDlEnabled(!!(r && r.enabled))).catch(() => {}) }, [])
   useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
   // Deep-link: when opened via the "tracked conditions" link, expand the health
   // section and scroll to it once prefs have rendered, then clear the request. The
@@ -1715,6 +1749,13 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Set a password to save an <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>encrypted</strong> backup; leave it blank for a plain file. Either way the file only leaves your device if you share it, so keep it somewhere private. Import merges a backup into your log and will ask for the password if the file is encrypted. A forgotten password cannot be recovered.</div>
         {dataMsg && <div style={{ color: dataMsg.tone === 'error' ? colors.error : dataMsg.tone === 'muted' ? colors.text.muted : colors.success, fontSize: 13 }}>{dataMsg.text}</div>}
       </CollapsibleCard>
+      {dlEnabled && <RecoveryPhraseCard />}
+      {dlEnabled && (
+        <button onClick={onDevices} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', border: `1px solid ${colors.border}`, width: '100%', textAlign: 'left' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md, color: colors.text.primary }}><DevicesIcon size={20} color={colors.text.secondary} weight='regular' /> Your devices</span>
+          <CaretRight size={16} color={colors.text.muted} weight='regular' />
+        </button>
+      )}
       {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
       {successModal && <BackupSuccessModal title={successModal.title} message={successModal.message} onClose={() => setSuccessModal(null)} />}
     </div>
