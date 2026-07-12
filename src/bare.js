@@ -15,9 +15,13 @@ const { mintAddWriter, authorizeWriter } = require('./admission')
 // reroutes cycle:create / link:join through it (QR-first, per DECISIONS
 // 2026-07-12) and constructs it on the shared runtime. See src/deviceLink.js.
 const { DEVICE_LINK_ENABLED } = require('./deviceLink')
+// The device-link-backed private store (SLICE 2). Required so it is in the
+// worklet bundle; SLICE 2b threads petalMethods' private-base calls through it
+// behind the flag. Inert import while the flag is off.
+require('./privateStore')
 if (DEVICE_LINK_ENABLED) {
-  // SLICE 2 lands the personal-base construction + method routing here.
-  // Intentionally inert while the flag is off (shipped behaviour unchanged).
+  // SLICE 2b threads cycle:create / link / day / period / device roster through
+  // ./privateStore here + at the method sites. Inert while the flag is off.
 }
 
 const engine = createGroupEngine({
