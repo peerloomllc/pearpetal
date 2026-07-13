@@ -1341,7 +1341,13 @@ function ProfileCard () {
   const [name, setName] = useState('')
   const [msg, setMsg] = useState('')
   const fileRef = useRef(null)
-  useEffect(() => { call('profile:get').then((p) => { setProfile(p || {}); setName(p?.displayName || '') }).catch(() => setProfile({})) }, [])
+  const editingName = useRef(false)
+  // Live-refresh on sync (a profile changed on another device), but never yank the
+  // name field out from under active typing.
+  const load = useCallback(async () => {
+    try { const p = await call('profile:get'); setProfile(p || {}); if (!editingName.current) setName(p?.displayName || '') } catch { setProfile((prev) => prev || {}) }
+  }, [])
+  useSynced(load)
   if (!profile) return null
   const saveName = async () => {
     const dn = name.trim(); if (dn === (profile.displayName || '')) return
@@ -1371,7 +1377,7 @@ function ProfileCard () {
           {profile.avatar && <button onClick={clearPhoto} style={{ marginTop: spacing.sm, background: colors.surface.input, border: `1px solid ${colors.border}`, color: colors.text.secondary, fontSize: 11, padding: '4px 12px', borderRadius: radius.full, lineHeight: 1.2, cursor: 'pointer' }}>Remove</button>}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
-          <input value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} placeholder='Your name' maxLength={64}
+          <input value={name} onChange={(e) => setName(e.target.value)} onFocus={() => { editingName.current = true }} onBlur={() => { editingName.current = false; saveName() }} placeholder='Your name' maxLength={64}
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `8px 10px`, fontSize: 15 }} />
           <span style={{ color: colors.text.muted, fontSize: 11 }}>Shown to partners you share with. Otherwise stays on your devices.</span>
         </div>
@@ -1670,7 +1676,11 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   // device-link path is active; hidden in production until the flag flips.
   const [dlEnabled, setDlEnabled] = useState(false)
   useEffect(() => { call('deviceLink:status').then((r) => setDlEnabled(!!(r && r.enabled))).catch(() => {}) }, [])
-  useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
+  // Live-refresh prefs on sync so settings changed on another device appear
+  // without leaving the screen. Controlled chips/steppers only (no free-text tied
+  // to prefs), so re-reading is safe; an optimistic save re-reads the same value.
+  const loadPrefs = useCallback(async () => { try { setPrefs(await call('prefs:get')) } catch { setPrefs({}) } }, [])
+  useSynced(loadPrefs)
   // Deep-link: when opened via the "tracked conditions" link, expand the health
   // section and scroll to it once prefs have rendered, then clear the request. The
   // scroll is delayed so the expand has committed first - scrolling mid-animation
