@@ -2275,8 +2275,9 @@ export default function App () {
   const goToday = () => { const t = monthStart(todayIso()); setCalDir(t < calMonth ? -1 : 1); setCalMonth(t); setDate(todayIso()) }
 
   const refresh = useCallback(async () => {
-    const [d, pr] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null)])
+    const [d, pr, p] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null), call('prefs:get').catch(() => null)])
     setDays(d); setPred(pr)
+    if (p && p.flower) setFlower(p.flower) // keep the dial's flower in sync when prefs change (incl. synced from another device)
   }, [])
 
   const boot = useCallback(async () => {
