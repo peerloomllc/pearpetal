@@ -129,6 +129,18 @@ test('putProfile publishes identityProfile onto the personal base -> localDb pro
   await ctx.store.close(); _resetForTest()
 })
 
+test('putPrefs publishes ownerPrefs onto the personal base -> localDb prefs', async () => {
+  _resetForTest()
+  const ctx = await mkCtx()
+  await ps.enable(ctx)
+  await ps.putPrefs(ctx, { flower: 'lotus', goal: 'conceive', updatedAt: 2000 })
+  await ps.update(ctx)
+  const prefs = (await ctx.localDb.get('prefs')).value
+  assert.equal(prefs.flower, 'lotus')
+  assert.equal(prefs.goal, 'conceive')
+  await ctx.store.close(); _resetForTest()
+})
+
 test('linkInvite mints a scannable pearpetal:// pair URL once enabled', async () => {
   _resetForTest()
   const ctx = await mkCtx()

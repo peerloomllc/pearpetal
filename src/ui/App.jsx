@@ -1634,6 +1634,11 @@ function DevicesCard () {
                     <PencilSimple size={16} color={colors.text.muted} />
                   </button>
                 )}
+                {!d.self && (
+                  <button onClick={async () => { haptic('light'); try { await call('device:remove', { pubkey: d.pubkey }) } catch {} load() }} aria-label='Remove this device' style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex', flexShrink: 0 }}>
+                    <Trash size={16} color={colors.text.muted} />
+                  </button>
+                )}
               </>
             )}
           </div>
