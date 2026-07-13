@@ -15,7 +15,7 @@ const os = require('node:os')
 const path = require('node:path')
 const Corestore = require('corestore')
 const Hyperbee = require('hyperbee')
-const { makeKeystore, getDeviceLink, isDeviceLinkEnabled, _resetForTest } = require('../src/deviceLink')
+const { makeKeystore, makeMirror, getDeviceLink, isDeviceLinkEnabled, _resetForTest } = require('../src/deviceLink')
 
 const _tmpDirs = []
 function tmpStore () {
@@ -69,6 +69,20 @@ test('getDeviceLink constructs + starts, and enable() mints a writable personal 
   await dl.stop()
   await ctx.store.close()
   _resetForTest()
+})
+
+test('mirror folds identityProfile into localDb profile with last-writer-wins', async () => {
+  const ctx = await mkCtx()
+  const mirror = makeMirror(ctx.localDb)
+  await mirror('identityProfile', 'identityProfile', { displayName: 'Ada', updatedAt: 100 })
+  assert.equal((await ctx.localDb.get('profile')).value.displayName, 'Ada')
+  // Older update does NOT overwrite.
+  await mirror('identityProfile', 'identityProfile', { displayName: 'Stale', updatedAt: 50 })
+  assert.equal((await ctx.localDb.get('profile')).value.displayName, 'Ada')
+  // Newer update wins.
+  await mirror('identityProfile', 'identityProfile', { displayName: 'Ada B', updatedAt: 200 })
+  assert.equal((await ctx.localDb.get('profile')).value.displayName, 'Ada B')
+  await ctx.store.close()
 })
 
 test('getDeviceLink is a cached singleton for the worklet', async () => {

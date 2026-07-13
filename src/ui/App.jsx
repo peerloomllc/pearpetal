@@ -374,9 +374,12 @@ function ScannerView ({ open, onClose, onDecode }) {
 
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
-  // intro (welcome) -> name (profile, everyone) -> chooser (track/view/link) ->
-  // partner (paste/scan a share code) OR link (paste/scan a device-link URL)
+  // intro (welcome) -> chooser (track/view/link) -> then:
+  //   track/view -> name (profile) -> start setup / partner join
+  //   link       -> link (paste/scan a device-link URL); NO name step - a linked
+  //                 device inherits the primary's profile via the personal base.
   const [phase, setPhase] = useState('intro')
+  const [choice, setChoice] = useState(null) // 'track' | 'view' - what the name step leads into
   const [name, setName] = useState('')
   const [avatar, setAvatar] = useState(null) // avatar data URL
   const [code, setCode] = useState('')
@@ -388,14 +391,15 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
   const [dlEnabled, setDlEnabled] = useState(false)
   useEffect(() => { call('deviceLink:status').then((r) => setDlEnabled(!!(r && r.enabled))).catch(() => {}) }, [])
 
-  // Name/photo is collected up front, before the track-vs-view choice, so it
-  // applies to everyone - a partner-viewer, and a restore-from-backup user whose
-  // backup carries cycle data but not their profile. profile:set is device-local
-  // (no base needed), so it is safe to call before any cycle exists.
+  // Name/photo, collected for a tracker or a partner-viewer (NOT a linked device -
+  // that inherits the primary's profile). profile:set is device-local (no base
+  // needed), safe before any cycle exists. On save we advance into the chosen flow.
   const saveProfile = async () => {
     const dn = name.trim()
     if (dn || avatar) { try { await call('profile:set', { displayName: dn, avatar: avatar || undefined }) } catch {} }
-    setErr(''); setPhase('chooser')
+    setErr('')
+    if (choice === 'view') setPhase('partner')
+    else start()
   }
   const start = async () => {
     setErr('')
@@ -416,10 +420,11 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
   }
   const submit = () => (phase === 'link' ? joinDevice() : joinPartner())
   const onScanned = (txt) => { setScanning(false); (scanMode === 'device' ? joinDevice : joinPartner)(txt) }
-  // Android Back walks the phases back: partner/link -> chooser -> name -> intro.
+  // Android Back walks the phases back: partner -> name; name/link -> chooser;
+  // chooser -> intro.
   const back = () => {
     setErr(''); setCode(''); setScanning(false)
-    setPhase((p) => (p === 'partner' || p === 'link' ? 'chooser' : p === 'chooser' ? 'name' : 'intro'))
+    setPhase((p) => (p === 'partner' ? 'name' : (p === 'name' || p === 'link') ? 'chooser' : 'intro'))
   }
   useBackHandler(phase !== 'intro', back)
 
@@ -441,7 +446,7 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
           <Wordmark size={34} />
           <div style={{ color: colors.text.secondary, marginTop: spacing.sm, lineHeight: 1.5 }}>Your flower furls and blooms across your cycle, so a glance shows your phase. Private tracking - no accounts, no servers. Your data stays on your device.</div>
         </div>
-        <Btn onClick={() => setPhase('name')}>Get started</Btn>
+        <Btn onClick={() => setPhase('chooser')}>Get started</Btn>
       </>,
     )
   }
@@ -476,8 +481,8 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
       </div>
       {phase === 'chooser' && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-          <Btn onClick={start}>Track my cycle</Btn>
-          <Btn kind='ghost' onClick={() => { setPhase('partner'); setErr('') }}>View a partner's cycle</Btn>
+          <Btn onClick={() => { setChoice('track'); setErr(''); setPhase('name') }}>Track my cycle</Btn>
+          <Btn kind='ghost' onClick={() => { setChoice('view'); setErr(''); setPhase('name') }}>View a partner's cycle</Btn>
           {dlEnabled && <Btn kind='ghost' onClick={() => { setPhase('link'); setErr('') }}>Link to my other device</Btn>}
         </div>
       )}

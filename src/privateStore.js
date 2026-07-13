@@ -156,6 +156,20 @@ async function getRecoveryPhrase (ctx) {
   return makeKeystore(ctx.localDb).getMnemonic()
 }
 
+// --- owner profile sync across own devices (SLICE 4b) ---------------------
+
+// Publish the owner's person-profile (name + avatar pointer) onto the personal
+// base as device-link's built-in identityProfile record, so it replicates to the
+// owner's other devices (mirror folds it into their localDb `profile`, LWW). Not
+// signed - the personal base is already writer-bounded to the owner's own devices.
+// No-op (returns false) until a writable personal base exists.
+async function putProfile (ctx, value) {
+  const dl = await getDeviceLink(ctx)
+  if (!dl.personalBase || !dl.personalBase.writable) return false
+  await dl.personalBase.append({ op: 'put', type: 'identityProfile', key: 'identityProfile', value })
+  return true
+}
+
 module.exports = {
   typeForKey,
   parsePairUrl,
@@ -171,4 +185,5 @@ module.exports = {
   listDevices,
   setDeviceLabel,
   getRecoveryPhrase,
+  putProfile,
 }

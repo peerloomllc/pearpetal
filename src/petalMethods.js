@@ -241,7 +241,7 @@ async function requirePrivate (ctx) {
 // path has no group invite (linking is QR pairing via link:invite), so those are
 // null there.
 async function enablePrivate (ctx) {
-  if (isDeviceLinkEnabled()) { await ps.enable(ctx); return { groupId: null, inviteKey: null } }
+  if (isDeviceLinkEnabled()) { await ps.enable(ctx); await seedProfile(ctx); return { groupId: null, inviteKey: null } }
   const r = await ctx.createGroup({ name: 'PearPetal' })
   await tagKind(ctx, r.groupId, 'private')
   await publishDevice(ctx, r.groupId)
@@ -277,6 +277,16 @@ async function privRows (ctx, range) {
 async function privPublishDevice (ctx, onlyGroupId) {
   if (isDeviceLinkEnabled()) return true
   return publishDevice(ctx, onlyGroupId)
+}
+
+// Seed this owner's existing local profile (name + avatar) onto a freshly-minted
+// personal base, so it replicates to devices they later link. Best-effort; a
+// linked device never seeds (its profile arrives FROM the primary). No-op off the
+// device-link path or with no profile yet.
+async function seedProfile (ctx) {
+  if (!isDeviceLinkEnabled()) return
+  const prof = (await ctx.localDb.get('profile').catch(() => null))?.value
+  if (prof && (prof.displayName || prof.avatarBlob)) await ps.putProfile(ctx, prof).catch(() => {})
 }
 
 // ── legacy -> personal migration (proposal decision #3, SLICE 3) ─────────────
@@ -322,6 +332,7 @@ async function migrateIfNeeded (ctx) {
       await ps.put(ctx, periodKey(ns.key), { start: ns.iso, end: v.end ?? null, createdBy: v.createdBy || pubkeyHex(ctx), createdAt: v.createdAt || Date.now(), deleted: !!v.deleted })
     }
     await ctx.localDb.put('deviceLink:migrated', { at: Date.now(), from: legacy.groupId, days: days.length, periods: periods.length })
+    await seedProfile(ctx) // publish this device's existing profile onto the personal base
   } catch {
     _migrationChecked = false // transient failure - let a later call retry
   }
@@ -615,6 +626,7 @@ const methods = {
       }
     }
     await ctx.localDb.put('profile', profile)
+    if (isDeviceLinkEnabled()) await ps.putProfile(ctx, profile).catch(() => {}) // sync name/avatar to the owner's OWN devices
     await refreshShareMeta(ctx).catch(() => {}) // push the new name/avatar to partners we share WITH
     await refreshMemberIdentity(ctx).catch(() => {}) // update our name on shares we JOINED
     const out = { displayName: profile.displayName || '', updatedAt: profile.updatedAt }
@@ -726,6 +738,7 @@ const methods = {
     if (isDeviceLinkEnabled()) {
       if (await ps.exists(ctx)) return { groupId: null, inviteKey: null, created: false }
       await ps.enable(ctx)
+      await seedProfile(ctx)
       return { groupId: null, inviteKey: null, created: true }
     }
     const existing = await privateMembership(ctx)

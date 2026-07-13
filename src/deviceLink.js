@@ -75,7 +75,17 @@ function makeRecords () {
 // core-group path. A null value is a delete (device-link uses tombstone puts, so
 // this is belt-and-suspenders).
 function makeMirror (localDb) {
-  return async (_type, key, value) => {
+  return async (type, key, value) => {
+    // The owner's person-profile (name + avatar) synced across their OWN devices
+    // via device-link's built-in identityProfile record, so a freshly linked
+    // device adopts the primary's identity instead of its own. LWW by updatedAt;
+    // the avatar blob replicates over the shared corestore (fetched on demand).
+    if (type === 'identityProfile') {
+      if (!value) return
+      const cur = (await localDb.get('profile').catch(() => null))?.value
+      if (!cur || (value.updatedAt || 0) >= (cur.updatedAt || 0)) await localDb.put('profile', value).catch(() => {})
+      return
+    }
     if (value == null) { await localDb.del(key).catch(() => {}); return }
     const existing = (await localDb.get(key).catch(() => null))?.value
     if (rowApplyDecision(key, value, existing) === 'accept') await localDb.put(key, value).catch(() => {})
