@@ -41,8 +41,8 @@ async function mkCtx () {
   return { store, swarm: fakeSwarm(), localDb, emit: () => {} }
 }
 
-test('the flag ships OFF (device-link path dormant until hardware-verified)', () => {
-  assert.equal(isDeviceLinkEnabled(), false)
+test('the flag ships ON (device-link is the default path after the 2026-07-12 flip)', () => {
+  assert.equal(isDeviceLinkEnabled(), true)
 })
 
 test('keystore adapter round-trips a mnemonic through localDb', async () => {

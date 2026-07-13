@@ -34,14 +34,13 @@ const PAIR_CHANNEL = {
   linkScheme: 'pearpetal',
 }
 
-// Master switch for the whole device-link path. OFF until the personal-base
-// linking is hardware-verified (esp. the B->A direction, proposal decision #6).
-// While false, the app runs the existing core-group private base unchanged.
-//
-// The single production flip point is the `_enabled` default below (change it to
-// true once the hardware gate passes). It is a mutable so tests can exercise the
-// device-link path via _setDeviceLinkEnabledForTest without shipping it on.
-let _enabled = false
+// Master switch for the whole device-link path. FLIPPED ON 2026-07-12 after the
+// personal-base linking passed the hardware gate (B->A direction + iOS runtime,
+// proposal decision #6) on TCL + Pixel + iPhone. The private base + own-device
+// linking now run on @peerloom/device-link; existing installs migrate their
+// legacy core-group log on first launch. Kept a mutable so tests can still toggle
+// it via _setDeviceLinkEnabledForTest.
+let _enabled = true
 function isDeviceLinkEnabled () { return _enabled }
 function _setDeviceLinkEnabledForTest (v) { _enabled = !!v }
 
