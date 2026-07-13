@@ -4,6 +4,27 @@ Chronological log of shipped work, newest first. One line (or few) per item with
 its date + PR. Deep rationale for T2/T3 changes lives in `DECISIONS.md`; open
 work lives in `TODO.md`.
 
+## 2026-07-12
+
+- **🔗 Device-link adoption SHIPPED - `@peerloom/device-link` enabled by default.**
+  PearPetal's private base + own-device linking migrated from `@peerloom/core`
+  groups to device-link's personal Autobase + SLIP-48 mnemonic identity + pairing.
+  Proposal `2026-07-12-adopt-device-link.md` (T3, 6 decisions); design record in
+  `DECISIONS.md`. Built behind `DEVICE_LINK_ENABLED` across slices, then flipped on
+  (PR #82) after passing the hardware gate (B->A sync + iOS runtime) on TCL + Pixel
+  + iPhone. Partner sharing stays on `@peerloom/core`. Rollback = revert one line
+  (core-group path retained + tested; migrated devices keep the legacy base).
+  - Delivered: QR-first device linking (generate + scan); recovery phrase (SLIP-48);
+    one-time legacy->personal migration on first launch; profile (name+avatar) +
+    settings (cycle lengths/goal/flower/conditions/BC) sync across own devices;
+    live refresh on sync; remove-device; reordered onboarding (link path skips name).
+  - PRs: device-link #1 (Tier-2 green + group test), #2 (blank-QR), #3 (bare-path
+    iOS ADDON_NOT_FOUND fix), #4 (personalUpdated event); `@peerloom/core` #15
+    (expose store/swarm on method ctx); PearPetal #74 (proposal) #75-#81 (slices +
+    fixes) #82 (flag flip). `npm run verify` green throughout (115 tests + 3 bundles).
+  - New package `@peerloom/device-link` (private repo `peerloomllc/peerloom-device-link`),
+    extracted from PearCal; Tier-1 pure modules + Tier-2 `createDeviceLink` engine.
+
 ## 2026-07-11
 
 - **🚀 PearPetal 1.0.0 LAUNCHED on every channel.** First public release, live/submitted

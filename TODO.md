@@ -81,23 +81,16 @@ Prior nice-to-haves shipped + verified 2026-07-10 (see DONE.md): bottom sheets f
 day/symptom entry, partner-view scoped Month calendar, joiner photo avatar in per-person
 shares.
 
-## Device-link adoption (@peerloom/device-link)
+## Device-link adoption - SHIPPED 2026-07-12 (see DONE.md)
 
-Full software side built across slices 1-4 + joiner onboarding + settings polish
-(all behind `DEVICE_LINK_ENABLED`, default OFF). Proposal + 6 decisions in
-`proposals/2026-07-12-adopt-device-link.md`. **B->A hardware gate PASSED on the
-TCL+Pixel 2026-07-12** (the exact direction that stalled on core-group linking).
-Remaining:
-
-- ~~**Linked device should inherit the PRIMARY's person profile (name + avatar).**~~
-  DONE (PR #81, flag-gated): owner profile syncs across own devices via the
-  personal base `identityProfile` record (LWW), and onboarding reordered so the
-  link path skips the name step. See DECISIONS.md 2026-07-12. Build/unit-verified;
-  confirm two-device sync on-device during the flag-flip pass.
-- **Flip the flag for real** once satisfied: one line in `src/deviceLink.js`
-  (`let _enabled = false` -> `true`). Then run the canonical verify + a final
-  two-device + iOS pass. (iOS runtime addon-link is only provable on-device;
-  bundling is proven.)
+`@peerloom/device-link` is now the default private-base + own-device-linking
+engine (flag flipped on, PR #82; hardware-verified TCL+Pixel+iPhone). Follow-ups
+still open:
+- **Real unpair (writer-block), not just cosmetic roster remove.** `device:remove`
+  currently only hides a device from the roster (device-link `removeDevice` = a
+  deviceMeta del). A true unpair would block the writer on the personal base.
+- **Store release** of the device-link build (version bump + `scripts/release.sh` /
+  `ios-appstore.sh`) - a separate, deliberate step.
 
 ## Design decisions to make (before building)
 
