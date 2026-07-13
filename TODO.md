@@ -89,12 +89,11 @@ Full software side built across slices 1-4 + joiner onboarding + settings polish
 TCL+Pixel 2026-07-12** (the exact direction that stalled on core-group linking).
 Remaining:
 
-- **Linked device should inherit the PRIMARY's person profile (name + avatar).**
-  Today onboarding collects name/photo BEFORE the track/view/link choice, so a
-  device that links ends up with its own separate profile instead of the primary's.
-  Fix = sync the owner profile across their own devices (a personal-base record,
-  interacting with the existing owner-signed `share:meta` projection) + reorder
-  onboarding to skip the name step on the link path. Its own PR (T2-ish).
+- ~~**Linked device should inherit the PRIMARY's person profile (name + avatar).**~~
+  DONE (PR #81, flag-gated): owner profile syncs across own devices via the
+  personal base `identityProfile` record (LWW), and onboarding reordered so the
+  link path skips the name step. See DECISIONS.md 2026-07-12. Build/unit-verified;
+  confirm two-device sync on-device during the flag-flip pass.
 - **Flip the flag for real** once satisfied: one line in `src/deviceLink.js`
   (`let _enabled = false` -> `true`). Then run the canonical verify + a final
   two-device + iOS pass. (iOS runtime addon-link is only provable on-device;

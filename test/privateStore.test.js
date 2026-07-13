@@ -117,6 +117,30 @@ test('device roster maps to device-link deviceMeta (setDeviceLabel -> listDevice
   await ctx.store.close(); _resetForTest()
 })
 
+test('putProfile publishes identityProfile onto the personal base -> localDb profile', async () => {
+  _resetForTest()
+  const ctx = await mkCtx()
+  await ps.enable(ctx)
+  const ok = await ps.putProfile(ctx, { displayName: 'Ada', updatedAt: 1000 })
+  assert.equal(ok, true, 'appended to a writable personal base')
+  await ps.update(ctx) // flush apply -> mirror
+  // The mirror (same path a LINKED device runs on the replicated op) folds it in.
+  assert.equal((await ctx.localDb.get('profile')).value.displayName, 'Ada')
+  await ctx.store.close(); _resetForTest()
+})
+
+test('putPrefs publishes ownerPrefs onto the personal base -> localDb prefs', async () => {
+  _resetForTest()
+  const ctx = await mkCtx()
+  await ps.enable(ctx)
+  await ps.putPrefs(ctx, { flower: 'lotus', goal: 'conceive', updatedAt: 2000 })
+  await ps.update(ctx)
+  const prefs = (await ctx.localDb.get('prefs')).value
+  assert.equal(prefs.flower, 'lotus')
+  assert.equal(prefs.goal, 'conceive')
+  await ctx.store.close(); _resetForTest()
+})
+
 test('linkInvite mints a scannable pearpetal:// pair URL once enabled', async () => {
   _resetForTest()
   const ctx = await mkCtx()

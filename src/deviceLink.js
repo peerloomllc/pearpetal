@@ -65,6 +65,11 @@ function makeRecords () {
   return {
     day: { validate: (v) => verifyValue(v) },
     period: { validate: (v) => verifyValue(v) },
+    // The owner's device-local settings (cycle lengths, goal, flower, conditions,
+    // birth control) synced across their OWN devices. Unsigned - personal base is
+    // writer-bounded to the owner. Never projected to partners (that path is
+    // separate, in petalMethods).
+    ownerPrefs: {},
   }
 }
 
@@ -75,7 +80,24 @@ function makeRecords () {
 // core-group path. A null value is a delete (device-link uses tombstone puts, so
 // this is belt-and-suspenders).
 function makeMirror (localDb) {
-  return async (_type, key, value) => {
+  return async (type, key, value) => {
+    // The owner's person-profile (name + avatar) synced across their OWN devices
+    // via device-link's built-in identityProfile record, so a freshly linked
+    // device adopts the primary's identity instead of its own. LWW by updatedAt;
+    // the avatar blob replicates over the shared corestore (fetched on demand).
+    if (type === 'identityProfile') {
+      if (!value) return
+      const cur = (await localDb.get('profile').catch(() => null))?.value
+      if (!cur || (value.updatedAt || 0) >= (cur.updatedAt || 0)) await localDb.put('profile', value).catch(() => {})
+      return
+    }
+    // Owner settings synced across own devices (LWW by updatedAt).
+    if (type === 'ownerPrefs') {
+      if (!value) return
+      const cur = (await localDb.get('prefs').catch(() => null))?.value
+      if (!cur || (value.updatedAt || 0) >= (cur.updatedAt || 0)) await localDb.put('prefs', value).catch(() => {})
+      return
+    }
     if (value == null) { await localDb.del(key).catch(() => {}); return }
     const existing = (await localDb.get(key).catch(() => null))?.value
     if (rowApplyDecision(key, value, existing) === 'accept') await localDb.put(key, value).catch(() => {})
@@ -99,7 +121,14 @@ function getDeviceLink (ctx) {
       mirror: makeMirror(ctx.localDb),
       channel: PAIR_CHANNEL,
       platform: '',
-      onEvent: (event, data) => { try { ctx.emit(event, data) } catch {} },
+      onEvent: (event, data) => {
+        try {
+          ctx.emit(event, data)
+          // Drive the UI's on-demand refresh when the personal base changes (a
+          // replicated remote edit) or the linked-device roster changes.
+          if (event === 'personalUpdated' || event === 'linkedDevicesChanged') ctx.emit('group:updated', { personal: true })
+        } catch {}
+      },
     })
     await dl.start()
     return dl

@@ -2,6 +2,28 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-12 - Owner profile syncs across own devices; onboarding link path skips name
+Tier: T2 (new record synced across the owner's own devices via the device-link
+personal base; flag-gated, so inert until DEVICE_LINK_ENABLED). Extends the
+approved device-link adoption (proposal 2026-07-12-adopt-device-link, #4b).
+Context: onboarding collected name/photo BEFORE the track/view/link choice, so a
+device that LINKED ended up with its own separate profile instead of the primary's.
+Choice: the owner's person-profile (name + avatar pointer) is published onto the
+personal base as device-link's built-in `identityProfile` record (key
+`identityProfile`, unsigned - the personal base is already writer-bounded to the
+owner's own devices). It replicates to their other devices; the mirror folds it
+into localDb `profile` last-writer-wins by `updatedAt`. The avatar blob replicates
+over the shared corestore (same as the partner-avatar path). `profile:set` syncs
+it; `cycle:create` / migration seed the existing profile onto a fresh base.
+Onboarding REORDERED: intro -> chooser -> (track/view -> name) / (link -> scan, NO
+name), so a linked device inherits the primary's identity rather than minting its
+own. Off the device-link flag, profile stays device-local (unchanged).
+Alternatives: keep name-first + reset the linked device's profile on join (fragile:
+the just-entered name has a newer updatedAt and would win LWW). Signing the
+identityProfile (unnecessary - own-device-only, personal base is trust-bounded).
+Consequences: partner-facing share:meta projection unchanged (partners still get
+the owner-signed projection). Only cross-OWN-device sync is new.
+
 ## 2026-07-12 - Device linking primary method is QR generate + scan
 Tier: T3 (part of the @peerloom/device-link adoption; proposal
 `proposals/2026-07-12-adopt-device-link.md`).

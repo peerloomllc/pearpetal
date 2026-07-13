@@ -156,6 +156,36 @@ async function getRecoveryPhrase (ctx) {
   return makeKeystore(ctx.localDb).getMnemonic()
 }
 
+// --- owner profile sync across own devices (SLICE 4b) ---------------------
+
+// Publish the owner's person-profile (name + avatar pointer) onto the personal
+// base as device-link's built-in identityProfile record, so it replicates to the
+// owner's other devices (mirror folds it into their localDb `profile`, LWW). Not
+// signed - the personal base is already writer-bounded to the owner's own devices.
+// No-op (returns false) until a writable personal base exists.
+async function putProfile (ctx, value) {
+  const dl = await getDeviceLink(ctx)
+  if (!dl.personalBase || !dl.personalBase.writable) return false
+  await dl.personalBase.append({ op: 'put', type: 'identityProfile', key: 'identityProfile', value })
+  return true
+}
+
+// Publish the owner's device-local settings (prefs) onto the personal base so they
+// sync across own devices. Value carries updatedAt for LWW. No-op until writable.
+async function putPrefs (ctx, value) {
+  const dl = await getDeviceLink(ctx)
+  if (!dl.personalBase || !dl.personalBase.writable) return false
+  await dl.personalBase.append({ op: 'put', type: 'ownerPrefs', key: 'ownerPrefs', value })
+  return true
+}
+
+// Remove a linked device from the roster (device-link's cosmetic deviceMeta del;
+// the roster hides it - a full unpair/writer-block is a later concern).
+async function removeDevice (ctx, writerKey) {
+  const dl = await getDeviceLink(ctx)
+  await dl.removeDevice(writerKey)
+}
+
 module.exports = {
   typeForKey,
   parsePairUrl,
@@ -171,4 +201,7 @@ module.exports = {
   listDevices,
   setDeviceLabel,
   getRecoveryPhrase,
+  putProfile,
+  putPrefs,
+  removeDevice,
 }

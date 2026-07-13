@@ -374,9 +374,12 @@ function ScannerView ({ open, onClose, onDecode }) {
 
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
-  // intro (welcome) -> name (profile, everyone) -> chooser (track/view/link) ->
-  // partner (paste/scan a share code) OR link (paste/scan a device-link URL)
+  // intro (welcome) -> chooser (track/view/link) -> then:
+  //   track/view -> name (profile) -> start setup / partner join
+  //   link       -> link (paste/scan a device-link URL); NO name step - a linked
+  //                 device inherits the primary's profile via the personal base.
   const [phase, setPhase] = useState('intro')
+  const [choice, setChoice] = useState(null) // 'track' | 'view' - what the name step leads into
   const [name, setName] = useState('')
   const [avatar, setAvatar] = useState(null) // avatar data URL
   const [code, setCode] = useState('')
@@ -388,14 +391,15 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
   const [dlEnabled, setDlEnabled] = useState(false)
   useEffect(() => { call('deviceLink:status').then((r) => setDlEnabled(!!(r && r.enabled))).catch(() => {}) }, [])
 
-  // Name/photo is collected up front, before the track-vs-view choice, so it
-  // applies to everyone - a partner-viewer, and a restore-from-backup user whose
-  // backup carries cycle data but not their profile. profile:set is device-local
-  // (no base needed), so it is safe to call before any cycle exists.
+  // Name/photo, collected for a tracker or a partner-viewer (NOT a linked device -
+  // that inherits the primary's profile). profile:set is device-local (no base
+  // needed), safe before any cycle exists. On save we advance into the chosen flow.
   const saveProfile = async () => {
     const dn = name.trim()
     if (dn || avatar) { try { await call('profile:set', { displayName: dn, avatar: avatar || undefined }) } catch {} }
-    setErr(''); setPhase('chooser')
+    setErr('')
+    if (choice === 'view') setPhase('partner')
+    else start()
   }
   const start = async () => {
     setErr('')
@@ -416,10 +420,11 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
   }
   const submit = () => (phase === 'link' ? joinDevice() : joinPartner())
   const onScanned = (txt) => { setScanning(false); (scanMode === 'device' ? joinDevice : joinPartner)(txt) }
-  // Android Back walks the phases back: partner/link -> chooser -> name -> intro.
+  // Android Back walks the phases back: partner -> name; name/link -> chooser;
+  // chooser -> intro.
   const back = () => {
     setErr(''); setCode(''); setScanning(false)
-    setPhase((p) => (p === 'partner' || p === 'link' ? 'chooser' : p === 'chooser' ? 'name' : 'intro'))
+    setPhase((p) => (p === 'partner' ? 'name' : (p === 'name' || p === 'link') ? 'chooser' : 'intro'))
   }
   useBackHandler(phase !== 'intro', back)
 
@@ -441,7 +446,7 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
           <Wordmark size={34} />
           <div style={{ color: colors.text.secondary, marginTop: spacing.sm, lineHeight: 1.5 }}>Your flower furls and blooms across your cycle, so a glance shows your phase. Private tracking - no accounts, no servers. Your data stays on your device.</div>
         </div>
-        <Btn onClick={() => setPhase('name')}>Get started</Btn>
+        <Btn onClick={() => setPhase('chooser')}>Get started</Btn>
       </>,
     )
   }
@@ -476,8 +481,8 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
       </div>
       {phase === 'chooser' && (
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-          <Btn onClick={start}>Track my cycle</Btn>
-          <Btn kind='ghost' onClick={() => { setPhase('partner'); setErr('') }}>View a partner's cycle</Btn>
+          <Btn onClick={() => { setChoice('track'); setErr(''); setPhase('name') }}>Track my cycle</Btn>
+          <Btn kind='ghost' onClick={() => { setChoice('view'); setErr(''); setPhase('name') }}>View a partner's cycle</Btn>
           {dlEnabled && <Btn kind='ghost' onClick={() => { setPhase('link'); setErr('') }}>Link to my other device</Btn>}
         </div>
       )}
@@ -1336,7 +1341,13 @@ function ProfileCard () {
   const [name, setName] = useState('')
   const [msg, setMsg] = useState('')
   const fileRef = useRef(null)
-  useEffect(() => { call('profile:get').then((p) => { setProfile(p || {}); setName(p?.displayName || '') }).catch(() => setProfile({})) }, [])
+  const editingName = useRef(false)
+  // Live-refresh on sync (a profile changed on another device), but never yank the
+  // name field out from under active typing.
+  const load = useCallback(async () => {
+    try { const p = await call('profile:get'); setProfile(p || {}); if (!editingName.current) setName(p?.displayName || '') } catch { setProfile((prev) => prev || {}) }
+  }, [])
+  useSynced(load)
   if (!profile) return null
   const saveName = async () => {
     const dn = name.trim(); if (dn === (profile.displayName || '')) return
@@ -1366,7 +1377,7 @@ function ProfileCard () {
           {profile.avatar && <button onClick={clearPhoto} style={{ marginTop: spacing.sm, background: colors.surface.input, border: `1px solid ${colors.border}`, color: colors.text.secondary, fontSize: 11, padding: '4px 12px', borderRadius: radius.full, lineHeight: 1.2, cursor: 'pointer' }}>Remove</button>}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
-          <input value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} placeholder='Your name' maxLength={64}
+          <input value={name} onChange={(e) => setName(e.target.value)} onFocus={() => { editingName.current = true }} onBlur={() => { editingName.current = false; saveName() }} placeholder='Your name' maxLength={64}
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `8px 10px`, fontSize: 15 }} />
           <span style={{ color: colors.text.muted, fontSize: 11 }}>Shown to partners you share with. Otherwise stays on your devices.</span>
         </div>
@@ -1629,6 +1640,11 @@ function DevicesCard () {
                     <PencilSimple size={16} color={colors.text.muted} />
                   </button>
                 )}
+                {!d.self && (
+                  <button onClick={async () => { haptic('light'); try { await call('device:remove', { pubkey: d.pubkey }) } catch {} load() }} aria-label='Remove this device' style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex', flexShrink: 0 }}>
+                    <Trash size={16} color={colors.text.muted} />
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -1660,7 +1676,11 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   // device-link path is active; hidden in production until the flag flips.
   const [dlEnabled, setDlEnabled] = useState(false)
   useEffect(() => { call('deviceLink:status').then((r) => setDlEnabled(!!(r && r.enabled))).catch(() => {}) }, [])
-  useEffect(() => { call('prefs:get').then(setPrefs).catch(() => setPrefs({})) }, [])
+  // Live-refresh prefs on sync so settings changed on another device appear
+  // without leaving the screen. Controlled chips/steppers only (no free-text tied
+  // to prefs), so re-reading is safe; an optimistic save re-reads the same value.
+  const loadPrefs = useCallback(async () => { try { setPrefs(await call('prefs:get')) } catch { setPrefs({}) } }, [])
+  useSynced(loadPrefs)
   // Deep-link: when opened via the "tracked conditions" link, expand the health
   // section and scroll to it once prefs have rendered, then clear the request. The
   // scroll is delayed so the expand has committed first - scrolling mid-animation
@@ -2265,8 +2285,9 @@ export default function App () {
   const goToday = () => { const t = monthStart(todayIso()); setCalDir(t < calMonth ? -1 : 1); setCalMonth(t); setDate(todayIso()) }
 
   const refresh = useCallback(async () => {
-    const [d, pr] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null)])
+    const [d, pr, p] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null), call('prefs:get').catch(() => null)])
     setDays(d); setPred(pr)
+    if (p && p.flower) setFlower(p.flower) // keep the dial's flower in sync when prefs change (incl. synced from another device)
   }, [])
 
   const boot = useCallback(async () => {

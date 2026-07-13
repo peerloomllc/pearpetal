@@ -241,7 +241,7 @@ async function requirePrivate (ctx) {
 // path has no group invite (linking is QR pairing via link:invite), so those are
 // null there.
 async function enablePrivate (ctx) {
-  if (isDeviceLinkEnabled()) { await ps.enable(ctx); return { groupId: null, inviteKey: null } }
+  if (isDeviceLinkEnabled()) { await ps.enable(ctx); await seedOwnerState(ctx); return { groupId: null, inviteKey: null } }
   const r = await ctx.createGroup({ name: 'PearPetal' })
   await tagKind(ctx, r.groupId, 'private')
   await publishDevice(ctx, r.groupId)
@@ -278,6 +278,32 @@ async function privPublishDevice (ctx, onlyGroupId) {
   if (isDeviceLinkEnabled()) return true
   return publishDevice(ctx, onlyGroupId)
 }
+
+// Publish this owner's device-local state (profile name+avatar, and prefs -
+// cycle lengths / goal / flower / conditions / birth control) onto the personal
+// base so it replicates to devices they later link. Values carry their own
+// updatedAt so re-seeding is idempotent under LWW (safe on a linked device too).
+// Returns whether anything was published (i.e. the base was writable).
+async function seedOwnerState (ctx) {
+  if (!isDeviceLinkEnabled()) return false
+  let did = false
+  const prof = (await ctx.localDb.get('profile').catch(() => null))?.value
+  if (prof && (prof.displayName || prof.avatarBlob)) { if (await ps.putProfile(ctx, prof).catch(() => false)) did = true }
+  const prefs = (await ctx.localDb.get('prefs').catch(() => null))?.value
+  if (prefs && Object.keys(prefs).length) { if (await ps.putPrefs(ctx, prefs).catch(() => false)) did = true }
+  return did
+}
+
+// One-time-per-worklet boot seed: an EXISTING primary (personal base created
+// before owner-state sync existed) never seeded its profile/prefs. Publish them
+// once the base is writable. Idempotent (LWW), so harmless if it also runs on a
+// linked device.
+let _ownerSeeded = false
+async function maybeSeedOwnerState (ctx) {
+  if (!isDeviceLinkEnabled() || _ownerSeeded || !ctx || !ctx.store) return
+  if (await seedOwnerState(ctx).catch(() => false)) _ownerSeeded = true
+}
+function _resetOwnerSeedForTest () { _ownerSeeded = false }
 
 // ── legacy -> personal migration (proposal decision #3, SLICE 3) ─────────────
 // One-time, on the first method call after the device-link flag is on: if this
@@ -322,6 +348,7 @@ async function migrateIfNeeded (ctx) {
       await ps.put(ctx, periodKey(ns.key), { start: ns.iso, end: v.end ?? null, createdBy: v.createdBy || pubkeyHex(ctx), createdAt: v.createdAt || Date.now(), deleted: !!v.deleted })
     }
     await ctx.localDb.put('deviceLink:migrated', { at: Date.now(), from: legacy.groupId, days: days.length, periods: periods.length })
+    await seedOwnerState(ctx) // publish this device's existing profile onto the personal base
   } catch {
     _migrationChecked = false // transient failure - let a later call retry
   }
@@ -541,6 +568,7 @@ const methods = {
     }
     next.updatedAt = Date.now()
     await ctx.localDb.put('prefs', next)
+    if (isDeviceLinkEnabled()) await ps.putPrefs(ctx, next).catch(() => {}) // sync settings to the owner's OWN devices
     await refreshShares(ctx).catch(() => {}) // prefs change the projection partners see
     return { ok: true }
   },
@@ -615,6 +643,7 @@ const methods = {
       }
     }
     await ctx.localDb.put('profile', profile)
+    if (isDeviceLinkEnabled()) await ps.putProfile(ctx, profile).catch(() => {}) // sync name/avatar to the owner's OWN devices
     await refreshShareMeta(ctx).catch(() => {}) // push the new name/avatar to partners we share WITH
     await refreshMemberIdentity(ctx).catch(() => {}) // update our name on shares we JOINED
     const out = { displayName: profile.displayName || '', updatedAt: profile.updatedAt }
@@ -726,6 +755,7 @@ const methods = {
     if (isDeviceLinkEnabled()) {
       if (await ps.exists(ctx)) return { groupId: null, inviteKey: null, created: false }
       await ps.enable(ctx)
+      await seedOwnerState(ctx)
       return { groupId: null, inviteKey: null, created: true }
     }
     const existing = await privateMembership(ctx)
@@ -771,6 +801,16 @@ const methods = {
 
   // Retry publishing our roster row (call after link:join once writable).
   'device:publish': async (_args, ctx) => ({ published: await privPublishDevice(ctx) }),
+
+  // Remove a linked device from the roster (device-link path only). Cosmetic: it
+  // hides the device from listLinkedDevices; a full unpair/writer-block is a later
+  // concern.
+  'device:remove': async ({ pubkey }, ctx) => {
+    if (!isDeviceLinkEnabled()) throw new Error('device removal is only available with device-link')
+    if (typeof pubkey !== 'string' || !pubkey) throw new Error('pubkey required')
+    await ps.removeDevice(ctx, pubkey)
+    return { ok: true }
+  },
 
   // The device-link recovery phrase (SLIP-48 mnemonic), for the "save your
   // recovery phrase" UI. Only available on the device-link path with a personal
@@ -1082,7 +1122,7 @@ const methods = {
 const wrapped = {}
 for (const name of Object.keys(methods)) {
   const fn = methods[name]
-  wrapped[name] = (args, ctx) => migrateIfNeeded(ctx).then(() => fn(args, ctx))
+  wrapped[name] = (args, ctx) => migrateIfNeeded(ctx).then(() => maybeSeedOwnerState(ctx)).then(() => fn(args, ctx))
 }
 wrapped._resetMigrationForTest = _resetMigrationForTest
 
