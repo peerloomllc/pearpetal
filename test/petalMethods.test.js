@@ -3,7 +3,7 @@
 // in @peerloom/core's two-peer test; here we only need the local method table.
 
 const test = require('node:test')
-const { after } = require('node:test')
+const { after, before } = require('node:test')
 const assert = require('node:assert/strict')
 const EventEmitter = require('node:events')
 const fs = require('node:fs')
@@ -14,6 +14,10 @@ const { createGroupEngine } = require('@peerloom/core/engine')
 const { applyPetalOp } = require('../src/petalWire')
 const petalMethods = require('../src/petalMethods')
 const { addDays, todayIso } = require('../src/prediction')
+const { _setDeviceLinkEnabledForTest } = require('../src/deviceLink')
+// These exercise the core-group FALLBACK path (device-link is the shipped default
+// now, 2026-07-12); pin the flag off so this file keeps covering that path.
+before(() => _setDeviceLinkEnabledForTest(false))
 
 const _tmpDirs = []
 function tmpStore () {

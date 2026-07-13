@@ -3,7 +3,7 @@
 // with the right password and rejects a wrong one, writing nothing on failure.
 // Plaintext (blank-password) export still round-trips.
 const test = require('node:test')
-const { after } = require('node:test')
+const { after, before } = require('node:test')
 const assert = require('node:assert/strict')
 const EventEmitter = require('node:events')
 const fs = require('node:fs')
@@ -14,6 +14,9 @@ const { createGroupEngine } = require('@peerloom/core/engine')
 const { applyPetalOp } = require('../src/petalWire')
 const petalMethods = require('../src/petalMethods')
 const { addDays, todayIso } = require('../src/prediction')
+const { _setDeviceLinkEnabledForTest } = require('../src/deviceLink')
+// Core-group fallback path; device-link is the shipped default now. Pin off.
+before(() => _setDeviceLinkEnabledForTest(false))
 
 const _tmpDirs = []
 function tmpStore () {
