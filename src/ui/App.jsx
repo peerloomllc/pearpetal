@@ -10,7 +10,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -374,13 +374,19 @@ function ScannerView ({ open, onClose, onDecode }) {
 
 // --- onboarding -------------------------------------------------------------
 function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
-  // intro (welcome) -> name (profile, everyone) -> chooser (track/view) -> partner (paste/scan)
+  // intro (welcome) -> name (profile, everyone) -> chooser (track/view/link) ->
+  // partner (paste/scan a share code) OR link (paste/scan a device-link URL)
   const [phase, setPhase] = useState('intro')
   const [name, setName] = useState('')
   const [avatar, setAvatar] = useState(null) // avatar data URL
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [scanning, setScanning] = useState(false)
+  const [scanMode, setScanMode] = useState('partner') // 'partner' | 'device' - which flow a scan feeds
+  // Own-device linking is offered only on the device-link path (hidden until the
+  // flag flips); a partner-viewer + core-group installs never see it.
+  const [dlEnabled, setDlEnabled] = useState(false)
+  useEffect(() => { call('deviceLink:status').then((r) => setDlEnabled(!!(r && r.enabled))).catch(() => {}) }, [])
 
   // Name/photo is collected up front, before the track-vs-view choice, so it
   // applies to everyone - a partner-viewer, and a restore-from-backup user whose
@@ -401,12 +407,19 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
     setErr('')
     try { await call('partner:join', { inviteKey: parseInvite(typeof raw === 'string' ? raw : code) }); haptic('success'); onViewerReady() } catch (e) { setErr(e.message) }
   }
-  const submit = () => joinPartner()
-  const onScanned = (txt) => { setScanning(false); joinPartner(txt) }
-  // Android Back walks the phases back: partner -> chooser -> name -> intro.
+  // Link THIS fresh device to the owner's cycle by consuming a scanned/pasted
+  // `pearpetal://pair?...` URL (device-link path). link:join resolves once this
+  // device is a writer on the personal base, then we boot into the owner's cycle.
+  const joinDevice = async (raw) => {
+    setErr('')
+    try { await call('link:join', { inviteKey: (typeof raw === 'string' ? raw : code).trim() }); haptic('success'); onReady() } catch (e) { setErr(e.message) }
+  }
+  const submit = () => (phase === 'link' ? joinDevice() : joinPartner())
+  const onScanned = (txt) => { setScanning(false); (scanMode === 'device' ? joinDevice : joinPartner)(txt) }
+  // Android Back walks the phases back: partner/link -> chooser -> name -> intro.
   const back = () => {
     setErr(''); setCode(''); setScanning(false)
-    setPhase((p) => (p === 'partner' ? 'chooser' : p === 'chooser' ? 'name' : 'intro'))
+    setPhase((p) => (p === 'partner' || p === 'link' ? 'chooser' : p === 'chooser' ? 'name' : 'intro'))
   }
   useBackHandler(phase !== 'intro', back)
 
@@ -465,6 +478,7 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
         <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
           <Btn onClick={start}>Track my cycle</Btn>
           <Btn kind='ghost' onClick={() => { setPhase('partner'); setErr('') }}>View a partner's cycle</Btn>
+          {dlEnabled && <Btn kind='ghost' onClick={() => { setPhase('link'); setErr('') }}>Link to my other device</Btn>}
         </div>
       )}
       {phase === 'partner' && (
@@ -476,7 +490,21 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
             style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
           <div style={{ display: 'flex', gap: spacing.sm }}>
             <Btn onClick={submit} style={{ flex: 1 }}>View their cycle</Btn>
-            <Btn kind='ghost' onClick={() => { setErr(''); setScanning(true) }} style={{ flex: 1 }}>Scan QR</Btn>
+            <Btn kind='ghost' onClick={() => { setErr(''); setScanMode('partner'); setScanning(true) }} style={{ flex: 1 }}>Scan QR</Btn>
+          </div>
+          <Btn kind='ghost' onClick={back}>Back</Btn>
+        </div>
+      )}
+      {phase === 'link' && (
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+          <div style={{ color: colors.text.secondary, fontSize: 14 }}>
+            On your other device: PearPetal → Settings → Your devices. Scan the QR it shows, or paste its link here. Your full cycle then lives on both devices.
+          </div>
+          <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder='Paste device link' rows={3}
+            style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
+          <div style={{ display: 'flex', gap: spacing.sm }}>
+            <Btn onClick={submit} style={{ flex: 1 }}>Link this device</Btn>
+            <Btn kind='ghost' onClick={() => { setErr(''); setScanMode('device'); setScanning(true) }} style={{ flex: 1 }}>Scan QR</Btn>
           </div>
           <Btn kind='ghost' onClick={back}>Back</Btn>
         </div>
@@ -1087,46 +1115,6 @@ function RecentDays ({ days, onPick }) {
   )
 }
 
-// --- devices ----------------------------------------------------------------
-function Devices ({ onClose }) {
-  const [devices, setDevices] = useState([])
-  const [invite, setInvite] = useState('')
-  const load = useCallback(async () => {
-    setDevices(await call('device:getAll').catch(() => []))
-    try { const r = await call('link:invite'); setInvite(r.inviteKey) } catch {}
-  }, [])
-  useSynced(load)
-  const inviteLink = linkUrl(invite)
-  const share = () => call('shell:share', { title: 'Link a device to PearPetal', text: inviteLink }).catch(() => {})
-  const copy = async () => { try { await navigator.clipboard.writeText(inviteLink); haptic('success') } catch { share() } }
-
-  return (
-    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 20, fontWeight: 600 }}>Your devices</div>
-        <Btn kind='ghost' onClick={onClose}>Done</Btn>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-        {devices.map((d) => (
-          <div key={d.pubkey} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.md }}>
-            <span style={{ color: colors.text.primary, fontWeight: 500 }}>{d.label}</span>
-            {d.self && <span style={{ color: colors.text.muted, fontSize: 12 }}>this device</span>}
-          </div>
-        ))}
-      </div>
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ fontSize: 14, color: colors.text.secondary }}>Link another of your devices: scan this QR on it, open this link on it, or paste it into "Link another device".</div>
-        <QrImage text={inviteLink} />
-        <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.text.secondary, wordBreak: 'break-all', maxHeight: 96, overflow: 'auto' }}>{inviteLink || '...'}</div>
-        <div style={{ display: 'flex', gap: spacing.sm }}>
-          <Btn onClick={copy} style={{ flex: 1 }}>Copy link</Btn>
-          <Btn kind='ghost' onClick={share}>Share</Btn>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // --- viewer-only home (a device that only watches partners, no own cycle) ---
 function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   const [partners, setPartners] = useState([])
@@ -1595,7 +1583,71 @@ function RecoveryPhraseCard () {
   )
 }
 
-function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
+// Linked devices, as a collapsible settings card (consistent with the other
+// settings sections; keeps the Settings tab active, unlike a separate screen).
+// Shows the roster (rename your own device - it self-attests + syncs), plus the
+// QR/link to add another device.
+function DevicesCard () {
+  const [devices, setDevices] = useState([])
+  const [invite, setInvite] = useState('')
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState('')
+  const load = useCallback(async () => {
+    const list = await call('device:getAll').catch(() => [])
+    list.sort((a, b) => (b.self ? 1 : 0) - (a.self ? 1 : 0)) // this device always on top
+    setDevices(list)
+    try { const r = await call('link:invite'); setInvite(r.inviteKey) } catch {}
+  }, [])
+  useSynced(load)
+  const inviteLink = linkUrl(invite)
+  const share = () => call('shell:share', { title: 'Link a device to PearPetal', text: inviteLink }).catch(() => {})
+  const copy = async () => { try { await navigator.clipboard.writeText(inviteLink); haptic('success') } catch { share() } }
+  const startEdit = (label) => { setName((label && label !== 'This device' && label !== 'Device') ? label : ''); setEditing(true) }
+  const saveName = async () => {
+    const clean = name.trim()
+    if (clean) { try { await call('device:setLabel', { label: clean }); haptic('success') } catch {} }
+    setEditing(false); load()
+  }
+  return (
+    <CollapsibleCard title='Your devices' icon={DevicesIcon} open={open} onToggle={() => setOpen((o) => !o)}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        {devices.map((d) => (
+          <div key={d.pubkey} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+            {d.self && editing ? (
+              <>
+                <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} autoFocus placeholder='Name this device'
+                  style={{ flex: 1, minWidth: 0, background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '8px 10px', fontSize: 14 }} />
+                <Btn onClick={saveName} style={{ flexShrink: 0 }}>Save</Btn>
+              </>
+            ) : (
+              <>
+                <span style={{ color: colors.text.primary, fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.label}</span>
+                {d.self && <span style={{ color: colors.text.muted, fontSize: 12 }}>this device</span>}
+                {d.self && (
+                  <button onClick={() => startEdit(d.label)} aria-label='Rename this device' style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex', flexShrink: 0 }}>
+                    <PencilSimple size={16} color={colors.text.muted} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+        <div style={{ fontSize: 13, color: colors.text.secondary }}>Link another of your devices: scan this QR on it, or paste this link into "Link to my other device".</div>
+        <QrImage text={inviteLink} />
+        <div style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.text.secondary, wordBreak: 'break-all', maxHeight: 96, overflow: 'auto' }}>{inviteLink || '...'}</div>
+        <div style={{ display: 'flex', gap: spacing.sm }}>
+          <Btn onClick={copy} style={{ flex: 1 }}>Copy</Btn>
+          <Btn kind='ghost' onClick={share} style={{ flex: 1 }}>Share</Btn>
+        </div>
+      </div>
+    </CollapsibleCard>
+  )
+}
+
+function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState(null) // { text, tone: 'success'|'error'|'muted' }
   const [exportPw, setExportPw] = useState('') // optional backup password (blank = plaintext)
@@ -1750,12 +1802,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, onDevices, scrollTo, onScr
         {dataMsg && <div style={{ color: dataMsg.tone === 'error' ? colors.error : dataMsg.tone === 'muted' ? colors.text.muted : colors.success, fontSize: 13 }}>{dataMsg.text}</div>}
       </CollapsibleCard>
       {dlEnabled && <RecoveryPhraseCard />}
-      {dlEnabled && (
-        <button onClick={onDevices} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', border: `1px solid ${colors.border}`, width: '100%', textAlign: 'left' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md, color: colors.text.primary }}><DevicesIcon size={20} color={colors.text.secondary} weight='regular' /> Your devices</span>
-          <CaretRight size={16} color={colors.text.muted} weight='regular' />
-        </button>
-      )}
+      {dlEnabled && <DevicesCard />}
       {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
       {successModal && <BackupSuccessModal title={successModal.title} message={successModal.message} onClose={() => setSuccessModal(null)} />}
     </div>
@@ -2287,9 +2334,8 @@ export default function App () {
     else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
     else content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { setScreen('main'); await call('cycle:create').catch(() => {}); setMode('setup') }} />
   }
-  else if (screen === 'devices') content = <Devices onClose={() => setScreen('main')} />
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
-  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} onDevices={() => setScreen('devices')} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} themePref={themePref} onTheme={changeTheme} />
+  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} themePref={themePref} onTheme={changeTheme} />
   else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>

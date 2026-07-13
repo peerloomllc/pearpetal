@@ -21,9 +21,13 @@
 # One-time setup on the Mac mini (this rsync excludes node_modules, and pod
 # install resolves `expo`/`react-native` from node_modules, so the first run
 # needs deps present). PearPetal also depends on `@peerloom/core` via
-# `file:../peerloom-core`, so that sibling must exist on the Mac:
-#   rsync -az --delete --exclude=node_modules/ --exclude=.git/ \
-#     ~/peerloomllc/peerloom-core/ Tims-Mac-mini.local:peerloomllc/peerloom-core/
+# `file:../peerloom-core` AND `file:../peerloom-device-link`, so BOTH siblings
+# must exist on the Mac (a dangling file: symlink makes the Mac's npm install skip
+# that dep, so the linked frameworks miss its addons while the Linux-built bundle
+# includes it -> iOS worklet SIGABRT at launch, Android tolerant):
+#   for sib in peerloom-core peerloom-device-link; do \
+#     rsync -az --delete --exclude=node_modules/ --exclude=.git/ \
+#       ~/peerloomllc/$sib/ Tims-Mac-mini.local:peerloomllc/$sib/ ; done
 #   ssh Tims-Mac-mini.local "bash -lc 'cd peerloomllc/pearpetal && npm install'"
 # After that, node_modules survives future rsync --delete runs (it is excluded).
 #

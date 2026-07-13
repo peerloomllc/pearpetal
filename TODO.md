@@ -81,6 +81,25 @@ Prior nice-to-haves shipped + verified 2026-07-10 (see DONE.md): bottom sheets f
 day/symptom entry, partner-view scoped Month calendar, joiner photo avatar in per-person
 shares.
 
+## Device-link adoption (@peerloom/device-link)
+
+Full software side built across slices 1-4 + joiner onboarding + settings polish
+(all behind `DEVICE_LINK_ENABLED`, default OFF). Proposal + 6 decisions in
+`proposals/2026-07-12-adopt-device-link.md`. **B->A hardware gate PASSED on the
+TCL+Pixel 2026-07-12** (the exact direction that stalled on core-group linking).
+Remaining:
+
+- **Linked device should inherit the PRIMARY's person profile (name + avatar).**
+  Today onboarding collects name/photo BEFORE the track/view/link choice, so a
+  device that links ends up with its own separate profile instead of the primary's.
+  Fix = sync the owner profile across their own devices (a personal-base record,
+  interacting with the existing owner-signed `share:meta` projection) + reorder
+  onboarding to skip the name step on the link path. Its own PR (T2-ish).
+- **Flip the flag for real** once satisfied: one line in `src/deviceLink.js`
+  (`let _enabled = false` -> `true`). Then run the canonical verify + a final
+  two-device + iOS pass. (iOS runtime addon-link is only provable on-device;
+  bundling is proven.)
+
 ## Design decisions to make (before building)
 
 - ~~**Notifications (v1 to-self)**~~ BUILT 2026-07-09 (proposal
