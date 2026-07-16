@@ -96,7 +96,7 @@ Suggestions, roughly in order of payoff:
    Cycle screen now fits the Pixel with NO scroll on the dial view; log round-trip
    (open -> chip -> save -> Done -> bar updates) confirmed on hardware, and the dial
    behind the sheet live-updates as you tap (nice, unplanned). Still to check: the SE
-   (smaller) + the calendar view + iOS. Original note: It is the tallest non-hero block
+   (smaller) + iOS. Original note: It is the tallest non-hero block
    (date input + Flow chips + Symptoms chips + notes textarea). Replace it inline with a
    single compact summary bar ("Jul 16 · Medium · 2 symptoms" + a chevron / "Log" button)
    that opens the full editor in a sheet. Tapping a dial day or a calendar cell opens the
@@ -110,12 +110,26 @@ Suggestions, roughly in order of payoff:
    the existing `Info` button or a tap on the phase label, leaving the dial + phase + day
    + one primary action as the hero. Keep `Next period` inline (it is the one number people
    open the app for); move fertile/ovulation/confidence copy into the sheet.
-4. Optional trims if the above is not enough: fold `Add period` into the day sheet's flow
-   row, and make the goal/disclaimer copy (conceive/avoid/birth-control notes) part of the
-   details sheet rather than always-on lines.
-Do 1 first and re-measure on the SE before doing 2-4; 1 alone may be sufficient. Keep the
-sheet animation consistent with the existing sheets (same spring/duration) so they read as
-one system. T1 (UI-only, no wire/base change).
+4. ~~**Reclaim the view-toggle row + the `Add period` button.**~~ DONE + Pixel-VERIFIED
+   2026-07-16 (same branch), after 1 alone left Recent days just below the fold:
+   - The Dial/Month toggle no longer takes a row of its own - it floats at the top-centre
+     of the card, in the band the dial already leaves empty above the ring (where the
+     flower thumb + info button live). It is positioned against a wrapper, not either
+     card, so it does NOT move or remount across views; the calendar card takes a
+     `paddingTop: 62` to clear it. Verified: identical toggle position on both views.
+   - `Add period` / `Adjust period` is GONE from the tracking (`known`) state - day-to-day
+     use is logging flow, which starts a period implicitly, so the by-date-range path is a
+     correction, not a daily action (Tim's call, 2026-07-16). It now lives as a "Set period
+     dates ›" link at the foot of the day sheet, handed off on the day sheet's CLOSE so the
+     two sheets never stack. The learning (`!known`) state keeps its up-front Add period
+     button - there it IS the primary action.
+   Result: Recent days is fully visible on the Pixel with ~250px to spare, both views.
+5. Optional trims if ever needed again: make the goal/disclaimer copy (conceive/avoid/
+   birth-control notes) part of a details sheet rather than always-on lines.
+Steps 2-3 are now likely UNNECESSARY on the Pixel - 1 + 4 did it. Re-measure on the SE
+(smaller) and on iOS before doing any more. Keep the sheet animation consistent with the
+existing sheets (same spring/duration) so they read as one system. T1 (UI-only, no
+wire/base change).
 
 ### Dial: make "tap the flower center = back to today" discoverable (QUEUED 2026-07-16)
 
