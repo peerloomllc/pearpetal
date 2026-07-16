@@ -147,6 +147,16 @@ export default function PetalDial ({ pred, today, flower = 'rose', onTap, onDayT
           <circle cx={0} cy={-2} r={fl.centerHi.r} fill='rgba(255,255,255,0.25)' />
         </g>
         {known && selDay !== dayOfCycle && <circle cx={tpx} cy={tpy} r={3.5} fill={colors.primary} />}
+        {/* posToDay already treats a tap near the centre as "today", but nothing
+            said so. Name it - only while scrubbed away, so the flower is clean
+            whenever the hint would be a no-op. pointerEvents off: the tap belongs
+            to the svg handler underneath, which already does the right thing. */}
+        {known && onDayTap && selDay !== dayOfCycle && (
+          <g pointerEvents='none' style={{ animation: 'pearpetal-fade 200ms ease' }}>
+            <rect x={CX - 25} y={CY - 10} width={50} height={20} rx={10} fill={colors.surface.base} opacity={0.88} stroke={colors.accent} strokeWidth={1} />
+            <text x={CX} y={CY + 4} textAnchor='middle' fill={colors.text.primary} fontSize={10.5} fontWeight={600}>Today</text>
+          </g>
+        )}
         {known && <circle cx={px} cy={py} r={7} fill={colors.surface.base} stroke={colors.accent} strokeWidth={2.5} />}
       </svg>
     </div>

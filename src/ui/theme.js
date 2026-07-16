@@ -53,8 +53,14 @@ button{font-family:${FONT};cursor:pointer;transition:transform 120ms cubic-bezie
 button:active{transform:scale(0.97)}
 @keyframes pearpetal-spin{to{transform:rotate(360deg)}}
 @keyframes pearpetal-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@keyframes pearpetal-slide-r{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
-@keyframes pearpetal-slide-l{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+/* Month change: the two months travel as one strip - the outgoing month slides
+   fully out while the incoming one slides in behind it, clipped by the container.
+   Deliberately NO opacity fade: fading them through each other superimposes two
+   sets of dates mid-travel, which reads as ghosting. They never overlap. */
+@keyframes pearpetal-month-in-r{from{transform:translateX(100%)}to{transform:none}}
+@keyframes pearpetal-month-in-l{from{transform:translateX(-100%)}to{transform:none}}
+@keyframes pearpetal-month-out-l{from{transform:none}to{transform:translateX(-100%)}}
+@keyframes pearpetal-month-out-r{from{transform:none}to{transform:translateX(100%)}}
 @keyframes pearpetal-sheet-up{from{transform:translateY(100%)}to{transform:none}}
 @keyframes pearpetal-sheet-down{from{transform:none}to{transform:translateY(100%)}}
 @keyframes pearpetal-overlay-in{from{opacity:0}to{opacity:1}}
