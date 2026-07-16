@@ -42,13 +42,14 @@ Play (closed testing). The original v1 blockers, all now done:
    "Restore from a backup". REMAINING (optional, deferred): a deeper interactive coach-mark
    tour of the live menus/sharing was scoped out of v1 - revisit only if wanted.
 
-- **WATCH: the next iOS submission carries App Store 3.1.1 exposure.** Donations were
-  unhidden on iOS 2026-07-16 (PR #88): the About > Support development section AND the
-  unprompted two-week nudge now show, both linking out to Lightning / Strike / Buy Me a
-  Coffee. Deliberate, accepted risk (DECISIONS 2026-07-16) - but 1.0.0 was approved with
-  them HIDDEN, so this exposure is untested against a real reviewer. If a submission is
-  rejected under 3.1.1: re-gate the NUDGE first (unprompted = the likelier target) and
-  keep the About section; rollback is two one-line guards + the `isIOS` helper.
+- **Donations unhidden on iOS 2026-07-16** (PR #88): the About > Support development
+  section AND the two-week nudge now show, linking out to Lightning / Strike / Buy Me a
+  Coffee. This is the SUITE'S STANDARD RELEASE PATTERN, not a gamble: ship v1 with the
+  donation section hidden, enable it in a post-v1 release. Apple has consistently
+  approved PeerLoom's post-v1 releases on that pattern (Tim, 2026-07-16), so the
+  practical 3.1.1 risk is low. Should a reviewer ever object: re-gate the NUDGE first
+  (unprompted = the likelier target) and keep the About section; rollback is two one-line
+  guards + the `isIOS` helper.
 
 All on-device confirmation items are now DONE (see DONE.md 2026-07-10 hardware pass:
 iOS QR scanner, iOS Local Network prompt + LAN sync, invite/share URL copy-paste,
