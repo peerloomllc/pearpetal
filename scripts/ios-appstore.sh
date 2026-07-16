@@ -115,13 +115,45 @@ if [ "${SKIP_PREBUILD:-0}" != "1" ]; then
   ( cd "$REPO_ROOT" && rm -rf ios && CI=1 npx expo prebuild -p ios --no-install )
 fi
 
+# ── Disk space preflight ────────────────────────────────────────────────────
+# pod install runs bare-link, which ad-hoc-signs each Bare addon framework. A
+# full disk makes codesign fail to write its staging file and report only
+# "internal error in Code Signing subsystem", which points nowhere near the real
+# cause. Fail early with something actionable instead.
+#
+# 5GB is a hard floor, not a comfortable margin: below it the build cannot
+# succeed, so aborting costs nothing. A full archive regenerates several GB of
+# DerivedData and can still run out above the floor — hence the warn band.
+_free_mb=$(df -m "$REPO_ROOT" | awk 'NR==2 {print $4}')
+if [ "$_free_mb" -lt 5120 ]; then
+  echo "Error: only ${_free_mb}MB free on $(hostname) — need at least 5GB."
+  echo "  pod install (codesign) and xcodebuild archive both fail in confusing"
+  echo "  ways when the disk is full. Free space and re-run. Usual suspects:"
+  echo "    rm -rf ~/Library/Developer/Xcode/DerivedData"
+  echo "    xcrun simctl delete unavailable"
+  exit 1
+elif [ "$_free_mb" -lt 15360 ]; then
+  echo "Warning: only ${_free_mb}MB free on $(hostname) — the archive may still"
+  echo "  exhaust it. If it fails, clear DerivedData and retry."
+fi
+
 # ── Pods ────────────────────────────────────────────────────────────────────
 # Resync Pods to the current Podfile. The release rsync copies the repo over and
 # can leave the CocoaPods sandbox out of sync with Podfile.lock, which fails the
 # "Check Pods Manifest.lock" build phase during archive. UTF-8 env is required:
 # CocoaPods' UnicodeNormalize crashes without it.
+#
+# Output goes to a log rather than `| tail -3`: on success the tail is all you
+# want, but on failure the tail lands mid-stacktrace and hides the error.
 echo "Running pod install..."
-( cd "$REPO_ROOT/ios" && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install ) 2>&1 | tail -3
+_pod_log="$REPO_ROOT/ios/pod-install.log"
+if ( cd "$REPO_ROOT/ios" && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install ) > "$_pod_log" 2>&1; then
+  tail -3 "$_pod_log"
+else
+  echo "Error: pod install failed. Full output:"
+  cat "$_pod_log"
+  exit 1
+fi
 
 # ── Archive ─────────────────────────────────────────────────────────────────
 rm -rf "$ARCHIVE_PATH"
