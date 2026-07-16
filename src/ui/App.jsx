@@ -1038,7 +1038,43 @@ function Row ({ label, value, accent }) {
 }
 
 // --- day editor -------------------------------------------------------------
-function DayEditor ({ date, setDate, onSaved }) {
+// The editor is the tallest block on the Cycle screen (date + flow chips +
+// symptom chips + notes), so it lives in a bottom sheet and leaves only a
+// one-line summary of the selected day inline. That keeps the main screen to a
+// single phone screen with the dial as the hero. `DaySummaryBar` reads the row
+// from the day list the screen already loads (no extra IPC); the sheet owns its
+// own copy while open, because it writes.
+const FLOW_LABEL = Object.fromEntries(FLOWS.map((f) => [f.key, f.label]))
+function daySummaryText (row) {
+  const bits = []
+  if (row?.flow) bits.push(`${FLOW_LABEL[row.flow] || row.flow} flow`)
+  const n = (row?.symptoms || []).length
+  if (n) bits.push(`${n} symptom${n === 1 ? '' : 's'}`)
+  if (row?.notes) bits.push('note')
+  return bits.join(' · ')
+}
+function DaySummaryBar ({ date, row, onOpen }) {
+  const summary = daySummaryText(row)
+  const isToday = date === todayIso()
+  return (
+    <button onClick={() => { haptic('light'); onOpen() }} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.md, textAlign: 'left', width: '100%', cursor: 'pointer' }}>
+      <span style={{ width: 12, height: 12, borderRadius: radius.full, background: row?.flow ? flowColor(row.flow) : colors.track, flexShrink: 0 }} />
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+        <span style={{ color: colors.text.primary, fontWeight: 500 }}>{isToday ? 'Today' : fmtDate(date)}</span>
+        <span style={{ color: summary ? colors.text.secondary : colors.text.muted, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {summary || 'Nothing logged'}
+        </span>
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.primary, fontSize: 13, fontWeight: 500, flexShrink: 0 }}>
+        {summary ? 'Edit' : 'Log'}<CaretRight size={14} color={colors.text.muted} weight='regular' />
+      </span>
+    </button>
+  )
+}
+
+// The full editor, in a sheet. Saves per-tap as the inline card did (no Done-to-
+// commit), so dismissing never loses an edit; notes still save on blur.
+function DayEditorSheet ({ date, setDate, onSaved, onClose, onEditPeriod }) {
   const [row, setRow] = useState(null)
   const [notes, setNotes] = useState('')
   const [saved, setSaved] = useState(false)
@@ -1059,7 +1095,6 @@ function DayEditor ({ date, setDate, onSaved }) {
     if (!typingNote) setNotes(r?.notes || '')
   }), [date])
 
-  if (!row) return null
   const setFlow = async (k) => {
     const flow = row.flow === k ? null : k
     setRow({ ...row, flow }) // Chip fires the haptic tick on tap
@@ -1075,30 +1110,49 @@ function DayEditor ({ date, setDate, onSaved }) {
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1200); onSaved && onSaved() }
 
   return (
-    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <input type='date' value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)}
-          style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `6px 10px` }} />
-        <span style={{ position: 'absolute', right: 0, color: colors.success, fontSize: 13, opacity: saved ? 1 : 0, transition: 'opacity 200ms' }}>Saved</span>
-      </div>
-      <div>
-        <div style={{ fontSize: 13, color: colors.text.muted, marginBottom: spacing.sm }}>Flow</div>
-        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-          {FLOWS.map((f) => <Chip key={f.key} active={row.flow === f.key} color={flowColor(f.key)} onClick={() => setFlow(f.key)}>{f.label}</Chip>)}
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize: 13, color: colors.text.muted, marginBottom: spacing.sm }}>Symptoms</div>
-        <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-          {SYMPTOMS.map((s) => <Chip key={s} active={(row.symptoms || []).includes(s)} onClick={() => toggleSymptom(s)}>{s}</Chip>)}
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize: 13, color: colors.text.muted, marginBottom: spacing.sm }}>Notes</div>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={saveNotes} rows={2} placeholder='Private to your devices'
-          style={{ width: '100%', background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
-      </div>
-    </div>
+    <BottomSheet onClose={onClose}>
+      {(close) => (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
+            <input type='date' value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)}
+              style={{ background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `6px 10px` }} />
+            <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+              <span style={{ color: colors.success, fontSize: 13, opacity: saved ? 1 : 0, transition: 'opacity 200ms' }}>Saved</span>
+              <button onClick={() => { haptic('light'); close() }} style={{ background: 'none', border: 'none', color: colors.primary, fontSize: 15, fontWeight: 500, padding: spacing.xs, cursor: 'pointer' }}>Done</button>
+            </span>
+          </div>
+          {/* Reserve the body height while the row loads so the sheet does not
+              jump right after it slides up. */}
+          {!row ? <div style={{ minHeight: 240 }} /> : (
+            <>
+              <div>
+                <div style={{ fontSize: 13, color: colors.text.muted, marginBottom: spacing.sm }}>Flow</div>
+                <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+                  {FLOWS.map((f) => <Chip key={f.key} active={row.flow === f.key} color={flowColor(f.key)} onClick={() => setFlow(f.key)}>{f.label}</Chip>)}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 13, color: colors.text.muted, marginBottom: spacing.sm }}>Symptoms</div>
+                <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+                  {SYMPTOMS.map((s) => <Chip key={s} active={(row.symptoms || []).includes(s)} onClick={() => toggleSymptom(s)}>{s}</Chip>)}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 13, color: colors.text.muted, marginBottom: spacing.sm }}>Notes</div>
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={saveNotes} rows={2} placeholder='Private to your devices'
+                  style={{ width: '100%', background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
+              </div>
+              {/* Logging flow starts a period implicitly, so this is the correction
+                  path (wrong dates, a period you never logged). Hands off to the
+                  period sheet only once this one has slid away - never stacked. */}
+              {onEditPeriod && (
+                <button onClick={() => { haptic('light'); onEditPeriod(); close() }} style={{ alignSelf: 'center', background: 'none', border: 'none', color: colors.primary, fontSize: 13, padding: spacing.xs, cursor: 'pointer' }}>Set period dates ›</button>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </BottomSheet>
   )
 }
 
@@ -1148,6 +1202,11 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   )
 }
 
+// Top padding that clears the Dial/Month toggle floating over the card's top
+// band. Both cards use it so the toggle sits the same distance above their
+// content and the two views cannot drift apart.
+const TOGGLE_INSET = 62
+
 // --- cycle summary (owner's own prediction) ---------------------------------
 const PHASE_COLOR = { menstrual: '#c8384f', follicular: '#c9a0d8', fertile: '#e8859b', luteal: '#8f8288' }
 function fmtDate (iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }) } catch { return iso } }
@@ -1181,7 +1240,7 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
   const days = pred.daysUntilNextPeriod
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
-    <div style={{ ...card, position: 'relative', display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
+    <div style={{ ...card, paddingTop: TOGGLE_INSET, position: 'relative', display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
       <button onClick={() => { haptic('light'); onFlowerTap && onFlowerTap() }} aria-label='Change flower' style={{ position: 'absolute', top: spacing.md, left: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, cursor: 'pointer', display: 'flex', alignItems: 'center' }}><FlowerThumb flower={flower} size={26} /></button>
       <button onClick={() => { haptic('light'); onInfo && onInfo() }} aria-label='How to read the dial' style={{ position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, color: colors.text.muted, cursor: 'pointer', display: 'flex' }}><Info size={20} /></button>
       <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} hideFertile={pred.birthControl} />
@@ -1200,7 +1259,11 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
           </div>
           {!pred.birthControl && pred.goal === 'conceive' && <div style={{ textAlign: 'center', color: colors.primary, fontSize: 12 }}>Your fertile window is your best chance to conceive.</div>}
           {!pred.birthControl && pred.goal === 'avoid' && <div style={{ textAlign: 'center', color: colors.warn, fontSize: 12, fontWeight: 500 }}>Not contraception. Do not rely on this to avoid pregnancy.</div>}
-          <Btn kind='ghost' onClick={onEditPeriod} style={{ alignSelf: 'center', padding: `7px 18px`, fontSize: 14 }}>{pred.phase === 'menstrual' ? 'Adjust period' : 'Add period'}</Btn>
+          {/* No Add/Adjust period button here once the cycle is known: day-to-day
+              use is logging flow, which starts a period implicitly. Correcting a
+              period by date range is rare, so it lives in the day sheet with the
+              rest of the "fix my data" actions. The learning state above still
+              offers it up front - there it IS the primary action. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
             <Row label='Next period' value={`${fmtDate(pred.nextPeriodStart)} · ${nextLabel}`} />
             {!pred.birthControl && <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} accent={pred.goal === 'conceive'} />}
@@ -1280,7 +1343,7 @@ function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, on
   }
   const slide = (dir >= 0 ? 'pearpetal-slide-r' : 'pearpetal-slide-l')
   return (
-    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <div style={{ ...card, paddingTop: TOGGLE_INSET, display: 'flex', flexDirection: 'column', gap: spacing.md }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <button onClick={() => { haptic('light'); onPrev() }} aria-label='Previous month' style={navBtn}><CaretLeft size={20} /></button>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.sm }}>
@@ -2238,6 +2301,8 @@ export default function App () {
   const [notice, setNotice] = useState('')
   const [donateReminder, setDonateReminder] = useState(false)
   const [periodSheet, setPeriodSheet] = useState(false)
+  const [daySheet, setDaySheet] = useState(false)
+  const dayToPeriod = useRef(false) // day sheet -> period sheet handoff, run on the day sheet's close
   const [dialInfo, setDialInfo] = useState(false)
   const [flowerSheet, setFlowerSheet] = useState(false)
   const [recentsOpen, setRecentsOpen] = useState(false) // Recents is collapsed by default (declutter the main page)
@@ -2283,6 +2348,8 @@ export default function App () {
   const [calDir, setCalDir] = useState(1) // slide direction for the month transition
   const goMonth = (n) => { setCalDir(n); setCalMonth((cur) => shiftMonthIso(cur, n)) }
   const goToday = () => { const t = monthStart(todayIso()); setCalDir(t < calMonth ? -1 : 1); setCalMonth(t); setDate(todayIso()) }
+
+  const daysByIso = useMemo(() => Object.fromEntries(days.map((d) => [d.date, d])), [days])
 
   const refresh = useCallback(async () => {
     const [d, pr, p] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null), call('prefs:get').catch(() => null)])
@@ -2364,17 +2431,26 @@ export default function App () {
         <PregnancyView preg={pred.pregnancy} flower={flower} onSettings={() => setScreen('settings')} />
       ) : (
         <>
-          <ViewToggle value={cycleView} onChange={setView} />
-          {/* key forces a remount so the fade replays on each toggle, softening the
+          {/* The toggle floats in the card's top band rather than taking a row of
+              its own: the dial card already has empty space above the ring (the
+              flower thumb + info button sit there), so this costs no height. It is
+              positioned against the wrapper, not either card, so it does not move
+              or remount when you switch views - only the card under it changes.
+              key forces a remount so the fade replays on each toggle, softening the
               height change between the (taller) dial and the calendar. */}
-          <div key={cycleView} style={{ animation: 'pearpetal-fade 220ms ease' }}>
-            {cycleView === 'calendar'
-              ? <MonthCalendar monthIso={calMonth} dir={calDir} pred={pred} daysByIso={Object.fromEntries(days.map((d) => [d.date, d]))} selected={date} today={todayIso()} onPick={setDate} onPrev={() => goMonth(-1)} onNext={() => goMonth(1)} onToday={goToday} />
-              : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} onEditPeriod={() => setPeriodSheet(true)} onInfo={() => setDialInfo(true)} onFlowerTap={() => setFlowerSheet(true)} />}
+          <div style={{ position: 'relative' }}>
+            <div style={{ position: 'absolute', top: spacing.md, left: '50%', transform: 'translateX(-50%)', zIndex: 2 }}>
+              <ViewToggle value={cycleView} onChange={setView} />
+            </div>
+            <div key={cycleView} style={{ animation: 'pearpetal-fade 220ms ease' }}>
+              {cycleView === 'calendar'
+                ? <MonthCalendar monthIso={calMonth} dir={calDir} pred={pred} daysByIso={daysByIso} selected={date} today={todayIso()} onPick={setDate} onPrev={() => goMonth(-1)} onNext={() => goMonth(1)} onToday={goToday} />
+                : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} onEditPeriod={() => setPeriodSheet(true)} onInfo={() => setDialInfo(true)} onFlowerTap={() => setFlowerSheet(true)} />}
+            </div>
           </div>
         </>
       )}
-      <DayEditor date={date} setDate={setDate} onSaved={refresh} />
+      <DaySummaryBar date={date} row={daysByIso[date]} onOpen={() => setDaySheet(true)} />
       {((!pred?.pregnancy?.active && cycleView === 'calendar') || !days.length) ? null : (
         <CollapsibleCard title={`Recent days (${days.length})`} open={recentsOpen} onToggle={() => setRecentsOpen((o) => !o)}>
           <RecentDays days={days} onPick={setDate} />
@@ -2393,6 +2469,10 @@ export default function App () {
       {showNav && <BottomNav active={navActive} onTab={setScreen} tabs={navTabs} />}
       <DonationReminderModal open={donateReminder} onDonate={() => { setDonateReminder(false); setScreen('about') }} onDismiss={() => setDonateReminder(false)} />
       {periodSheet && <PeriodSheet defaultStart={pred?.known ? addDaysIso(todayIso(), -((pred.dayOfCycle || 1) - 1)) : todayIso()} onClose={() => setPeriodSheet(false)} onSaved={(start) => { setView('dial'); setDate(start <= todayIso() ? start : todayIso()); refresh() }} />}
+      {/* A ref, not state: BottomSheet's close captures onClose at click time, so a
+          state flag set in the same handler would still read stale here. */}
+      {daySheet && <DayEditorSheet date={date} setDate={setDate} onSaved={refresh} onEditPeriod={() => { dayToPeriod.current = true }}
+        onClose={() => { setDaySheet(false); if (dayToPeriod.current) { dayToPeriod.current = false; setPeriodSheet(true) } }} />}
       {dialInfo && <DialInfoSheet onClose={() => setDialInfo(false)} />}
       {flowerSheet && <FlowerPickerSheet value={flower} onPick={(key) => { setFlower(key); call('prefs:set', { flower: key }).catch(() => {}); haptic('light') }} onClose={() => setFlowerSheet(false)} />}
       {notice && (

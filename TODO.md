@@ -6,8 +6,8 @@ blockers first, then nice-to-haves, design decisions, deferred, dev-infra.
 
 ## Release (v1) - SHIPPED 2026-07-11
 
-PearPetal 1.0.0 launched on the App Store (in review), GitHub, Zapstore, and Google Play
-(closed testing). The original v1 blockers, all now done:
+PearPetal 1.0.0 launched on the App Store (LIVE 2026-07-16), GitHub, Zapstore, and Google
+Play (closed testing). The original v1 blockers, all now done:
 1. ~~**Native QR scan + QR render**~~ BUILT (in-WebView) + Android on-device VERIFIED
    2026-07-09. `QrImage` renders a real invite QR via the `qrcode` lib (Sharing share
    rows + Devices); `ScannerView` scans via WebView getUserMedia + `jsQR` (Onboarding +
@@ -18,15 +18,17 @@ PearPetal 1.0.0 launched on the App Store (in review), GitHub, Zapstore, and Goo
    full-screen scanner (portal fix). PR #49. Android end-to-end scan CONFIRMED by Tim 2026-07-10.
    iOS WebView scanner CONFIRMED 2026-07-10. FULLY DONE.
 2. ~~**Store assets + release (v1.0.0 launch)**~~ SHIPPED 2026-07-11 - full record in
-   DONE.md. PearPetal 1.0 is out on ALL channels: **App Store** (Waiting for Review),
-   **GitHub Releases** (120.8MB arm64 APK), **Zapstore**, **Google Play** (closed testing).
+   DONE.md. PearPetal 1.0 is out on ALL channels: **App Store** (LIVE 2026-07-16, approved
+   by Apple; `id6789721938`), **GitHub Releases** (120.8MB arm64 APK), **Zapstore**,
+   **Google Play** (closed testing).
    Everything done: privacy/support/landing pages; listing copy (`metadata/listing-*.md`);
    iOS 6.9" + Android screenshots via the fixtures harness; Play feature graphic + hi-res
    icon; release pipeline (`release.sh` + `ios-appstore.sh`) wired + run; iOS App Store
    distribution profile + ASC key; Android App Links live with BOTH the `pearpetal` upload
    key and Google's Play app-signing key in `assetlinks.json`.
-   REMAINING (not in our hands): await Apple's review verdict + Google's closed-test review;
-   then promote Play closed testing -> production (Google's 12-tester/14-day gate).
+   REMAINING: promote Play closed testing -> production (Google's 12-tester/14-day gate) -
+   the last channel not yet fully public. Apple's review verdict came back APPROVED
+   2026-07-16 (App Store badge enabled on the website that day, website PR #35).
    OPTIONAL polish (non-blocking): a dark-mode screenshot set (harness supports it - add
    `dark` to APPEARANCES); `PartnerView` raw ISO dates (`2026-07-23`) -> `fmtDate`
    (`Jul 23`) for a nicer scene 4 + app.
@@ -81,6 +83,83 @@ Prior nice-to-haves shipped + verified 2026-07-10 (see DONE.md): bottom sheets f
 day/symptom entry, partner-view scoped Month calendar, joiner photo avatar in per-person
 shares.
 
+### Main Cycle view - cut the scrolling (QUEUED 2026-07-16)
+
+Goal: the Cycle screen fits one phone screen, no scroll, on the dial AND the calendar
+view. Today it stacks ViewToggle + dial/calendar card + full `DayEditor` card + "Recent
+days" collapsible (`src/ui/App.jsx` ~2361-2383), which overflows on a small phone (the SE).
+The `BottomSheet` primitive (App.jsx:121) already exists and already animates; reuse it.
+Suggestions, roughly in order of payoff:
+1. ~~**`DayEditor` -> a bottom sheet, not an inline card.**~~ BUILT + Pixel-VERIFIED
+   2026-07-16 on `feature/cycle-view-bottomsheets`: `DaySummaryBar` (one-line "Today ·
+   Medium flow · 1 symptom" + Log/Edit) inline, full editor in `DayEditorSheet`. The
+   Cycle screen now fits the Pixel with NO scroll on the dial view; log round-trip
+   (open -> chip -> save -> Done -> bar updates) confirmed on hardware, and the dial
+   behind the sheet live-updates as you tap (nice, unplanned). Still to check: the SE
+   (smaller) + iOS. Original note: It is the tallest non-hero block
+   (date input + Flow chips + Symptoms chips + notes textarea). Replace it inline with a
+   single compact summary bar ("Jul 16 · Medium · 2 symptoms" + a chevron / "Log" button)
+   that opens the full editor in a sheet. Tapping a dial day or a calendar cell opens the
+   same sheet on that date, which also makes scrub -> log one gesture instead of
+   tap-then-scroll-down. Sheet dismiss returns to the dial - no scroll position to lose.
+2. **"Recent days" -> a sheet too** (or drop it from the main screen entirely). It is
+   already collapsible, i.e. already admitting it does not belong inline; a "Recent days
+   (N) ›" row that opens a scrollable sheet is the same affordance without the height.
+   Sheet content scrolls internally - fine, the SCREEN does not.
+3. **Detail rows (Next period / Fertile window / Ovulation) -> a "Details" sheet** behind
+   the existing `Info` button or a tap on the phase label, leaving the dial + phase + day
+   + one primary action as the hero. Keep `Next period` inline (it is the one number people
+   open the app for); move fertile/ovulation/confidence copy into the sheet.
+4. ~~**Reclaim the view-toggle row + the `Add period` button.**~~ DONE + Pixel-VERIFIED
+   2026-07-16 (same branch), after 1 alone left Recent days just below the fold:
+   - The Dial/Month toggle no longer takes a row of its own - it floats at the top-centre
+     of the card, in the band the dial already leaves empty above the ring (where the
+     flower thumb + info button live). It is positioned against a wrapper, not either
+     card, so it does NOT move or remount across views; the calendar card takes a
+     `paddingTop: 62` to clear it. Verified: identical toggle position on both views.
+   - `Add period` / `Adjust period` is GONE from the tracking (`known`) state - day-to-day
+     use is logging flow, which starts a period implicitly, so the by-date-range path is a
+     correction, not a daily action (Tim's call, 2026-07-16). It now lives as a "Set period
+     dates ›" link at the foot of the day sheet, handed off on the day sheet's CLOSE so the
+     two sheets never stack. The learning (`!known`) state keeps its up-front Add period
+     button - there it IS the primary action.
+   Result: Recent days is fully visible on the Pixel with ~250px to spare, both views.
+5. Optional trims if ever needed again: make the goal/disclaimer copy (conceive/avoid/
+   birth-control notes) part of a details sheet rather than always-on lines.
+Steps 2-3 are now likely UNNECESSARY on the Pixel - 1 + 4 did it. Re-measure on the SE
+(smaller) and on iOS before doing any more. Keep the sheet animation consistent with the
+existing sheets (same spring/duration) so they read as one system. T1 (UI-only, no
+wire/base change).
+
+### Dial: make "tap the flower center = back to today" discoverable (QUEUED 2026-07-16)
+
+`PetalDial.jsx` posToDay() (line ~53-61) already returns `dayOfCycle` for any tap within
+r<46 of the center - i.e. the center IS a reset-to-today target - but nothing SAYS so. It
+is currently only findable by accident. Options (pick one or two, do not stack all):
+a small "Today" pip/label at the center when `selected !== today`, fading out when you are
+already on today; a subtle pulse on the center the first time a user scrubs off today; the
+`DialInfoSheet` (App.jsx:1944, "How to read the dial") gaining an explicit "tap the center
+to jump back to today" line - cheapest, do this one regardless. T1.
+
+### Month view: "Today" button should track the DAY, not just the month (QUEUED 2026-07-16)
+
+`MonthCalendar` (App.jsx:1290) gates the Today button on `isCurrentMonth`, so it hides
+whenever you are on the current month even if a NON-today day is selected - but `onToday`
+(`goToday`, App.jsx:2285) sets BOTH the month and `date`, so it still has work to do in
+that state. Gate on `isCurrentMonth && selected === today` instead. Same fix applies to the
+partner-view calendar if it duplicates the gate. T1, small.
+
+### Month view: smoother/slower left-right transition (QUEUED 2026-07-16)
+
+The month change is a 240ms `ease` remount fade-slide (App.jsx:1281/1294, keyframes
+`pearpetal-slide-l|r` in `theme.js:56-57`): only the INCOMING month animates - the outgoing
+one just vanishes - which is what makes it read as a snap rather than a slide. Slow it
+(~320-380ms) and use a decelerating curve (`cubic-bezier(0.22, 1, 0.36, 1)`) at minimum;
+better, animate the outgoing month out as well (cross-slide) so the two months actually
+travel together, and consider tracking the finger during the swipe (`onTouchMove`) so the
+grid follows and settles instead of jumping on release. Applies to swipe AND the caret
+buttons. T1.
+
 ## Device-link adoption - SHIPPED 2026-07-12 (see DONE.md)
 
 `@peerloom/device-link` is now the default private-base + own-device-linking
@@ -94,6 +173,25 @@ still open:
 
 ## Design decisions to make (before building)
 
+- **Partner notifications** (e.g. "X may be pre-menstrual today") - PARKED 2026-07-12,
+  recorded not queued. Would extend the opt-in reminder system to the viewer side. Parked
+  because it crosses the consent boundary in a way the to-self reminders do not, and the
+  questions below want settling before any code:
+  - Predictions are computed on-device and never cross the wire, so the partner's phone
+    must derive its own from the SHARED base projection - which means what a partner can
+    be notified about is bounded by the consent scope they were given (phase / fertility /
+    full). A `phase`-scoped share has no business producing a fertility alert.
+  - Whose consent gates it? Plausibly BOTH: the owner opts in to partner notifications
+    being possible at all (per share, alongside the scope), and the partner opts in to
+    receiving them. Owner-side veto seems non-negotiable - the alternative is a partner
+    silently instrumenting the owner's cycle.
+  - Content + tone: discreet mode already exists to-self and matters more here. Wording
+    should be hedged ("may be") - the prediction carries a confidence, and a
+    low-confidence partner-facing alert is worse than none.
+  - Whether the projection as written today carries enough for the partner to predict at
+    all, or whether the owner must write a projected-phase row into the shared base
+    (a wire change - would need a proposal).
+  Likely T2/T3 -> write a proposal before building.
 - ~~**Notifications (v1 to-self)**~~ BUILT 2026-07-09 (proposal
   2026-07-09-notifications, DECISIONS 2026-07-09): opt-in period-due + fertile/ovulation
   reminders, goal-aware + confidence-gated, user-configurable discreet mode; Settings
