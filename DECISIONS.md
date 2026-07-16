@@ -2,27 +2,30 @@
 
 Append-only, newest on top. Per Constitution §4.
 
-## 2026-07-16 - About "Support development" now shows on iOS
-Tier: T0 (UI-local visibility gate; no wire, data model, or IPC change).
+## 2026-07-16 - Donations fully unhidden on iOS (About section + two-week nudge)
+Tier: T0 (UI-local visibility gates; no wire, data model, or IPC change).
 Context: the About donation section (blocker #7, 2026-07-08) and the two-week
 nudge (blocker #8) both skipped iOS on the reading of App Store guideline 3.1.1
 that external donation links are disallowed. 1.0.0 shipped that way and was
 approved 2026-07-16 (`id6789721938`).
-Choice: drop the `isIOS()` gate on the About > Support development section only.
-It is user-initiated (behind a collapsed accordion the user taps), links out via
-`shell:openUrl` to Lightning / Strike / Buy Me a Coffee, and unlocks NO app
-functionality - the whole app is free and every feature works without donating.
-Alternatives: keep iOS hidden (status quo, zero review risk); route iOS through
-StoreKit IAP (Apple's cut, new dependency + purchase surface, and nothing to
-"buy"); pursue a nonprofit/charity exemption (PeerLoom LLC is not a nonprofit).
-Consequences: this is a DELIBERATE acceptance of App Store review risk, taken by
-Tim with the 3.1.1 exposure flagged. Apple's enforcement of donation links in
-free apps is inconsistent; a reviewer may reject a future submission or, less
-likely, pull the live listing. Rollback is one line - restore the `!ios &&`
-guard - so a rejection costs a point release, not a redesign. The UNPROMPTED
-two-week `DonationReminderModal` stays iOS-gated (`App.jsx` donation-nudge
-effect): it is push, not pull, and carries materially more 3.1.1 exposure than a
-section the user chose to open. Revisit only if Apple actually objects.
+Choice: drop BOTH `isIOS()` gates, so iOS matches Android exactly. The `isIOS`
+helper had no other callers and is deleted with them; `window.__pearPlatform` is
+now unread by the UI. The donations link out via `shell:openUrl` to Lightning /
+Strike / Buy Me a Coffee and unlock NO app functionality - the whole app is free
+and every feature works without donating.
+Alternatives: keep iOS hidden (status quo, zero review risk); About section only,
+nudge still gated (the intermediate position held for one commit, e1cc3b5);
+route iOS through StoreKit IAP (Apple's cut, new purchase surface, nothing to
+"buy"); nonprofit exemption (PeerLoom LLC is not a nonprofit).
+Consequences: a DELIBERATE acceptance of App Store review risk, taken by Tim with
+the 3.1.1 exposure flagged twice. The nudge is the sharper half: it is an
+UNPROMPTED modal pushing an external donation link at a user who did not ask,
+which is the shape reviewers object to most, whereas the About section only opens
+when tapped. Apple's enforcement on free apps is inconsistent; a reviewer may
+reject a future submission or, less likely, act against the live listing.
+Rollback is restoring two one-line guards + the helper, so a rejection costs a
+point release, not a redesign. If Apple objects, re-gate the nudge FIRST and keep
+the About section - it is the cheaper concession and the likelier target.
 
 ## 2026-07-12 - Owner profile syncs across own devices; onboarding link path skips name
 Tier: T2 (new record synced across the owner's own devices via the device-link

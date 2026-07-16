@@ -49,10 +49,6 @@ const LIGHTNING_WALLETS = [
 // Shared height for every option box in the donation sheet (primary buttons,
 // copy fields, wallet rows) so the stack reads as one uniform column.
 const DONATE_OPTION_MIN_H = 56
-// The shell injects window.__pearPlatform ('ios'|'android') before the bundle.
-// The About Support-development section now shows on every platform; iOS still
-// suppresses the unprompted two-week donation nudge (App Store 3.1.1).
-const isIOS = () => typeof window !== 'undefined' && window.__pearPlatform === 'ios'
 const openUrl = (url) => { try { const p = call('shell:openUrl', { url }); if (p && p.catch) p.catch(() => {}) } catch {} }
 
 const pad2 = (n) => String(n).padStart(2, '0')
@@ -2446,10 +2442,10 @@ export default function App () {
   useEffect(() => { if (!notice) return undefined; const t = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(t) }, [notice])
 
   // Two-week donation nudge: once the owner is set up, check the device-local due
-  // flag once, skip on iOS, and show the modal a single time ever (mark shown as
-  // soon as it surfaces). Never crosses the wire.
+  // flag once and show the modal a single time ever (mark shown as soon as it
+  // surfaces). Never crosses the wire.
   useEffect(() => {
-    if (mode !== 'owner' || isIOS()) return undefined
+    if (mode !== 'owner') return undefined
     let done = false
     call('donation:status', {}).then((s) => {
       if (!done && s?.due) { setDonateReminder(true); call('donation:dismiss', {}).catch(() => {}) }
