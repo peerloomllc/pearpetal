@@ -1202,6 +1202,11 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   )
 }
 
+// Top padding that clears the Dial/Month toggle floating over the card's top
+// band. Both cards use it so the toggle sits the same distance above their
+// content and the two views cannot drift apart.
+const TOGGLE_INSET = 62
+
 // --- cycle summary (owner's own prediction) ---------------------------------
 const PHASE_COLOR = { menstrual: '#c8384f', follicular: '#c9a0d8', fertile: '#e8859b', luteal: '#8f8288' }
 function fmtDate (iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }) } catch { return iso } }
@@ -1235,7 +1240,7 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
   const days = pred.daysUntilNextPeriod
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
   return (
-    <div style={{ ...card, position: 'relative', display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
+    <div style={{ ...card, paddingTop: TOGGLE_INSET, position: 'relative', display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'stretch' }}>
       <button onClick={() => { haptic('light'); onFlowerTap && onFlowerTap() }} aria-label='Change flower' style={{ position: 'absolute', top: spacing.md, left: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, cursor: 'pointer', display: 'flex', alignItems: 'center' }}><FlowerThumb flower={flower} size={26} /></button>
       <button onClick={() => { haptic('light'); onInfo && onInfo() }} aria-label='How to read the dial' style={{ position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 1, background: 'none', border: 'none', padding: spacing.xs, color: colors.text.muted, cursor: 'pointer', display: 'flex' }}><Info size={20} /></button>
       <PetalDial pred={pred} today={today} flower={flower} onDayTap={onScrub} selected={selected} hideFertile={pred.birthControl} />
@@ -1338,9 +1343,7 @@ function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, on
   }
   const slide = (dir >= 0 ? 'pearpetal-slide-r' : 'pearpetal-slide-l')
   return (
-    // paddingTop clears the view toggle floating over the card's top band (the
-    // dial card has the ring's whitespace there; the calendar has to make room).
-    <div style={{ ...card, paddingTop: 62, display: 'flex', flexDirection: 'column', gap: spacing.md }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <div style={{ ...card, paddingTop: TOGGLE_INSET, display: 'flex', flexDirection: 'column', gap: spacing.md }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <button onClick={() => { haptic('light'); onPrev() }} aria-label='Previous month' style={navBtn}><CaretLeft size={20} /></button>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.sm }}>
