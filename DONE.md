@@ -6,6 +6,25 @@ work lives in `TODO.md`.
 
 ## 2026-07-16
 
+- **Donations unhidden on iOS - About section + two-week nudge** (PR #88): dropped BOTH
+  `isIOS()` gates, so iOS now matches Android exactly (supersedes the 2026-07-08 blocker
+  #7 / #8 entries below). The `isIOS` helper had no other callers and went with them;
+  `window.__pearPlatform` is now unread by the UI. A DELIBERATE acceptance of App Store
+  3.1.1 review risk - flagged twice, accepted by Tim. If Apple ever objects, re-gate the
+  NUDGE first (unprompted = the likelier target) and keep the About section. Built +
+  installed on the iPhone SE with `PEARPETAL_ASSOCIATED_DOMAINS=1` (UL entitlement
+  confirmed intact in the signed archive); **iOS rendering CONFIRMED on device by Tim**.
+  DECISIONS 2026-07-16.
+- **About version stamped from `app.json` at build time** (PR #87): the footer hard-coded
+  `'0.1.0'` while the release was 1.0.0, so the shipped app showed a stale version.
+  `scripts/build-ui.mjs` now reads `expo.version` and injects it via an esbuild `define`
+  (throws if absent, so a bad `app.json` fails the build); `package.json` synced to 1.0.0.
+  `app.json` is the single version of record - a release version bump no longer needs an
+  App.jsx edit.
+- **Dropped unused `expo-clipboard`** (PR #89): never imported anywhere; every copy path
+  uses `navigator.clipboard.writeText` in the WebView with a `shell:share` fallback. Rode
+  in on #87 as a pre-existing working-tree change. Next iOS build regenerates a slightly
+  smaller pod set.
 - **🍎 PearPetal APPROVED + LIVE on the App Store.** Apple's review verdict came back
   approved; v1.0.0 is publicly downloadable at
   `https://apps.apple.com/us/app/pearpetal/id6789721938` (Health & Fitness, free, iOS 15.1+,
@@ -362,9 +381,11 @@ work lives in `TODO.md`.
   `prefs.pregnancy`; a gestational `PregnancyView`/`PregnancyDial`; goal tints the
   cycle summary. Owner-only, never projected. DECISIONS 2026-07-08.
 - **2-week donation nudge popup** (blocker #8): device-local `donation:status`/`dismiss`,
-  shown once, skipped on iOS; routes to About.
+  shown once, skipped on iOS; routes to About. (iOS skip SUPERSEDED 2026-07-16, PR #88 -
+  the nudge now fires on iOS too.)
 - **About page + Bitcoin (Lightning) donation** (blocker #7): AboutScreen + the suite
-  donation pattern; iOS hides Support development (App Store 3.1.1).
+  donation pattern; iOS hides Support development (App Store 3.1.1). (iOS hiding
+  SUPERSEDED 2026-07-16, PR #88 - the section now shows on iOS.)
 - **User profile - name + avatar** (T2, proposal 2026-07-08-user-profile): device-local
   `profile` + avatar in the blob store; name/avatar projected via `share:meta` so a
   partner sees "{name}'s cycle". DECISIONS 2026-07-08.

@@ -42,6 +42,14 @@ Play (closed testing). The original v1 blockers, all now done:
    "Restore from a backup". REMAINING (optional, deferred): a deeper interactive coach-mark
    tour of the live menus/sharing was scoped out of v1 - revisit only if wanted.
 
+- **WATCH: the next iOS submission carries App Store 3.1.1 exposure.** Donations were
+  unhidden on iOS 2026-07-16 (PR #88): the About > Support development section AND the
+  unprompted two-week nudge now show, both linking out to Lightning / Strike / Buy Me a
+  Coffee. Deliberate, accepted risk (DECISIONS 2026-07-16) - but 1.0.0 was approved with
+  them HIDDEN, so this exposure is untested against a real reviewer. If a submission is
+  rejected under 3.1.1: re-gate the NUDGE first (unprompted = the likelier target) and
+  keep the About section; rollback is two one-line guards + the `isIOS` helper.
+
 All on-device confirmation items are now DONE (see DONE.md 2026-07-10 hardware pass:
 iOS QR scanner, iOS Local Network prompt + LAN sync, invite/share URL copy-paste,
 two-phone owner->partner name display; earlier: petal dial in partner view 2026-07-07,
@@ -179,7 +187,9 @@ still open:
   currently only hides a device from the roster (device-link `removeDevice` = a
   deviceMeta del). A true unpair would block the writer on the personal base.
 - **Store release** of the device-link build (version bump + `scripts/release.sh` /
-  `ios-appstore.sh`) - a separate, deliberate step.
+  `ios-appstore.sh`) - a separate, deliberate step. Version bump = `app.json`'s
+  `expo.version` (+ `package.json` to match); the About footer stamps itself from
+  `app.json` at build time since PR #87, so no App.jsx edit.
 
 ## Design decisions to make (before building)
 
