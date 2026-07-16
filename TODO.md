@@ -6,8 +6,8 @@ blockers first, then nice-to-haves, design decisions, deferred, dev-infra.
 
 ## Release (v1) - SHIPPED 2026-07-11
 
-PearPetal 1.0.0 launched on the App Store (in review), GitHub, Zapstore, and Google Play
-(closed testing). The original v1 blockers, all now done:
+PearPetal 1.0.0 launched on the App Store (LIVE 2026-07-16), GitHub, Zapstore, and Google
+Play (closed testing). The original v1 blockers, all now done:
 1. ~~**Native QR scan + QR render**~~ BUILT (in-WebView) + Android on-device VERIFIED
    2026-07-09. `QrImage` renders a real invite QR via the `qrcode` lib (Sharing share
    rows + Devices); `ScannerView` scans via WebView getUserMedia + `jsQR` (Onboarding +
@@ -18,15 +18,17 @@ PearPetal 1.0.0 launched on the App Store (in review), GitHub, Zapstore, and Goo
    full-screen scanner (portal fix). PR #49. Android end-to-end scan CONFIRMED by Tim 2026-07-10.
    iOS WebView scanner CONFIRMED 2026-07-10. FULLY DONE.
 2. ~~**Store assets + release (v1.0.0 launch)**~~ SHIPPED 2026-07-11 - full record in
-   DONE.md. PearPetal 1.0 is out on ALL channels: **App Store** (Waiting for Review),
-   **GitHub Releases** (120.8MB arm64 APK), **Zapstore**, **Google Play** (closed testing).
+   DONE.md. PearPetal 1.0 is out on ALL channels: **App Store** (LIVE 2026-07-16, approved
+   by Apple; `id6789721938`), **GitHub Releases** (120.8MB arm64 APK), **Zapstore**,
+   **Google Play** (closed testing).
    Everything done: privacy/support/landing pages; listing copy (`metadata/listing-*.md`);
    iOS 6.9" + Android screenshots via the fixtures harness; Play feature graphic + hi-res
    icon; release pipeline (`release.sh` + `ios-appstore.sh`) wired + run; iOS App Store
    distribution profile + ASC key; Android App Links live with BOTH the `pearpetal` upload
    key and Google's Play app-signing key in `assetlinks.json`.
-   REMAINING (not in our hands): await Apple's review verdict + Google's closed-test review;
-   then promote Play closed testing -> production (Google's 12-tester/14-day gate).
+   REMAINING: promote Play closed testing -> production (Google's 12-tester/14-day gate) -
+   the last channel not yet fully public. Apple's review verdict came back APPROVED
+   2026-07-16 (App Store badge enabled on the website that day, website PR #35).
    OPTIONAL polish (non-blocking): a dark-mode screenshot set (harness supports it - add
    `dark` to APPEARANCES); `PartnerView` raw ISO dates (`2026-07-23`) -> `fmtDate`
    (`Jul 23`) for a nicer scene 4 + app.
@@ -94,6 +96,25 @@ still open:
 
 ## Design decisions to make (before building)
 
+- **Partner notifications** (e.g. "X may be pre-menstrual today") - PARKED 2026-07-12,
+  recorded not queued. Would extend the opt-in reminder system to the viewer side. Parked
+  because it crosses the consent boundary in a way the to-self reminders do not, and the
+  questions below want settling before any code:
+  - Predictions are computed on-device and never cross the wire, so the partner's phone
+    must derive its own from the SHARED base projection - which means what a partner can
+    be notified about is bounded by the consent scope they were given (phase / fertility /
+    full). A `phase`-scoped share has no business producing a fertility alert.
+  - Whose consent gates it? Plausibly BOTH: the owner opts in to partner notifications
+    being possible at all (per share, alongside the scope), and the partner opts in to
+    receiving them. Owner-side veto seems non-negotiable - the alternative is a partner
+    silently instrumenting the owner's cycle.
+  - Content + tone: discreet mode already exists to-self and matters more here. Wording
+    should be hedged ("may be") - the prediction carries a confidence, and a
+    low-confidence partner-facing alert is worse than none.
+  - Whether the projection as written today carries enough for the partner to predict at
+    all, or whether the owner must write a projected-phase row into the shared base
+    (a wire change - would need a proposal).
+  Likely T2/T3 -> write a proposal before building.
 - ~~**Notifications (v1 to-self)**~~ BUILT 2026-07-09 (proposal
   2026-07-09-notifications, DECISIONS 2026-07-09): opt-in period-due + fertile/ovulation
   reminders, goal-aware + confidence-gated, user-configurable discreet mode; Settings

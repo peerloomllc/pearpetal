@@ -4,6 +4,19 @@ Chronological log of shipped work, newest first. One line (or few) per item with
 its date + PR. Deep rationale for T2/T3 changes lives in `DECISIONS.md`; open
 work lives in `TODO.md`.
 
+## 2026-07-16
+
+- **🍎 PearPetal APPROVED + LIVE on the App Store.** Apple's review verdict came back
+  approved; v1.0.0 is publicly downloadable at
+  `https://apps.apple.com/us/app/pearpetal/id6789721938` (Health & Fitness, free, iOS 15.1+,
+  76.3MB, 16+). Submitted 2026-07-11 as build 2 and Waiting for Review since (see below);
+  this closes the last item that was "not in our hands" on the iOS channel.
+- **App Store badge enabled on the website** (website PR #35): `/pearpetal/`'s App Store
+  badge now links to the listing instead of sitting in `coming-soon` (href + `aria-label`
+  / `alt` -> the download wording, matching PearList and PearCircle). Squash-merged to
+  `main`, auto-deployed via Cloudflare Pages, and live-verified on peerloomllc.com. Google
+  Play stays `coming-soon` until the closed-testing promotion lands.
+
 ## 2026-07-12
 
 - **🔗 Device-link adoption SHIPPED - `@peerloom/device-link` enabled by default.**
