@@ -17,8 +17,9 @@ Alternatives: keep iOS hidden (status quo, zero review risk); About section only
 nudge still gated (the intermediate position held for one commit, e1cc3b5);
 route iOS through StoreKit IAP (Apple's cut, new purchase surface, nothing to
 "buy"); nonprofit exemption (PeerLoom LLC is not a nonprofit).
-Consequences: a DELIBERATE acceptance of App Store review risk, taken by Tim with
-the 3.1.1 exposure flagged twice. The nudge is the sharper half: it is an
+Consequences: a DELIBERATE acceptance of App Store review risk. The 3.1.1
+exposure was flagged twice and Tim accepted it explicitly (2026-07-16), covering
+both gates. The nudge is the sharper half: it is an
 UNPROMPTED modal pushing an external donation link at a user who did not ask,
 which is the shape reviewers object to most, whereas the About section only opens
 when tapped. Apple's enforcement on free apps is inconsistent; a reviewer may
