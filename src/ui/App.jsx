@@ -8,7 +8,7 @@
 // The petal dial and partner sharing are deliberately NOT here yet (later
 // slices). This proves the data path end to end: log on device A, see on B.
 
-import { useEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
 import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
@@ -1313,21 +1313,85 @@ function LegendSwatch ({ color, ring, label }) {
     </span>
   )
 }
-function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, onPrev, onNext, onToday, dir }) {
+// One month's 7x6 day grid. Split out of MonthCalendar so a transition can render
+// the outgoing and incoming months at the same time (see the cross-slide below).
+function MonthGrid ({ monthIso, pred, daysByIso, selected, today, onPick, swiped }) {
   const [y, m] = monthIso.split('-').map(Number)
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
   const startWeekday = new Date(Date.UTC(y, m - 1, 1)).getUTCDay()
-  const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
-  const isCurrentMonth = monthIso.slice(0, 7) === today.slice(0, 7)
   const marks = projectCalendar(pred, `${monthIso.slice(0, 7)}-01`, `${monthIso.slice(0, 7)}-${pad2(daysInMonth)}`)
   const cells = []
   for (let i = 0; i < startWeekday; i++) cells.push(null)
   for (let d = 1; d <= daysInMonth; d++) cells.push(d)
   // Always render 6 week rows (42 cells) so the grid - and the whole calendar
   // container - is the same height every month (some months span 5 rows, some 6);
-  // otherwise the content below shifts when you change month.
+  // otherwise the content below shifts when you change month. It also lets the
+  // outgoing month overlay the incoming one exactly during a transition.
   while (cells.length < 42) cells.push(null)
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+      {WEEKDAYS.map((w, i) => <div key={i} style={{ textAlign: 'center', fontSize: 11, color: colors.text.muted, paddingBottom: 2 }}>{w}</div>)}
+      {cells.map((d, i) => {
+        if (d == null) return <div key={`b${i}`} style={{ minHeight: 42 }} />
+        const iso = `${y}-${pad2(m)}-${pad2(d)}`
+        const logged = daysByIso[iso]
+        const bleeding = logged && BLEEDING.has(logged.flow)
+        const isPeriod = marks.period.has(iso) || bleeding
+        const isFertile = !isPeriod && marks.fertile.has(iso)
+        const isOvul = marks.ovulation.has(iso)
+        const isToday = iso === today
+        const isSel = iso === selected
+        const isFuture = iso > today
+        const bg = isPeriod ? CAL_PERIOD_BG : isFertile ? CAL_FERTILE_BG : 'transparent'
+        const border = isSel ? `2px solid ${colors.primary}` : isToday ? `1px solid ${colors.text.secondary}` : '1px solid transparent'
+        return (
+          <button key={iso} onClick={() => { if (swiped.current || isFuture) return; haptic('light'); onPick(iso) }} disabled={isFuture} style={{
+            position: 'relative', minHeight: 42, borderRadius: radius.md, background: bg, border, padding: 0,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+            color: isFuture ? colors.text.muted : colors.text.primary, opacity: isFuture ? 0.45 : 1, cursor: isFuture ? 'default' : 'pointer',
+          }}>
+            <span style={{ fontSize: 13, fontWeight: isToday || isSel ? 700 : 400 }}>{d}</span>
+            <span style={{ height: 6, display: 'flex', alignItems: 'center', gap: 3 }}>
+              {isOvul && <span style={{ width: 6, height: 6, borderRadius: '50%', border: `1.5px solid ${colors.accent}`, boxSizing: 'border-box' }} />}
+              {logged && !isPeriod && !isOvul && <span style={{ width: 5, height: 5, borderRadius: '50%', background: colors.text.muted }} />}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// How long a month change takes, and its curve. Decelerating (fast out, settling
+// in) rather than `ease`, which starts slowly and reads as a snap at this length.
+const MONTH_SLIDE_MS = 340
+const MONTH_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
+function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, onPrev, onNext, onToday, dir }) {
+  const [y, m] = monthIso.split('-').map(Number)
+  const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  // The Today button hides only when there is nothing for it to do. onToday sets
+  // BOTH the month and the selected day, so being on the current month is not
+  // enough - a day other than today is still selected, and the button still has
+  // work (it is what deselects it).
+  const atToday = monthIso.slice(0, 7) === today.slice(0, 7) && selected === today
   const navBtn = { background: 'none', border: 'none', color: colors.text.secondary, cursor: 'pointer', padding: spacing.xs, display: 'flex', alignItems: 'center' }
+  // Keep the month we just left mounted for the length of the transition so it can
+  // slide out while the new one slides in. Without this only the incoming month
+  // moves and the outgoing one just vanishes, which reads as a snap, not a slide.
+  // useLayoutEffect, NOT useEffect: the new month renders offscreen at the start of
+  // its slide, so until the outgoing copy mounts there is nothing in place. After
+  // paint (useEffect) that gap paints as a one-frame blank flash; before paint it
+  // never shows.
+  const [outgoing, setOutgoing] = useState(null)
+  const shownIso = useRef(monthIso)
+  useLayoutEffect(() => {
+    if (shownIso.current === monthIso) return undefined
+    const from = shownIso.current
+    shownIso.current = monthIso
+    setOutgoing({ monthIso: from, dir })
+    const t = setTimeout(() => setOutgoing(null), MONTH_SLIDE_MS)
+    return () => clearTimeout(t)
+  }, [monthIso, dir])
   // Swipe left/right to change month. A tap on a day has near-zero travel, so it
   // never trips the swipe; a real swipe sets `swiped` so the day's click is ignored.
   const touch = useRef(null); const swiped = useRef(false)
@@ -1341,7 +1405,7 @@ function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, on
       setTimeout(() => { swiped.current = false }, 400)
     }
   }
-  const slide = (dir >= 0 ? 'pearpetal-slide-r' : 'pearpetal-slide-l')
+  const grid = { pred, daysByIso, selected, today, onPick, swiped }
   return (
     <div style={{ ...card, paddingTop: TOGGLE_INSET, display: 'flex', flexDirection: 'column', gap: spacing.md }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1350,40 +1414,22 @@ function MonthCalendar ({ monthIso, pred, daysByIso, selected, today, onPick, on
           <div style={{ fontSize: 16, fontWeight: 600 }}>{monthLabel}</div>
           {/* Always in layout (reserves height) so the header does not jump; fades in
               only when off the current month. */}
-          <button onClick={() => { haptic('light'); onToday() }} aria-hidden={isCurrentMonth} style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: '2px 12px', fontSize: 11, fontWeight: 500, color: colors.primary, cursor: 'pointer', opacity: isCurrentMonth ? 0 : 1, pointerEvents: isCurrentMonth ? 'none' : 'auto', transition: 'opacity 200ms' }}>Today</button>
+          <button onClick={() => { haptic('light'); onToday() }} aria-hidden={atToday} style={{ background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: '2px 12px', fontSize: 11, fontWeight: 500, color: colors.primary, cursor: 'pointer', opacity: atToday ? 0 : 1, pointerEvents: atToday ? 'none' : 'auto', transition: 'opacity 200ms' }}>Today</button>
         </div>
         <button onClick={() => { haptic('light'); onNext() }} aria-label='Next month' style={navBtn}><CaretRight size={20} /></button>
       </div>
-      <div key={monthIso} style={{ animation: `${slide} 240ms ease` }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-          {WEEKDAYS.map((w, i) => <div key={i} style={{ textAlign: 'center', fontSize: 11, color: colors.text.muted, paddingBottom: 2 }}>{w}</div>)}
-          {cells.map((d, i) => {
-            if (d == null) return <div key={`b${i}`} style={{ minHeight: 42 }} />
-            const iso = `${y}-${pad2(m)}-${pad2(d)}`
-            const logged = daysByIso[iso]
-            const bleeding = logged && BLEEDING.has(logged.flow)
-            const isPeriod = marks.period.has(iso) || bleeding
-            const isFertile = !isPeriod && marks.fertile.has(iso)
-            const isOvul = marks.ovulation.has(iso)
-            const isToday = iso === today
-            const isSel = iso === selected
-            const isFuture = iso > today
-            const bg = isPeriod ? CAL_PERIOD_BG : isFertile ? CAL_FERTILE_BG : 'transparent'
-            const border = isSel ? `2px solid ${colors.primary}` : isToday ? `1px solid ${colors.text.secondary}` : '1px solid transparent'
-            return (
-              <button key={iso} onClick={() => { if (swiped.current || isFuture) return; haptic('light'); onPick(iso) }} disabled={isFuture} style={{
-                position: 'relative', minHeight: 42, borderRadius: radius.md, background: bg, border, padding: 0,
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
-                color: isFuture ? colors.text.muted : colors.text.primary, opacity: isFuture ? 0.45 : 1, cursor: isFuture ? 'default' : 'pointer',
-              }}>
-                <span style={{ fontSize: 13, fontWeight: isToday || isSel ? 700 : 400 }}>{d}</span>
-                <span style={{ height: 6, display: 'flex', alignItems: 'center', gap: 3 }}>
-                  {isOvul && <span style={{ width: 6, height: 6, borderRadius: '50%', border: `1.5px solid ${colors.accent}`, boxSizing: 'border-box' }} />}
-                  {logged && !isPeriod && !isOvul && <span style={{ width: 5, height: 5, borderRadius: '50%', background: colors.text.muted }} />}
-                </span>
-              </button>
-            )
-          })}
+      {/* The outgoing month is taken out of flow so the container keeps the incoming
+          month's height throughout (both are always 6 rows tall) - no reflow
+          mid-slide. overflow hidden clips both to the card, so they slide fully out
+          and in like one strip rather than fading through each other in place. */}
+      <div style={{ position: 'relative', overflow: 'hidden' }}>
+        {outgoing && (
+          <div key={`out-${outgoing.monthIso}`} aria-hidden='true' style={{ position: 'absolute', top: 0, left: 0, right: 0, pointerEvents: 'none', animation: `${outgoing.dir >= 0 ? 'pearpetal-month-out-l' : 'pearpetal-month-out-r'} ${MONTH_SLIDE_MS}ms ${MONTH_EASE} forwards` }}>
+            <MonthGrid monthIso={outgoing.monthIso} {...grid} />
+          </div>
+        )}
+        <div key={monthIso} style={{ animation: `${dir >= 0 ? 'pearpetal-month-in-r' : 'pearpetal-month-in-l'} ${MONTH_SLIDE_MS}ms ${MONTH_EASE}` }}>
+          <MonthGrid monthIso={monthIso} {...grid} />
         </div>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: `${spacing.xs}px ${spacing.md}px`, justifyContent: 'center', borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.sm }}>
@@ -2014,6 +2060,7 @@ function DialInfoSheet ({ onClose }) {
           <Line>One lap of the ring is <b>one cycle</b>. The top is <b>day 1</b> - your last period start - and the highlighted marker is <b>today</b>.</Line>
           <Line>The flower <b>furls and blooms</b> across the cycle, fullest around <b>ovulation</b>, so a glance tells you roughly where you are.</Line>
           <Line><b>Tap or drag</b> a past day on the ring to open and edit it.</Line>
+          <Line>Tap the <b>flower's centre</b> to jump back to today.</Line>
           <Line>The dial shows your <b>current</b> cycle only. To browse other months or your history, switch to <b>Month</b> view.</Line>
           <Btn kind='ghost' onClick={close}>Got it</Btn>
         </>

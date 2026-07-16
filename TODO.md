@@ -131,34 +131,44 @@ Steps 2-3 are now likely UNNECESSARY on the Pixel - 1 + 4 did it. Re-measure on 
 existing sheets (same spring/duration) so they read as one system. T1 (UI-only, no
 wire/base change).
 
-### Dial: make "tap the flower center = back to today" discoverable (QUEUED 2026-07-16)
+### ~~Dial: make "tap the flower center = back to today" discoverable~~ DONE 2026-07-16
 
-`PetalDial.jsx` posToDay() (line ~53-61) already returns `dayOfCycle` for any tap within
-r<46 of the center - i.e. the center IS a reset-to-today target - but nothing SAYS so. It
-is currently only findable by accident. Options (pick one or two, do not stack all):
-a small "Today" pip/label at the center when `selected !== today`, fading out when you are
-already on today; a subtle pulse on the center the first time a user scrubs off today; the
-`DialInfoSheet` (App.jsx:1944, "How to read the dial") gaining an explicit "tap the center
-to jump back to today" line - cheapest, do this one regardless. T1.
+DONE + Pixel-VERIFIED on `feature/dial-calendar-polish`. Both halves of the suggestion,
+which turned out not to overlap: a `DialInfoSheet` line ("Tap the flower's centre to jump
+back to today"), and a "Today" pill drawn at the dial's centre in `PetalDial.jsx` whenever
+`selDay !== dayOfCycle` - i.e. only while scrubbed away, so the flower stays clean when the
+hint would be a no-op. `pointerEvents: none` on the pill: the tap belongs to the svg handler
+underneath, whose posToDay already did the right thing. Verified: scrub to Jul 7 -> pill
+appears -> tap centre -> back to today, pill gone. The pulse-on-first-scrub idea was NOT
+built - the pill is self-evident and a pulse would be noise on top.
 
-### Month view: "Today" button should track the DAY, not just the month (QUEUED 2026-07-16)
+### ~~Month view: "Today" button should track the DAY, not just the month~~ DONE 2026-07-16
 
-`MonthCalendar` (App.jsx:1290) gates the Today button on `isCurrentMonth`, so it hides
-whenever you are on the current month even if a NON-today day is selected - but `onToday`
-(`goToday`, App.jsx:2285) sets BOTH the month and `date`, so it still has work to do in
-that state. Gate on `isCurrentMonth && selected === today` instead. Same fix applies to the
-partner-view calendar if it duplicates the gate. T1, small.
+DONE + TCL-VERIFIED, exactly the one-line fix predicted: `atToday = isCurrentMonth &&
+selected === today` replaces `isCurrentMonth`. Confirmed on hardware: current month with
+Jul 12 selected now shows the button (it did not before); on today it stays hidden. The
+partner view has a dial but NO calendar, so there was no second site to fix.
 
-### Month view: smoother/slower left-right transition (QUEUED 2026-07-16)
+### ~~Month view: smoother/slower left-right transition~~ DONE 2026-07-16
 
-The month change is a 240ms `ease` remount fade-slide (App.jsx:1281/1294, keyframes
-`pearpetal-slide-l|r` in `theme.js:56-57`): only the INCOMING month animates - the outgoing
-one just vanishes - which is what makes it read as a snap rather than a slide. Slow it
-(~320-380ms) and use a decelerating curve (`cubic-bezier(0.22, 1, 0.36, 1)`) at minimum;
-better, animate the outgoing month out as well (cross-slide) so the two months actually
-travel together, and consider tracking the finger during the swipe (`onTouchMove`) so the
-grid follows and settles instead of jumping on release. Applies to swipe AND the caret
-buttons. T1.
+DONE + Pixel-VERIFIED (frame-by-frame off `screenrecord`, which is the only way to judge
+this). Went further than "slow it down", because slowing the old animation would not have
+fixed it:
+- `MonthGrid` split out of `MonthCalendar` so the outgoing and incoming months can render
+  at once; the outgoing one is kept mounted for the length of the slide.
+- Both months now travel: 340ms on `cubic-bezier(0.22, 1, 0.36, 1)` (decelerating; plain
+  `ease` starts slow and reads as a snap at this length).
+- **No opacity fade, full-width travel, `overflow: hidden`.** First attempt kept the fade
+  and a 38px nudge - frames showed the two grids superimposed mid-travel with doubled
+  dates. Ghosting. They must never overlap: outgoing slides fully out, incoming fully in,
+  clipped by the container, like one strip.
+- **`useLayoutEffect`, not `useEffect`, to mount the outgoing copy.** With `useEffect` the
+  new month renders offscreen at the start of its slide while the outgoing copy has not
+  mounted yet -> a one-frame BLANK FLASH, which the old fade had been masking. Caught on
+  the frame strip; invisible at full speed but real.
+STILL NOT DONE (deferred, optional): finger-tracking the swipe (`onTouchMove`) so the grid
+follows and settles instead of animating only on release. Bigger change; the caret + swipe
+both look right without it.
 
 ## Device-link adoption - SHIPPED 2026-07-12 (see DONE.md)
 
