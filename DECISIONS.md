@@ -2,6 +2,32 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-16 - Donations fully unhidden on iOS (About section + two-week nudge)
+Tier: T0 (UI-local visibility gates; no wire, data model, or IPC change).
+Context: the About donation section (blocker #7, 2026-07-08) and the two-week
+nudge (blocker #8) both skipped iOS on the reading of App Store guideline 3.1.1
+that external donation links are disallowed. 1.0.0 shipped that way and was
+approved 2026-07-16 (`id6789721938`).
+Choice: drop BOTH `isIOS()` gates, so iOS matches Android exactly. The `isIOS`
+helper had no other callers and is deleted with them; `window.__pearPlatform` is
+now unread by the UI. The donations link out via `shell:openUrl` to Lightning /
+Strike / Buy Me a Coffee and unlock NO app functionality - the whole app is free
+and every feature works without donating.
+Alternatives: keep iOS hidden (status quo, zero review risk); About section only,
+nudge still gated (the intermediate position held for one commit, e1cc3b5);
+route iOS through StoreKit IAP (Apple's cut, new purchase surface, nothing to
+"buy"); nonprofit exemption (PeerLoom LLC is not a nonprofit).
+Consequences: a DELIBERATE acceptance of App Store review risk. The 3.1.1
+exposure was flagged twice and Tim accepted it explicitly (2026-07-16), covering
+both gates. The nudge is the sharper half: it is an
+UNPROMPTED modal pushing an external donation link at a user who did not ask,
+which is the shape reviewers object to most, whereas the About section only opens
+when tapped. Apple's enforcement on free apps is inconsistent; a reviewer may
+reject a future submission or, less likely, act against the live listing.
+Rollback is restoring two one-line guards + the helper, so a rejection costs a
+point release, not a redesign. If Apple objects, re-gate the nudge FIRST and keep
+the About section - it is the cheaper concession and the likelier target.
+
 ## 2026-07-12 - Owner profile syncs across own devices; onboarding link path skips name
 Tier: T2 (new record synced across the owner's own devices via the device-link
 personal base; flag-gated, so inert until DEVICE_LINK_ENABLED). Extends the
