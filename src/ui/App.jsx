@@ -29,7 +29,8 @@ const FLOWS = [
 const SYMPTOMS = ['cramps', 'headache', 'fatigue', 'bloating', 'tender-breasts', 'nausea', 'backache', 'acne']
 
 // --- About + donation (suite config, shared across PeerLoom apps) ------------
-const APP_VERSION = '0.1.0'
+// Stamped from app.json's expo.version by scripts/build-ui.mjs at bundle time.
+const APP_VERSION = process.env.APP_VERSION
 const LIGHTNING_ADDRESS = 'peerloomllc@strike.me'
 // Hosted Strike tip page (Lightning invoice QR + web pay). Good for scanning
 // from another device or paying on desktop.
