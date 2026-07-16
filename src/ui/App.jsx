@@ -50,8 +50,8 @@ const LIGHTNING_WALLETS = [
 // copy fields, wallet rows) so the stack reads as one uniform column.
 const DONATE_OPTION_MIN_H = 56
 // The shell injects window.__pearPlatform ('ios'|'android') before the bundle.
-// iOS hides the donation section per App Store guideline 3.1.1 (no external
-// donation links), so the Support-development section is Android-only for now.
+// The About Support-development section now shows on every platform; iOS still
+// suppresses the unprompted two-week donation nudge (App Store 3.1.1).
 const isIOS = () => typeof window !== 'undefined' && window.__pearPlatform === 'ios'
 const openUrl = (url) => { try { const p = call('shell:openUrl', { url }); if (p && p.catch) p.catch(() => {}) } catch {} }
 
@@ -2236,7 +2236,6 @@ function AboutScreen ({ onClose }) {
   const [donateSheet, setDonateSheet] = useState(null) // null | { detected }
   const [open, setOpen] = useState(null)
   const toggle = (id) => setOpen((o) => (o === id ? null : id))
-  const ios = isIOS()
   const donateBTC = async () => {
     let detected = false
     try { const r = await call('shell:canOpenURL', { url: 'lightning:test' }); detected = !!r?.can } catch {}
@@ -2260,15 +2259,13 @@ function AboutScreen ({ onClose }) {
         <AboutLink onClick={() => openUrl('https://pears.com/')}>Learn about P2P ↗</AboutLink>
       </AboutSection>
 
-      {!ios && (
-        <AboutSection title='Support development' icon={Heart} open={open === 'support'} onToggle={() => toggle('support')}>
-          <AboutText>PearPetal is free and open source. If it brings you value, consider sending a little back.</AboutText>
-          <div style={{ display: 'flex', gap: spacing.sm }}>
-            <AboutLink primary onClick={donateBTC}>⚡ Bitcoin ⚡</AboutLink>
-            <AboutLink onClick={() => openUrl(BUYMEACOFFEE_URL)}>$ USD $</AboutLink>
-          </div>
-        </AboutSection>
-      )}
+      <AboutSection title='Support development' icon={Heart} open={open === 'support'} onToggle={() => toggle('support')}>
+        <AboutText>PearPetal is free and open source. If it brings you value, consider sending a little back.</AboutText>
+        <div style={{ display: 'flex', gap: spacing.sm }}>
+          <AboutLink primary onClick={donateBTC}>⚡ Bitcoin ⚡</AboutLink>
+          <AboutLink onClick={() => openUrl(BUYMEACOFFEE_URL)}>$ USD $</AboutLink>
+        </div>
+      </AboutSection>
 
       <AboutSection title='Learn about Bitcoin' icon={CurrencyBtc} open={open === 'btc'} onToggle={() => toggle('btc')}>
         <AboutText>New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course on how it works and why it matters.</AboutText>
