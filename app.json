@@ -114,7 +114,8 @@
       "./plugins/with-android-debug-standalone",
       "./plugins/with-android-queries",
       "./plugins/with-android-release-signing",
-      "./plugins/with-android-abis"
+      "./plugins/with-android-abis",
+      "./plugins/with-android-webview-recovery"
     ],
     "assets": [
       "./assets/bare-universal.bundle",
