@@ -30,6 +30,97 @@ work lives in `TODO.md`.
   (pid 7194 -> 7551), and the app repainted fully (dial, phase, predictions; gfxinfo frames
   advancing). Trade-off: a return after >=20s background costs a ~1-2s WebView reload;
   `WEBVIEW_RECOVERY_MIN_BG_MS` is the tuning knob.
+- **Builds always prebuild first, on both platforms** (PR #94): `android/` and `ios/` are
+  gitignored and regenerated from `app.json` + config plugins, so building against a
+  stale one silently ships old assets - a build that SUCCEEDS and is wrong. It had
+  already cost us twice: the wrong notification glyph on Android and the blank app icon
+  on iOS for days.
+  `scripts/ios-dev-install.sh` prebuilt only `if [ ! -d ios ]`; it now always runs
+  `rm -rf ios && expo prebuild`, with a `SKIP_PREBUILD=1` escape hatch, mirroring what
+  `ios-appstore.sh` already did. That also makes `PEARPETAL_ASSOCIATED_DOMAINS=1`
+  reliable, since the entitlement is decided at prebuild time and a stale `ios/` ignored
+  it. New `scripts/android-debug-install.sh` gives the debug path the guarantee
+  `release.sh` already had for release: JS bundles -> `expo prebuild --clean` ->
+  `assembleDebug` -> install, resolving a device name through the suite's `adb-find.sh`
+  (wifi addresses change on every reconnect, so they are never hardcoded). Debug builds
+  are standalone, so a stale `assets/*.bundle` ships as silently as a stale `android/` -
+  hence rebuilding the bundles too.
+  VERIFIED: both scripts pass `bash -n`; `./scripts/android-debug-install.sh pixel` ran
+  the full pipeline green (bundles -> clean prebuild -> BUILD SUCCESSFUL in 47s -> 147MB
+  APK -> resolved `pixel` -> `Success`).
+- **Store release v1.0.1 shipped to all four channels** (2026-07-16, tag `v1.0.1`):
+  GitHub Releases, the App Store, Zapstore and Google Play. Carries the device-link
+  engine, which had been the default private-base + own-device-linking engine since
+  PR #82 but had never reached users. Recorded here 2026-07-21 - it shipped without a
+  DONE.md entry at the time.
+  CAVEAT worth knowing: the `app.json` version bump (1.0.1 / buildNumber 7 /
+  versionCode 1000001) and the rewritten `release_notes.md` were never committed, so the
+  `v1.0.1` tag points at a commit whose `app.json` still said 1.0.0. Committed
+  retroactively in PR #94. Since PR #87 the About footer stamps its version from
+  `app.json` at build time, so an uncommitted bump means `main` builds a wrong-version
+  app.
+- **Cycle screen fits one phone screen with no scrolling** (2026-07-16, branch
+  `feature/cycle-view-bottomsheets`; recorded here 2026-07-21). The screen used to stack
+  a ViewToggle + the dial/calendar card + a full inline `DayEditor` card + a "Recent days"
+  collapsible, which overflowed a small phone. Two changes did it:
+  - `DayEditor` moved out of an inline card into a sheet. A one-line `DaySummaryBar`
+    ("Today · Medium flow · 1 symptom" + Log/Edit) stays inline; the full editor opens in
+    `DayEditorSheet`, and tapping a dial day or calendar cell opens the same sheet on that
+    date, making scrub -> log one gesture. Unplanned bonus: the dial behind the sheet
+    live-updates as you tap.
+  - Reclaimed the view-toggle row and the `Add period` button. The Dial/Month toggle no
+    longer owns a row - it floats top-centre of the card in the band the dial already
+    leaves empty, positioned against a wrapper rather than either card so it does not move
+    or remount across views (the calendar card takes `paddingTop: 62` to clear it).
+    `Add period` / `Adjust period` is GONE from the tracking (`known`) state: day-to-day
+    use is logging flow, which starts a period implicitly, so the by-date-range path is a
+    correction, not a daily action (Tim's call). It now lives as a "Set period dates ›"
+    link at the foot of the day sheet, handed off on the day sheet's CLOSE so the two
+    sheets never stack. The learning (`!known`) state keeps its up-front Add period button,
+    where it IS the primary action.
+  VERIFIED on the Pixel: no scroll on the dial view, Recent days fully visible with ~250px
+  to spare on both views, and the log round-trip (open -> chip -> save -> Done -> bar
+  updates) confirmed on hardware. Later confirmed to fit on the iPhone SE too (Tim,
+  2026-07-21), which retired the three further trims that had been queued as fallbacks.
+- **Dial: "tap the flower centre = back to today" made discoverable** (2026-07-16, branch
+  `feature/dial-calendar-polish`; recorded here 2026-07-21). Two halves that turned out not
+  to overlap: a `DialInfoSheet` line ("Tap the flower's centre to jump back to today"), and
+  a "Today" pill drawn at the dial's centre in `PetalDial.jsx` whenever
+  `selDay !== dayOfCycle` - i.e. only while scrubbed away, so the flower stays clean when
+  the hint would be a no-op. `pointerEvents: none` on the pill, so the tap belongs to the
+  svg handler underneath whose `posToDay` already did the right thing. Pixel-VERIFIED:
+  scrub to Jul 7 -> pill appears -> tap centre -> back to today, pill gone. The
+  pulse-on-first-scrub idea was deliberately NOT built - the pill is self-evident and a
+  pulse would be noise on top.
+- **Month view: the "Today" button tracks the DAY, not just the month** (2026-07-16;
+  recorded here 2026-07-21). Exactly the one-line fix predicted:
+  `atToday = isCurrentMonth && selected === today` replaces `isCurrentMonth`.
+  TCL-VERIFIED: the current month with Jul 12 selected now shows the button (it did not
+  before); on today it stays hidden. The partner view has a dial but no calendar, so there
+  was no second site to fix.
+- **Month view: smoother left-right transition** (2026-07-16; recorded here 2026-07-21).
+  Pixel-VERIFIED frame-by-frame off `screenrecord`, which is the only way to judge this.
+  Went further than "slow it down", because slowing the old animation would not have fixed
+  it:
+  - `MonthGrid` split out of `MonthCalendar` so the outgoing and incoming months can render
+    at once; the outgoing one stays mounted for the length of the slide.
+  - Both months travel: 340ms on `cubic-bezier(0.22, 1, 0.36, 1)` (decelerating; plain
+    `ease` starts slow and reads as a snap at this length).
+  - No opacity fade, full-width travel, `overflow: hidden`. The first attempt kept the fade
+    and a 38px nudge, and frames showed the two grids superimposed mid-travel with doubled
+    dates. Ghosting. They must never overlap: outgoing slides fully out, incoming fully in,
+    clipped by the container, like one strip.
+  - `useLayoutEffect`, not `useEffect`, to mount the outgoing copy. With `useEffect` the new
+    month rendered offscreen at the start of its slide while the outgoing copy had not
+    mounted yet -> a one-frame BLANK FLASH that the old fade had been masking. Caught on the
+    frame strip; invisible at full speed but real.
+  Deferred and still not built: finger-tracking the swipe (`onTouchMove`) so the grid follows
+  and settles instead of animating only on release. Bigger change; the caret + swipe both
+  look right without it.
+- **iOS to-self cycle reminders confirmed on hardware** (Tim, 2026-07-21). The opt-in
+  period-due and fertile/ovulation reminders (built 2026-07-09, proposal
+  `2026-07-09-notifications`) had been fully verified on the TCL but never on iOS, which was
+  the last open item on that feature. Now confirmed on the iPhone; nothing to change.
 
 ## 2026-07-16
 

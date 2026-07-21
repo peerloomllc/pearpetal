@@ -1,266 +1,61 @@
 # PearPetal TODO
 
 Open work only. Completed work (dated, with PRs) lives in `DONE.md`; deep
-rationale for T2/T3 changes lives in `DECISIONS.md`. Priority order: release
-blockers first, then nice-to-haves, design decisions, deferred, dev-infra.
+rationale for T2/T3 changes lives in `DECISIONS.md`.
 
-## Release (v1) - SHIPPED 2026-07-11
+Pruned 2026-07-21 in a full walk-through of every item. Shipped work moved to
+`DONE.md`; what is below is what survived. Dropped deliberately, not forgotten:
+promoting Play closed testing to production, a dark-mode screenshot set, the
+deeper coach-mark onboarding tour, the remaining "cut the scrolling" trims (steps
+1 + 4 already made the screen fit), partner notifications, and the swarm-topic
+accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
+"keep the code as is".
 
-PearPetal 1.0.0 launched on the App Store (LIVE 2026-07-16), GitHub, Zapstore, and Google
-Play (closed testing). The original v1 blockers, all now done:
-1. ~~**Native QR scan + QR render**~~ BUILT (in-WebView) + Android on-device VERIFIED
-   2026-07-09. `QrImage` renders a real invite QR via the `qrcode` lib (Sharing share
-   rows + Devices); `ScannerView` scans via WebView getUserMedia + `jsQR` (Onboarding +
-   JoinPartnerSheet). Camera path confirmed on the TCL: tap Scan QR -> OS CAMERA prompt
-   -> grant -> live scanner (CAMERA in app.json + AndroidManifest; NSCameraUsageDescription
-   for iOS; shell grants the WebView request). Removed the dead `shell:scanQr` stub. The
-   QR now opens in a bottom sheet that auto-dismisses on real peer connection (`share:connected`);
-   full-screen scanner (portal fix). PR #49. Android end-to-end scan CONFIRMED by Tim 2026-07-10.
-   iOS WebView scanner CONFIRMED 2026-07-10. FULLY DONE.
-2. ~~**Store assets + release (v1.0.0 launch)**~~ SHIPPED 2026-07-11 - full record in
-   DONE.md. PearPetal 1.0 is out on ALL channels: **App Store** (LIVE 2026-07-16, approved
-   by Apple; `id6789721938`), **GitHub Releases** (120.8MB arm64 APK), **Zapstore**,
-   **Google Play** (closed testing).
-   Everything done: privacy/support/landing pages; listing copy (`metadata/listing-*.md`);
-   iOS 6.9" + Android screenshots via the fixtures harness; Play feature graphic + hi-res
-   icon; release pipeline (`release.sh` + `ios-appstore.sh`) wired + run; iOS App Store
-   distribution profile + ASC key; Android App Links live with BOTH the `pearpetal` upload
-   key and Google's Play app-signing key in `assetlinks.json`.
-   REMAINING: promote Play closed testing -> production (Google's 12-tester/14-day gate) -
-   the last channel not yet fully public. Apple's review verdict came back APPROVED
-   2026-07-16 (App Store badge enabled on the website that day, website PR #35).
-   OPTIONAL polish (non-blocking): a dark-mode screenshot set (harness supports it - add
-   `dark` to APPEARANCES); `PartnerView` raw ISO dates (`2026-07-23`) -> `fmtDate`
-   (`Jul 23`) for a nicer scene 4 + app.
-3. ~~**First-run onboarding / guided demo**~~ BUILT + on-device VERIFIED 2026-07-09
-   (see DONE): a skippable `SetupWizard` after "Start tracking" - welcome (hero dial) ->
-   name/photo -> goal (incl. pregnancy) -> log last period (dial no longer empty) ->
-   reminders opt-in -> "all set" with log-a-day + Share tips. Lands on a populated
-   goal-aware dial. REWORKED 2026-07-10 (PR #55): welcome -> name/photo for EVERYONE (moved
-   out of the wizard so viewers + restore users set a name too) -> track-vs-view chooser
-   (device linking hidden) -> Track = wizard whose first step offers "Set up my cycle" vs
-   "Restore from a backup". REMAINING (optional, deferred): a deeper interactive coach-mark
-   tour of the live menus/sharing was scoped out of v1 - revisit only if wanted.
+## Verification still owed
 
-- **Donations unhidden on iOS 2026-07-16** (PR #88): the About > Support development
-  section AND the two-week nudge now show, linking out to Lightning / Strike / Buy Me a
-  Coffee. This is the SUITE'S STANDARD RELEASE PATTERN, not a gamble: ship v1 with the
-  donation section hidden, enable it in a post-v1 release. Apple has consistently
-  approved PeerLoom's post-v1 releases on that pattern (Tim, 2026-07-16), so the
-  practical 3.1.1 risk is low. Should a reviewer ever object: re-gate the NUDGE first
-  (unprompted = the likelier target) and keep the About section; rollback is two one-line
-  guards + the `isIOS` helper.
-
-All on-device confirmation items are now DONE (see DONE.md 2026-07-10 hardware pass:
-iOS QR scanner, iOS Local Network prompt + LAN sync, invite/share URL copy-paste,
-two-phone owner->partner name display; earlier: petal dial in partner view 2026-07-07,
-app icon / notification glyph + About Bitcoin + sharing-ended 2026-07-09/10).
-
-Website-side (not in-app):
-- ~~**Universal-link tap-to-open**~~ DONE + DEPLOYED 2026-07-10 (website PR #27): iOS
-  `/.well-known/apple-app-site-association` (`G79ALD29NA.com.pearpetal`, paths
-  `/petal/link*` + `/petal/join*`); `/petal/link` + `/petal/join` landing pages that
-  reconstruct the `pear://pearpetal/...#<blob>` deep link (blob rides the #fragment);
-  `associatedDomains` (`applinks:peerloomllc.com`) in the iOS app.json (pearpetal PR #58);
-  PearPetal card + `/pearpetal/` landing/privacy/support pages + Zapstore/GitHub badges +
-  website icon & OG art. Android `assetlinks.json` has BOTH the RELEASE `com.pearpetal`
-  fingerprint (key `/home/tim/keystore.jks` alias `pearpetal`) and `com.pearpetal.debug`.
-  Live-verified on peerloomllc.com: all pages 200, both `.well-known` files served as
-  `application/json`.
-  - **iOS Universal Links now PROVISIONED + built + installed** 2026-07-10: registered an
-    EXPLICIT `com.pearpetal` App ID with the **Associated Domains** capability in the Apple
-    Developer portal; created the PearPetal app record in App Store Connect; signed into
-    Xcode on the Mac mini (Xcode > Settings > Accounts, PeerLoom LLC) and added
-    `-allowProvisioningUpdates` to `ios-dev-install.sh` so xcodebuild mints the explicit
-    managed profile that includes the capability. Built with `PEARPETAL_ASSOCIATED_DOMAINS=1`
-    (the `with-ios-no-associated-domains` plugin keeps the entitlement when that env is set) ->
-    ARCHIVE + EXPORT + install SUCCEEDED on the iPhone SE.
-  - REMAINING (human test only): actually TAP an `https://peerloomllc.com/petal/link|join`
-    link on the iPhone and confirm it opens PearPetal (iOS UL) - and the same on Android
-    (App Links vs the live `assetlinks.json`). Note: the `with-ios-no-associated-domains`
-    plugin still STRIPS the entitlement by DEFAULT, so any iOS build that must have UL needs
-    `PEARPETAL_ASSOCIATED_DOMAINS=1` at prebuild time.
+- **Tap-test the universal links (human test only).** Actually TAP an
+  `https://peerloomllc.com/petal/link|join` link on the iPhone and confirm it opens
+  PearPetal (iOS UL), and the same on Android (App Links against the live
+  `assetlinks.json`). Everything is built, provisioned and deployed; nobody has
+  confirmed the tap itself. Note the `with-ios-no-associated-domains` plugin STRIPS
+  the entitlement by DEFAULT, so any iOS build that must have UL needs
+  `PEARPETAL_ASSOCIATED_DOMAINS=1` at prebuild time.
 
 ## Nice-to-have / UX polish
 
-- ~~**Partner (viewer) mode is barebones - needs a real shell**~~ DONE + VERIFIED
-  2026-07-10 (see DONE.md): viewer bottom nav (Shared / Settings / About), a scoped
-  ViewerSettings (profile + appearance), and a "View a partner's cycle" JoinPartnerSheet
-  entry point on the viewer home. Two-phone check passed (TCL owner <-> Pixel viewer).
+- **`PartnerView` renders raw ISO dates.** `2026-07-23` -> `fmtDate` (`Jul 23`), for
+  a nicer app and a nicer store screenshot scene 4. Small and self-contained. T1.
 
-Prior nice-to-haves shipped + verified 2026-07-10 (see DONE.md): bottom sheets for
-day/symptom entry, partner-view scoped Month calendar, joiner photo avatar in per-person
-shares.
+## Device-link follow-up
 
-### Main Cycle view - cut the scrolling (QUEUED 2026-07-16)
-
-Goal: the Cycle screen fits one phone screen, no scroll, on the dial AND the calendar
-view. Today it stacks ViewToggle + dial/calendar card + full `DayEditor` card + "Recent
-days" collapsible (`src/ui/App.jsx` ~2361-2383), which overflows on a small phone (the SE).
-The `BottomSheet` primitive (App.jsx:121) already exists and already animates; reuse it.
-Suggestions, roughly in order of payoff:
-1. ~~**`DayEditor` -> a bottom sheet, not an inline card.**~~ BUILT + Pixel-VERIFIED
-   2026-07-16 on `feature/cycle-view-bottomsheets`: `DaySummaryBar` (one-line "Today ·
-   Medium flow · 1 symptom" + Log/Edit) inline, full editor in `DayEditorSheet`. The
-   Cycle screen now fits the Pixel with NO scroll on the dial view; log round-trip
-   (open -> chip -> save -> Done -> bar updates) confirmed on hardware, and the dial
-   behind the sheet live-updates as you tap (nice, unplanned). Still to check: the SE
-   (smaller) + iOS. Original note: It is the tallest non-hero block
-   (date input + Flow chips + Symptoms chips + notes textarea). Replace it inline with a
-   single compact summary bar ("Jul 16 · Medium · 2 symptoms" + a chevron / "Log" button)
-   that opens the full editor in a sheet. Tapping a dial day or a calendar cell opens the
-   same sheet on that date, which also makes scrub -> log one gesture instead of
-   tap-then-scroll-down. Sheet dismiss returns to the dial - no scroll position to lose.
-2. **"Recent days" -> a sheet too** (or drop it from the main screen entirely). It is
-   already collapsible, i.e. already admitting it does not belong inline; a "Recent days
-   (N) ›" row that opens a scrollable sheet is the same affordance without the height.
-   Sheet content scrolls internally - fine, the SCREEN does not.
-3. **Detail rows (Next period / Fertile window / Ovulation) -> a "Details" sheet** behind
-   the existing `Info` button or a tap on the phase label, leaving the dial + phase + day
-   + one primary action as the hero. Keep `Next period` inline (it is the one number people
-   open the app for); move fertile/ovulation/confidence copy into the sheet.
-4. ~~**Reclaim the view-toggle row + the `Add period` button.**~~ DONE + Pixel-VERIFIED
-   2026-07-16 (same branch), after 1 alone left Recent days just below the fold:
-   - The Dial/Month toggle no longer takes a row of its own - it floats at the top-centre
-     of the card, in the band the dial already leaves empty above the ring (where the
-     flower thumb + info button live). It is positioned against a wrapper, not either
-     card, so it does NOT move or remount across views; the calendar card takes a
-     `paddingTop: 62` to clear it. Verified: identical toggle position on both views.
-   - `Add period` / `Adjust period` is GONE from the tracking (`known`) state - day-to-day
-     use is logging flow, which starts a period implicitly, so the by-date-range path is a
-     correction, not a daily action (Tim's call, 2026-07-16). It now lives as a "Set period
-     dates ›" link at the foot of the day sheet, handed off on the day sheet's CLOSE so the
-     two sheets never stack. The learning (`!known`) state keeps its up-front Add period
-     button - there it IS the primary action.
-   Result: Recent days is fully visible on the Pixel with ~250px to spare, both views.
-5. Optional trims if ever needed again: make the goal/disclaimer copy (conceive/avoid/
-   birth-control notes) part of a details sheet rather than always-on lines.
-Steps 2-3 are now likely UNNECESSARY on the Pixel - 1 + 4 did it. Re-measure on the SE
-(smaller) and on iOS before doing any more. Keep the sheet animation consistent with the
-existing sheets (same spring/duration) so they read as one system. T1 (UI-only, no
-wire/base change).
-
-### ~~Dial: make "tap the flower center = back to today" discoverable~~ DONE 2026-07-16
-
-DONE + Pixel-VERIFIED on `feature/dial-calendar-polish`. Both halves of the suggestion,
-which turned out not to overlap: a `DialInfoSheet` line ("Tap the flower's centre to jump
-back to today"), and a "Today" pill drawn at the dial's centre in `PetalDial.jsx` whenever
-`selDay !== dayOfCycle` - i.e. only while scrubbed away, so the flower stays clean when the
-hint would be a no-op. `pointerEvents: none` on the pill: the tap belongs to the svg handler
-underneath, whose posToDay already did the right thing. Verified: scrub to Jul 7 -> pill
-appears -> tap centre -> back to today, pill gone. The pulse-on-first-scrub idea was NOT
-built - the pill is self-evident and a pulse would be noise on top.
-
-### ~~Month view: "Today" button should track the DAY, not just the month~~ DONE 2026-07-16
-
-DONE + TCL-VERIFIED, exactly the one-line fix predicted: `atToday = isCurrentMonth &&
-selected === today` replaces `isCurrentMonth`. Confirmed on hardware: current month with
-Jul 12 selected now shows the button (it did not before); on today it stays hidden. The
-partner view has a dial but NO calendar, so there was no second site to fix.
-
-### ~~Month view: smoother/slower left-right transition~~ DONE 2026-07-16
-
-DONE + Pixel-VERIFIED (frame-by-frame off `screenrecord`, which is the only way to judge
-this). Went further than "slow it down", because slowing the old animation would not have
-fixed it:
-- `MonthGrid` split out of `MonthCalendar` so the outgoing and incoming months can render
-  at once; the outgoing one is kept mounted for the length of the slide.
-- Both months now travel: 340ms on `cubic-bezier(0.22, 1, 0.36, 1)` (decelerating; plain
-  `ease` starts slow and reads as a snap at this length).
-- **No opacity fade, full-width travel, `overflow: hidden`.** First attempt kept the fade
-  and a 38px nudge - frames showed the two grids superimposed mid-travel with doubled
-  dates. Ghosting. They must never overlap: outgoing slides fully out, incoming fully in,
-  clipped by the container, like one strip.
-- **`useLayoutEffect`, not `useEffect`, to mount the outgoing copy.** With `useEffect` the
-  new month renders offscreen at the start of its slide while the outgoing copy has not
-  mounted yet -> a one-frame BLANK FLASH, which the old fade had been masking. Caught on
-  the frame strip; invisible at full speed but real.
-STILL NOT DONE (deferred, optional): finger-tracking the swipe (`onTouchMove`) so the grid
-follows and settles instead of animating only on release. Bigger change; the caret + swipe
-both look right without it.
-
-## Device-link adoption - SHIPPED 2026-07-12 (see DONE.md)
-
-`@peerloom/device-link` is now the default private-base + own-device-linking
-engine (flag flipped on, PR #82; hardware-verified TCL+Pixel+iPhone). Follow-ups
-still open:
 - **Real unpair (writer-block), not just cosmetic roster remove.** `device:remove`
   currently only hides a device from the roster (device-link `removeDevice` = a
-  deviceMeta del). A true unpair would block the writer on the personal base.
-- **Store release** of the device-link build (version bump + `scripts/release.sh` /
-  `ios-appstore.sh`) - a separate, deliberate step. Version bump = `app.json`'s
-  `expo.version` (+ `package.json` to match); the About footer stamps itself from
-  `app.json` at build time since PR #87, so no App.jsx edit. This release should
-  also carry the GrapheneOS WebView resume-freeze fix (PR #93) - shipped users are
-  on the pre-fix 1.0.0, and that build is the one actually exposed to Vanadium 151.
-
-## Design decisions to make (before building)
-
-- **Partner notifications** (e.g. "X may be pre-menstrual today") - PARKED 2026-07-12,
-  recorded not queued. Would extend the opt-in reminder system to the viewer side. Parked
-  because it crosses the consent boundary in a way the to-self reminders do not, and the
-  questions below want settling before any code:
-  - Predictions are computed on-device and never cross the wire, so the partner's phone
-    must derive its own from the SHARED base projection - which means what a partner can
-    be notified about is bounded by the consent scope they were given (phase / fertility /
-    full). A `phase`-scoped share has no business producing a fertility alert.
-  - Whose consent gates it? Plausibly BOTH: the owner opts in to partner notifications
-    being possible at all (per share, alongside the scope), and the partner opts in to
-    receiving them. Owner-side veto seems non-negotiable - the alternative is a partner
-    silently instrumenting the owner's cycle.
-  - Content + tone: discreet mode already exists to-self and matters more here. Wording
-    should be hedged ("may be") - the prediction carries a confidence, and a
-    low-confidence partner-facing alert is worse than none.
-  - Whether the projection as written today carries enough for the partner to predict at
-    all, or whether the owner must write a projected-phase row into the shared base
-    (a wire change - would need a proposal).
-  Likely T2/T3 -> write a proposal before building.
-- ~~**Notifications (v1 to-self)**~~ BUILT 2026-07-09 (proposal
-  2026-07-09-notifications, DECISIONS 2026-07-09): opt-in period-due + fertile/ovulation
-  reminders, goal-aware + confidence-gated, user-configurable discreet mode; Settings
-  Reminders card; OS-scheduled local notifications (no wire change, no background exec).
-  ON-DEVICE VERIFIED on the TCL (opt-in prompt + grant persist, scheduling across a
-  2-cycle horizon, backgrounded fire for both descriptive + discreet content, reschedule
-  on change, disable-cancels; fixed channelId-on-trigger so scheduled notifications use the
-  custom "reminders" channel not expo's fallback). First-run opt-in now folded into the
-  onboarding wizard (2026-07-09) and the monochrome tray glyph confirmed (2026-07-09) - both
-  DONE. REMAINING: confirm on iOS next hardware pass.
-- ~~**JSON export encryption - optional passphrase?**~~ DONE 2026-07-10 (T3, proposal +
-  reviews 2026-07-10-encrypted-backups, PR #55): optional password on export - Argon2id
-  (sodium `crypto_pwhash`) -> XSalsa20-Poly1305 secretbox over the existing
-  `{days,periods,prefs}` payload, self-describing wrapper (`enc` key). Plaintext export
-  stays the DEFAULT (blank password); import auto-detects `enc` and prompts; a wrong
-  password errors before any write (no partial import); a forgotten password is
-  unrecoverable by design (UI says so). See DONE.md.
+  deviceMeta del). A true unpair would block the writer on the personal base, so a
+  removed device can still write today. Likely T2/T3 - write a proposal first.
 
 ## Deferred - security / scale
 
 - Migrate `day:`/`period:` retention/paging once logs get long.
-- **Swarm topic + connection accumulation** (`@peerloom/core`, T3, suite-wide) -
-  proposal `proposals/2026-07-09-swarm-topic-accumulation.md`. Mitigation **A DONE**
-  2026-07-10 (viewers join client-only via a persisted `announce` flag; core PR #14 +
-  app `partner:join`; DECISIONS + review 2026-07-10). D not changed (Hyperswarm
-  `maxPeers=64` default already sane). REMAINING: B (auto-sweep soft-revoked shares -
-  blocked on the deferred ack channel) + C (announce back-off - deferred, needs care);
-  suite adoption gate = re-run PearList's pairing smoke before other apps rely on the
-  core change.
 - **Pairing/sync degradation after repeated share/revoke/re-share** (BACKBURNER -
-  INTERMITTENT; needs repro + root-cause). Observed: the FIRST pair almost always connects
-  immediately, but SUBSEQUENT shares/pairings sometimes take an indeterminate (occasionally
-  long) time to sync. It is INTERMITTENT, not consistently reproducible, so deferred for
-  future investigation (not a launch blocker). Ideally repeated **share -> revoke ->
-  re-share** (and multiple concurrent partners) each pair as fast as the first. Working
-  theory: accumulation-driven, same class as the swarm-topic/connection-accumulation item
-  above (each share spins up another base + swarm topic; soft-revoke deliberately KEEPS the
-  base + swarm alive so the tombstone reaches an offline partner, so revoked shares keep
-  announcing/holding connections; re-share adds yet another). Mitigation A (viewers join
-  client-only) helps but does not fully fix it; B (auto-sweep soft-revoked shares) is the
-  revoke-side leak - still blocked on the deferred ack channel. WHEN REVISITED: instrument
-  active topics/connections per share, try to repro on hardware with N>=3 sequential shares
-  AND a share/revoke/re-share loop, and find the lever (C announce back-off, a per-base
-  connection cap, tearing down swarm for revoked shares once the tombstone is acked, and/or
-  capping total simultaneous topics). Relates to the swarm-accumulation proposal + the
-  sharing-ended soft-close.
+  INTERMITTENT; needs repro + root-cause). Observed: the FIRST pair almost always
+  connects immediately, but SUBSEQUENT shares/pairings sometimes take an
+  indeterminate (occasionally long) time to sync. Not consistently reproducible, so
+  deferred; not a launch blocker. Ideally repeated **share -> revoke -> re-share**
+  (and multiple concurrent partners) each pair as fast as the first.
+  Working theory: swarm topic + connection accumulation. Each share spins up another
+  base + swarm topic; soft-revoke deliberately KEEPS the base + swarm alive so the
+  tombstone reaches an offline partner, so revoked shares keep announcing and holding
+  connections; re-share adds yet another. Mitigation A shipped 2026-07-10 (viewers
+  join client-only via a persisted `announce` flag; core PR #14 + app `partner:join`)
+  and helps but does not fully fix it. The full background and the rest of the
+  mitigation menu - B (auto-sweep soft-revoked shares, blocked on the deferred ack
+  channel) and C (announce back-off) - is in
+  `proposals/2026-07-09-swarm-topic-accumulation.md`. B and C were dropped from this
+  backlog 2026-07-21, but that proposal remains the reference if this is picked up.
+  WHEN REVISITED: instrument active topics/connections per share, try to repro on
+  hardware with N>=3 sequential shares AND a share/revoke/re-share loop, and find the
+  lever (announce back-off, a per-base connection cap, tearing down swarm for revoked
+  shares once the tombstone is acked, and/or capping total simultaneous topics).
 
 ## Known limitation (deferred) - linked device's writes slow to sync back to founder
 
@@ -281,44 +76,17 @@ may need an app reopen to finish syncing its first edits."
 
 ## Dev infra / build durability
 
-- ~~**APK size audit**~~ DONE 2026-07-10 (`plugins/with-android-abis.js`). Root cause of
-  the ~476MB was shipping ALL 4 ABIs; the Bare runtime carries a per-ABI native stack
-  (libbare-kit.so ~65MB alone). FIX: restrict to `arm64-v8a` (Google Play has required
-  64-bit since 2019), mirroring pearlist. **Measured: signed arm64 release APK = 120.8MB
-  (~75% smaller), lib/ contains arm64-v8a only, signed with the `pearpetal` key (cert
-  SHA-256 = the assetlinks fingerprint, so App Links verify).** Minify/R8 left OFF (all
-  siblings do - risky on the holepunch/Bare native stack). NOT fixed (acceptable, shared
-  with siblings): `react-native-bare-kit` bundles TWO librocksdb-native (3.17.0 + 3.17.2,
-  ~9.6MB redundant) in its addons - a bare-kit packaging quirk, unsafe to patch by hand.
-  For Play, `bundleRelease` (AAB) splits per-device regardless.
+- **One unexplained test failure, seen once, never reproduced** (2026-07-21). A
+  `npm run verify` run came back 114 pass / 1 fail; the failing test name was not
+  captured. 23 subsequent runs (11 `npm test`, 12 full `npm run verify`) were all
+  115/0, so it is a flake, not a regression. Most likely a timing-sensitive test in
+  the P2P/pairing set. If it recurs, run with `--test-reporter=spec` and capture the
+  name before chasing it - a flaky test in the merge gate is worse than a slow one.
 - **`@peerloom/core` nested node_modules can drift from the app's** (LIKELY SUITE-WIDE).
   Core is file:-symlinked; its own node_modules had version-mismatched native addons vs
   the app's top-level -> iOS `ADDON_NOT_FOUND` at engine init. FIX IN PLACE: `overrides`
   in core's package.json pin the mismatched addons to the app's versions; `ios-dev-
   install.sh` runs `npm install` on the Mac so linked frameworks match. TRADE-OFF: the
-  pins must track each app's top-level versions. PROPER FIX: a workspace/hoist setup, or
-  drop core's holepunch devDependencies so versions can't drift.
-- **Diagnostics - review + keep/revert deliberately** (recommend KEEP the error
-  surfacing): `app/index.tsx` shows an "Engine failed to start" page + writes
-  `Documents/init-error.txt`; `engine.js` dispatch includes `err.stack`; the fix for
-  `callRaw` silently swallowing init errors. The init-error.txt write is optional.
-- ~~**Make the debug-build Android config durable**~~ DONE (verified 2026-07-09):
-  `applicationIdSuffix ".debug"` + `debuggableVariants = []` live in the
-  `plugins/with-android-debug-standalone.js` config plugin, so they SURVIVE a fresh
-  `expo prebuild -p android --clean` (confirmed - both present after a clean regen).
-  Suite convention holds: debug builds are standalone `.debug`-suffixed installs (never
-  Metro-dependent). Remaining build-hygiene gap: `gradlew assembleDebug` uses whatever
-  `android/` exists, so a stale `android/` (predating an app.json/icon/plugin change)
-  silently ships old assets - as happened with the notification glyph. Consider a
-  build wrapper that prebuilds first (same class as the iOS `ios-dev-install.sh` gap
-  below).
-- **iOS dev-install workflow** (`scripts/ios-dev-install.sh`): build + archive on the
-  Mac mini, then install from this linux box via `ideviceinstaller install <ipa>` over
-  USB (devicectl install fails "Authorization required" over the wireless CoreDevice
-  link; screenshot/launch need a mounted Developer Disk Image).
-- **`ios-dev-install.sh` only prebuilds when `ios/` is MISSING** - a stale `ios/` (e.g.
-  generated before an icon / plugin / entitlement change) silently ships old assets
-  (this is exactly how the blank iOS icon shipped for days). Make it detect staleness or
-  always prebuild (ios/ is gitignored + has no custom native code, so `rm -rf ios` before
-  a build is safe). Until fixed, `rm -rf ios` before a build after any app.json/icon
-  change.
+  pins must track each app's top-level versions by hand, so they rot silently. PROPER
+  FIX: a workspace/hoist setup, or drop core's holepunch devDependencies so versions
+  can't drift.

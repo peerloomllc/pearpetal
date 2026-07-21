@@ -8,8 +8,12 @@
 # Usage:
 #   ./scripts/ios-dev-install.sh                  # full pipeline
 #   SKIP_BUILD=1 ./scripts/ios-dev-install.sh     # bundles already fresh
+#   SKIP_PREBUILD=1 ./scripts/ios-dev-install.sh  # ios/ already correct
 #   SKIP_SYNC=1 ./scripts/ios-dev-install.sh      # already in sync
 #   SKIP_INSTALL=1 ./scripts/ios-dev-install.sh   # archive+export only
+#
+# Universal Links need the entitlement kept at PREBUILD time:
+#   PEARPETAL_ASSOCIATED_DOMAINS=1 ./scripts/ios-dev-install.sh
 #
 # Required on the Mac mini:
 #   - Xcode 16+ with command-line tools
@@ -67,12 +71,25 @@ if [ "${SKIP_BUILD:-0}" != "1" ]; then
   npm run build:ui
 fi
 
-# ── 0b. Ensure the iOS native project exists ────────────────────────────────
-# ios/ is gitignored (regenerated from app.json + config plugins; no custom
-# native code). Generate it if missing so this script is self-contained.
-if [ ! -d "$REPO_ROOT/ios" ]; then
-  step "generate ios/ (expo prebuild)"
+# ── 0b. Regenerate the iOS native project ───────────────────────────────────
+# ios/ is gitignored and regenerated from app.json + config plugins, and it holds
+# no custom native code, so rebuilding it from scratch every run is safe and is
+# the only way to be sure the build matches app.json.
+#
+# This USED to run only `if [ ! -d ios ]`, which silently shipped a stale ios/ to
+# the device whenever app.json, an icon or a config plugin had changed since the
+# directory was generated - that is how the blank iOS app icon shipped for days,
+# and it would equally swallow a PEARPETAL_ASSOCIATED_DOMAINS=1 that arrived
+# after the last prebuild. Always prebuilding trades ~20s for that whole class of
+# bug. Mirrors ios-appstore.sh, including the SKIP_PREBUILD escape hatch.
+#
+# Note the env is read HERE, at prebuild time, not at build time: a build that
+# needs the Universal Links entitlement must run with PEARPETAL_ASSOCIATED_DOMAINS=1
+# set on this script, because with-ios-no-associated-domains strips it by default.
+if [ "${SKIP_PREBUILD:-0}" != "1" ]; then
+  step "regenerate ios/ (expo prebuild)"
   cd "$REPO_ROOT"
+  rm -rf ios
   CI=1 npx expo prebuild -p ios --no-install
 fi
 

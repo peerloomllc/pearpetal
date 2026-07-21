@@ -51,6 +51,33 @@ Remaining is polish + real two-device hardware verification. See `TODO.md`.
 `npm run verify` -> `node --test test/*.test.js && build:bare && build:bare:ios && build:ui`.
 Do not merge red. See Constitution §5.
 
+## Building and installing on a device
+
+`android/` and `ios/` are both gitignored and regenerated from `app.json` + the
+config plugins in `plugins/`. Nothing native is hand-written in either directory -
+edits there are wiped by the next prebuild, so a durable native change belongs in a
+config plugin (see `plugins/with-android-webview-recovery.js` for one that writes a
+Kotlin module and registers it in `MainApplication`).
+
+Because of that, every build script prebuilds first. Building against a stale
+native directory SUCCEEDS and silently ships old assets, which is how the wrong
+notification glyph shipped on Android and a blank app icon shipped on iOS. Use the
+scripts rather than calling `gradlew` or `xcodebuild` directly:
+
+- `scripts/android-debug-install.sh [pixel|tcl|<serial>]` - JS bundles ->
+  `expo prebuild --clean` -> `assembleDebug` -> install. Debug installs as
+  `com.pearpetal.debug` and is standalone (no Metro).
+- `scripts/ios-dev-install.sh` - build + archive on the Mac mini, then install from
+  this Linux box via `ideviceinstaller` over USB. `devicectl install` fails
+  "Authorization required" over the wireless CoreDevice link, and screenshot/launch
+  need a mounted Developer Disk Image, so USB + ideviceinstaller is the working path.
+- `scripts/release.sh` and `scripts/ios-appstore.sh` - the release channels.
+
+Universal Links are decided at PREBUILD time: `with-ios-no-associated-domains`
+strips the entitlement by default, so any iOS build that needs UL must run with
+`PEARPETAL_ASSOCIATED_DOMAINS=1`. `scripts/app.conf` exports it for the release
+scripts; pass it explicitly to `ios-dev-install.sh`.
+
 ## The one thing to get right
 
 The privacy boundary is structural, not trust-based: two separate Autobases with
