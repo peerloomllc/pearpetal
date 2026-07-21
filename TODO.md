@@ -190,7 +190,9 @@ still open:
 - **Store release** of the device-link build (version bump + `scripts/release.sh` /
   `ios-appstore.sh`) - a separate, deliberate step. Version bump = `app.json`'s
   `expo.version` (+ `package.json` to match); the About footer stamps itself from
-  `app.json` at build time since PR #87, so no App.jsx edit.
+  `app.json` at build time since PR #87, so no App.jsx edit. This release should
+  also carry the GrapheneOS WebView resume-freeze fix (PR #93) - shipped users are
+  on the pre-fix 1.0.0, and that build is the one actually exposed to Vanadium 151.
 
 ## Design decisions to make (before building)
 
