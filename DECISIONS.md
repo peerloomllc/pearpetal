@@ -2,6 +2,53 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-23 - Blind relay adopted as the off-LAN backstop; default ON with a toggle
+Tier: T3 (proposal 2026-07-23-blind-relay). PR #95.
+Context: PearPetal is phone-to-phone on BOTH of its connection paths - own-device
+linking and partner sharing - so a pairing routinely puts two carrier-CGNAT
+devices on opposite ends of a hole-punch, the hardest case there is. PearTune
+measured ~12% punch success per attempt on real cellular; a user on a symmetric
+NAT sits near 0%. Unlike PearTune (phone-to-host) and PearCircle (blind seeder),
+PearPetal has NO always-on node anywhere in its design, so nothing else in the
+system can rescue a failed punch.
+Choice: pass `createSwarm` into `createGroupEngine` - the seam @peerloom/core
+already exposes - so the one Hyperswarm is built with a `relayThrough` POLICY
+FUNCTION pointing at the suite-shared, already-deployed relay node. Direct is
+always tried first: Hyperswarm only sets `force` after `HOLEPUNCH_ABORTED` /
+`HOLEPUNCH_DOUBLE_RANDOMIZED_NATS` / `REMOTE_NOT_HOLEPUNCHABLE`, and hyperdht's
+`confirmDirectUpgrade` drops the relay again if a direct path later appears. A
+function rather than a bare key so the user's toggle is read live per dial.
+Default ON, with a device-local opt-out in Settings.
+Two sub-decisions worth recording. FAIL-SAFE CACHE: relayThrough is synchronous
+but the toggle lives in localDb, so the flag is cached in memory and hydrated at
+swarm construction; until it lands the policy reads "unknown" as DO NOT RELAY.
+Relaying for someone who opted out leaks metadata to us; not relaying for a few
+hundred ms costs nothing, since the relay only ever engages after a punch has
+already spent ~10s aborting. DEVICE-LOCAL, NOT SYNCED: the `network` record sits
+beside `notifications` and is deliberately NOT projected to a partner nor synced
+to the owner's other devices - which relay a phone needs is a property of the
+network THAT phone is on.
+Alternatives: build PearPetal its own relay (duplicate infrastructure for an
+app-agnostic byte-forwarder); add relay support to @peerloom/core (a new API and
+a suite-wide version bump when `createSwarm` already exists - deferred to the
+rule of three, tracked in TODO); relay always instead of direct-first (burns a
+relay dial and our bandwidth on every punchable peer); toggle default OFF (the
+users who need this are exactly the ones least able to diagnose why sync hangs);
+no relay at all (accept that some users simply cannot sync).
+Consequences: a DELIBERATE, if small, widening of the metadata surface in an app
+whose pitch is that nothing touches a server. The stream stays Noise-encrypted
+end to end and the relay holds no key to it, so it carries ciphertext and can
+observe only that two public keys are connected and how many bytes flow - never a
+date, a symptom or a name. That is transient encrypted transit, not storage, and
+the Settings copy says so in plain words rather than claiming zero knowledge.
+Also: the relay is a shared single point owned by the PearTune-side deployment,
+and PearPetal has no diagnostics screen, so an escalation is currently invisible
+(both tracked in TODO). Rollback is one line - drop `createSwarm` from
+`src/bare.js`, or null the baked key - and a dead relay degrades exactly to the
+old behavior. Nothing on the wire changed, so already-shipped 1.0.2 peers
+interoperate and in fact benefit: a peer that offers the relay gets it honored by
+a stock peer that knows nothing about it.
+
 ## 2026-07-16 - Donations fully unhidden on iOS (About section + two-week nudge)
 Tier: T0 (UI-local visibility gates; no wire, data model, or IPC change).
 Context: the About donation section (blocker #7, 2026-07-08) and the two-week

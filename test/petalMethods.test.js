@@ -235,6 +235,34 @@ test('notifications:schedule: empty when disabled; events once enabled + history
   await engine.close()
 })
 
+test('network:get defaults the relay ON; network:set persists and updates the live cache', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  const relay = require('../src/relay')
+
+  // Opt-OUT, not opt-in: a user who never opens this setting still connects on
+  // a network that cannot hole-punch.
+  const fresh = await call('network:get', {})
+  assert.equal(fresh.useRelay, true)
+  assert.equal(fresh.relayConfigured, true)
+  assert.equal(fresh.relayKey, relay.RELAY_PUBLIC_KEY_Z)
+
+  const off = await call('network:set', { useRelay: false })
+  assert.equal(off.useRelay, false)
+  assert.equal((await call('network:get', {})).useRelay, false)
+  // The swarm's relayThrough hook reads this cache synchronously per dial, so
+  // the toggle has to take effect without a reconnect.
+  assert.equal(relay.useRelayCached(), false)
+
+  await call('network:set', { useRelay: true })
+  assert.equal(relay.useRelayCached(), true)
+
+  // An empty patch leaves the stored value alone rather than resetting it.
+  await call('network:set', { useRelay: false })
+  assert.equal((await call('network:set', {})).useRelay, false)
+  await engine.close()
+})
+
 test('share:connected: false for a fresh share (no peer) and an unknown group', async () => {
   const { engine, call } = driver()
   await call('init', {})

@@ -15,6 +15,10 @@ const { mintAddWriter, authorizeWriter } = require('./admission')
 // reroutes cycle:create / link:join through it (QR-first, per DECISIONS
 // 2026-07-12) and constructs it on the shared runtime. See src/deviceLink.js.
 const { isDeviceLinkEnabled } = require('./deviceLink')
+// The off-LAN backstop: the swarm may retry a failed hole-punch through the
+// shared PeerLoom blind relay. See src/relay.js and
+// proposals/2026-07-23-blind-relay.md.
+const { createRelaySwarm } = require('./relay')
 // The device-link-backed private store (SLICE 2). Required so it is in the
 // worklet bundle; petalMethods routes its private-base calls through it when the
 // flag is on. Inert while the flag is off.
@@ -33,6 +37,11 @@ const engine = createGroupEngine({
   // device linking is unaffected. See src/admission.js.
   mintAddWriter,
   authorizeWriter,
+  // Same Hyperswarm core would have built, plus the direct-first relay policy.
+  // The engine calls this during init, AFTER localDb is ready, so passing
+  // `engine.localDb` here is safe and lets the policy hydrate the user's
+  // privacy toggle without a second store handle.
+  createSwarm: ({ keyPair }) => createRelaySwarm({ keyPair, localDb: engine.localDb }),
   // Auto-prune old already-applied blocks every 30 min, keeping a generous
   // recent buffer so small logs are untouched.
   retentionInterval: 30 * 60 * 1000,

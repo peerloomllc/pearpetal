@@ -19,6 +19,7 @@ const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FL
 const { notificationEvents } = require('./notifications')
 const { isDeviceLinkEnabled } = require('./deviceLink')
 const ps = require('./privateStore')
+const relay = require('./relay')
 
 // Consent scopes (see DECISIONS.md 2026-07-06). Each governs which projection
 // fields the OWNER writes to a shared base; the partner structurally never
@@ -386,6 +387,21 @@ async function getNotifPrefs (ctx) {
   }
 }
 
+// Device-local network policy. `useRelay` defaults ON (opt-OUT, unlike
+// notifications) so the app connects on networks that cannot hole-punch without
+// the user having to know what a hole-punch is. `relayConfigured` tells the UI
+// whether this build even has a relay key, so it can hide the row rather than
+// offer a toggle that does nothing.
+async function getNetworkPrefs (ctx) {
+  const n = (await ctx.localDb.get(relay.NETWORK_KEY))?.value || {}
+  return {
+    useRelay: n.useRelay !== false,
+    relayConfigured: !!relay.RELAY_PUBLIC_KEY,
+    relayKey: relay.RELAY_PUBLIC_KEY_Z || null,
+    updatedAt: n.updatedAt || 0,
+  }
+}
+
 // The owner's device-local profile (name + avatar pointer). Distinct from
 // `deviceProfile` (which names this DEVICE for the roster) - this names the
 // PERSON. Never replicated except via the owner-written share:meta projection.
@@ -608,6 +624,23 @@ const methods = {
       const { proj } = await computeProjection(ctx)
       return { enabled: true, events: notificationEvents(proj, { notif, goal, today: todayIso() }) }
     } catch { return { enabled: true, events: [] } }
+  },
+
+  // --- network (device-local; the off-LAN relay privacy toggle) -----------
+  // Whether this device may retry a FAILED hole-punch through the shared
+  // PeerLoom blind relay. Device-local like `notifications`: never projected to
+  // a partner and deliberately not synced to the owner's other devices, since
+  // it describes the network this phone is on. Default ON so pairing and sync
+  // just work; off means pure peer-to-peer. See src/relay.js.
+  'network:get': async (_args, ctx) => getNetworkPrefs(ctx),
+  'network:set': async (args = {}, ctx) => {
+    const cur = await getNetworkPrefs(ctx)
+    const next = { useRelay: 'useRelay' in args ? !!args.useRelay : cur.useRelay, updatedAt: Date.now() }
+    await ctx.localDb.put(relay.NETWORK_KEY, next)
+    // Update the in-memory cache the swarm's relayThrough hook reads, so the
+    // change applies to the very next connect with no reconnect or restart.
+    relay.setUseRelay(next.useRelay)
+    return getNetworkPrefs(ctx)
   },
 
   // --- profile (device-local; name + avatar projected to partners) --------

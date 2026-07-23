@@ -69,7 +69,7 @@ export function haptic (kind = 'light') {
 // a browser preview. index.html?seed lands on a populated log.
 const rid = (n = 22) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('')
 const MOCK_SELF = 'ab'.repeat(32)
-const mock = { base: null, days: new Map(), periods: new Map(), devices: new Map(), deviceLabel: 'This device', shares: new Map(), partners: new Map(), prefs: null, notif: { enabled: false, discreet: false, period: true, fertility: true, time: '09:00' } }
+const mock = { base: null, days: new Map(), periods: new Map(), devices: new Map(), deviceLabel: 'This device', shares: new Map(), partners: new Map(), prefs: null, notif: { enabled: false, discreet: false, period: true, fertility: true, time: '09:00' }, network: { useRelay: true } }
 const mockProjection = () => {
   const starts = [...mock.periods.keys(), ...[...mock.days.values()].filter((d) => ['light', 'medium', 'heavy'].includes(d.flow)).map((d) => d.date)].sort()
   if (!starts.length) return { known: false, phase: 'follicular' }
@@ -195,6 +195,10 @@ const mockMethods = {
   'shell:openUrl': async ({ url }) => { try { window.open(url, '_blank', 'noopener') } catch {} return { ok: true } },
   // Notifications are inert in the browser preview; keep the prefs so the Settings
   // card is fully clickable (on device the shell owns scheduling + OS permission).
+  // The off-LAN relay toggle. `relayConfigured` is true in the mock so the
+  // Settings card is visible in a browser preview.
+  'network:get': async () => ({ ...mock.network, relayConfigured: true, relayKey: 'mock-relay-key' }),
+  'network:set': async (patch) => { mock.network = { ...mock.network, ...patch }; return { ...mock.network, relayConfigured: true, relayKey: 'mock-relay-key' } },
   'shell:notifications:get': async () => ({ ...mock.notif, osGranted: true }),
   'shell:notifications:set': async (patch) => { mock.notif = { ...mock.notif, ...patch }; return { ...mock.notif, osGranted: true, permissionDenied: false } },
   'shell:notifications:sync': async () => ({ ok: true }),

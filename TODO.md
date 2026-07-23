@@ -13,6 +13,14 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
 
 ## Verification still owed
 
+- **Hardware-gate the blind relay (owed by PR #95, 2026-07-23).** The code, tests
+  and Settings toggle shipped, but the relay has never been exercised on real
+  phones. Needed: two devices on mobile data with wifi OFF, a pairing that fails
+  to punch directly, confirmed to complete THROUGH the relay - and the negative
+  case, two devices on the same LAN confirmed never to relay. Until this runs,
+  "PearPetal works off-LAN" is an argument, not a result. See
+  `proposals/2026-07-23-blind-relay.md` (Verify).
+
 - **Tap-test the universal links (human test only).** Actually TAP an
   `https://peerloomllc.com/petal/link|join` link on the iPhone and confirm it opens
   PearPetal (iOS UL), and the same on Android (App Links against the live
@@ -23,6 +31,17 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
 
 ## Nice-to-have / UX polish
 
+- **No visibility into whether the relay was used.** PearTune surfaces
+  `dht.stats.relaying { attempts, successes, aborts }` in its connection
+  diagnostics; PearPetal has no diagnostics screen, so an escalation to the relay
+  is invisible to the user and to us. Wanted mainly to make the hardware gate
+  above unambiguous - without it, "it connected" does not say HOW. T1.
+- **Promote `src/relay.js` into `@peerloom/core` (rule of three).** It is
+  app-agnostic and PearTune has a near twin (`protocol/relay.js`). Deliberately
+  not done in PR #95: two copies of a ~110-line pure module beat a new core API
+  plus a version bump across the suite, and core already exposes `createSwarm` as
+  the seam. Do it when a THIRD app adopts the relay. Until then, a change to the
+  relay key or the policy must be made in both places.
 - **`PartnerView` renders raw ISO dates.** `2026-07-23` -> `fmtDate` (`Jul 23`), for
   a nicer app and a nicer store screenshot scene 4. Small and self-contained. T1.
 
