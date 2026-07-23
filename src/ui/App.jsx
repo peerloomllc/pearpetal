@@ -10,7 +10,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -1638,6 +1638,42 @@ function NotificationsCard () {
   )
 }
 
+// The off-LAN relay toggle (proposals/2026-07-23-blind-relay.md). Some mobile
+// networks will not let two phones connect straight to each other; when that
+// happens the relay forwards the already-encrypted stream so the connection
+// still lands. Default ON, and the copy is deliberately honest about what the
+// relay can see (that two devices are talking, and how much) versus what it
+// cannot (anything you logged). Hidden entirely in a build with no relay key.
+function ConnectionCard () {
+  const [net, setNet] = useState(null)
+  useEffect(() => { call('network:get').then(setNet).catch(() => setNet(null)) }, [])
+  if (!net || !net.relayConfigured) return null
+  const toggle = async () => {
+    const next = !net.useRelay
+    setNet((p) => ({ ...p, useRelay: next })) // optimistic
+    haptic('light')
+    const saved = await call('network:set', { useRelay: next }).catch(() => null)
+    if (saved) setNet(saved)
+  }
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+          <WifiHigh size={18} color={colors.text.secondary} />
+          <div>
+            <div style={{ color: colors.text.primary, fontSize: 15, fontWeight: 500 }}>Connect anywhere</div>
+            <div style={{ color: colors.text.muted, fontSize: 12 }}>Helps your devices reach each other on networks that block a direct connection.</div>
+          </div>
+        </div>
+        <Toggle on={!!net.useRelay} label='Connect anywhere' onClick={toggle} />
+      </div>
+      {net.useRelay
+        ? <Explainer>Some mobile networks will not let two phones talk to each other directly. When that happens, PearPetal passes the connection through a PeerLoom helper server so your phone and your partner's can still find each other. It only steps in <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>after</strong> a direct connection has already failed. Your cycle data stays scrambled the whole way and the helper cannot read any of it. It can see that two devices are talking, and how much data passes between them.</Explainer>
+        : <Explainer>Your devices will only ever connect straight to each other. On a network that blocks that, pairing and syncing may never finish.</Explainer>}
+    </div>
+  )
+}
+
 // Appearance (theme) picker - shared by the owner's Cycle settings and the
 // viewer's Settings (theme is a device-local visual pref, relevant to both).
 function AppearanceCard ({ themePref = 'dark', onTheme }) {
@@ -1888,6 +1924,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
           : <Explainer>{(GOAL_OPTS.find(([k]) => k === (prefs.goal || 'track')) || [])[2]}</Explainer>}
       </div>
       <NotificationsCard />
+      <ConnectionCard />
       <CollapsibleCard title='Cycle lengths' icon={CalendarBlank} open={openSection.lengths} onToggle={() => toggleSection('lengths')}>
         <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
         <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />

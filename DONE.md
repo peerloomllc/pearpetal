@@ -4,6 +4,27 @@ Chronological log of shipped work, newest first. One line (or few) per item with
 its date + PR. Deep rationale for T2/T3 changes lives in `DECISIONS.md`; open
 work lives in `TODO.md`.
 
+## 2026-07-23
+
+- **Off-LAN backstop: adopt the shared PeerLoom blind relay** (PR #95): two phones on
+  carrier CGNAT often cannot hole-punch to each other, and PearPetal is phone-to-phone
+  on both of its paths (device linking and partner sharing) with no always-on node
+  anywhere in its design to soften it. The swarm now offers the already-deployed,
+  suite-shared relay as a retry when a direct punch aborts. Rationale, privacy posture
+  and the direct-first proof in `DECISIONS.md` 2026-07-23 and
+  `proposals/2026-07-23-blind-relay.md`.
+  Shipped: `src/relay.js` (baked key + pure policy + the fail-safe cache), a
+  `createSwarm` injection in `src/bare.js` through the seam `@peerloom/core` already
+  exposed (core unchanged, no core release needed), `network:get`/`network:set` backed
+  by a device-local `network` record and a "Connect anywhere" card in Cycle settings.
+  `z32` promoted to a direct dependency.
+  VERIFIED: `npm run verify` green - 126 tests (up from 115: 10 new in
+  `test/relay.test.js` covering gate ordering, direct-first, the randomized-NAT case,
+  the fail-safe unhydrated cache and the real `createRelaySwarm` wiring, plus one
+  `network:get`/`network:set` round-trip in `test/petalMethods.test.js`) and all three
+  bundles built. NOT YET VERIFIED ON HARDWARE - the two-phones-on-cellular gate is
+  still owed and is tracked in `TODO.md`.
+
 ## 2026-07-21
 
 - **GrapheneOS/Vanadium WebView resume-freeze fix - renderer-kill recovery** (PR #93):

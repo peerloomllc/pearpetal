@@ -113,6 +113,10 @@ function screenshotCall (method, args = {}) {
     case 'partner:view': return P(clone(PARTNER_VIEW))
     case 'notifications:get':
     case 'shell:notifications:get': return P({ ...NOTIF })
+    // Deliberately reported as "no relay in this build" so the Settings
+    // connection card stays out of the store screenshots and the existing
+    // frozen scenes keep their layout.
+    case 'network:get': return P({ useRelay: true, relayConfigured: false, relayKey: null, updatedAt: 0 })
     case 'donation:status': return P({ due: false, shown: true, firstUseAt: FROZEN_MS })
     case 'shell:navState':
     case 'shell:theme': return P({ ok: true })
