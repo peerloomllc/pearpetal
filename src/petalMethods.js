@@ -643,6 +643,37 @@ const methods = {
     return getNetworkPrefs(ctx)
   },
 
+  // How connections are actually being made on this device. Exists mainly so
+  // "it connected" can be told apart from "it connected THROUGH THE RELAY" -
+  // without this, the off-LAN hardware verification is unfalsifiable.
+  //
+  // The two relay numbers come from opposite ends of a connection and are NOT
+  // interchangeable. `offered` is ours: how many times WE escalated a dial that
+  // had already failed to punch. `relaying` is hyperdht's, and it only counts on
+  // the ACCEPTING side (lib/server.js), so it stays 0 on a device that was
+  // rescued by the relay and moves on the device that carried the other end.
+  // Both are needed to see a relayed pairing whole.
+  //
+  // Process-lifetime counters, deliberately not persisted: they answer "what is
+  // this session doing", and a stale count across restarts would mislead.
+  'network:stats': async (_args, ctx) => {
+    const swarm = ctx.swarm || null
+    const dht = swarm?.dht || null
+    const clone = (o) => (o ? JSON.parse(JSON.stringify(o)) : null)
+    return {
+      useRelay: relay.useRelayCached() === true,
+      relayConfigured: !!relay.RELAY_PUBLIC_KEY,
+      // Our own NAT is double-randomized, i.e. a direct punch can never work
+      // and every connection relays from the first attempt.
+      randomizedNat: !!dht?.randomized,
+      policy: relay.relayStats(),
+      relaying: clone(dht?.stats?.relaying),
+      punches: clone(dht?.stats?.punches),
+      connections: swarm?.connections?.size ?? 0,
+      connects: clone(swarm?.stats?.connects),
+    }
+  },
+
   // --- profile (device-local; name + avatar projected to partners) --------
   // Stored in localDb as { displayName, avatarBlob?, avatarHash?, avatarType?,
   // updatedAt }. Avatar bytes live in the content blob store (not inline); reads

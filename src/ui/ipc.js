@@ -199,6 +199,14 @@ const mockMethods = {
   // Settings card is visible in a browser preview.
   'network:get': async () => ({ ...mock.network, relayConfigured: true, relayKey: 'mock-relay-key' }),
   'network:set': async (patch) => { mock.network = { ...mock.network, ...patch }; return { ...mock.network, relayConfigured: true, relayKey: 'mock-relay-key' } },
+  'network:stats': async () => ({
+    useRelay: mock.network.useRelay !== false, relayConfigured: true, randomizedNat: false,
+    policy: { dials: 4, direct: 3, offered: 1, suppressed: 0 },
+    relaying: { attempts: 1, successes: 1, aborts: 0 },
+    punches: { consistent: 2, random: 0, open: 1 },
+    connections: 1,
+    connects: { client: { opened: 3, closed: 2, attempted: 4 }, server: { opened: 1, closed: 0 } },
+  }),
   'shell:notifications:get': async () => ({ ...mock.notif, osGranted: true }),
   'shell:notifications:set': async (patch) => { mock.notif = { ...mock.notif, ...patch }; return { ...mock.notif, osGranted: true, permissionDenied: false } },
   'shell:notifications:sync': async () => ({ ok: true }),

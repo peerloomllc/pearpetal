@@ -6,6 +6,29 @@ work lives in `TODO.md`.
 
 ## 2026-07-23
 
+- **Connection details: make a relayed connection observable** (PR #96): the relay
+  shipped in PR #95 with no way to tell "it connected" from "it connected THROUGH the
+  relay", which left the off-LAN hardware gate unfalsifiable.
+  FINDING that shaped the work: hyperdht keeps `stats.relaying { attempts, successes,
+  aborts }` but increments it ONLY in `lib/server.js`, on the side ACCEPTING a
+  connection that asked to be relayed. The side that ESCALATED gets no counter, so
+  copying PearTune's surface would have read a flat 0 on the phone that was actually
+  rescued. So `src/relay.js` now counts its own decisions (`dials` / `direct` /
+  `offered` / `suppressed`) in the policy function Hyperswarm calls per dial;
+  `offered` is the escalation counter that was missing, and `suppressed` distinguishes
+  "the network blocked it" from "you switched the helper off".
+  Surfaced via a new `network:stats` method and a collapsed "Connection details"
+  panel inside the Settings connection card, polling every 2s while open so the
+  numbers move during a live pairing, with a Copy details button for the raw JSON.
+  Every hyperdht-sourced field degrades to null rather than throwing when the swarm
+  has no dht yet.
+  VERIFIED: `npm run verify` green - 131 tests (up from 126: 4 new counter tests in
+  `test/relay.test.js` plus a `network:stats` graceful-degradation test in
+  `test/petalMethods.test.js`) and all three bundles built; the new strings confirmed
+  present in `assets/app-ui.bundle`. NOT SEEN ON A PHONE YET - the panel's rendering
+  is verified only by the test suite and the bundle build. The hardware gate in
+  `TODO.md` is its first real run.
+
 - **Off-LAN backstop: adopt the shared PeerLoom blind relay** (PR #95): two phones on
   carrier CGNAT often cannot hole-punch to each other, and PearPetal is phone-to-phone
   on both of its paths (device linking and partner sharing) with no always-on node

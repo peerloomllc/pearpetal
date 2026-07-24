@@ -20,6 +20,14 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   case, two devices on the same LAN confirmed never to relay. Until this runs,
   "PearPetal works off-LAN" is an argument, not a result. See
   `proposals/2026-07-23-blind-relay.md` (Verify).
+  Read the result off **Settings -> Connect anywhere -> Connection details**
+  (PR #96): "Times the helper was offered" is this device's escalation count and
+  "Connections we helped relay" is the other end's, so a relayed pairing shows up
+  as one non-zero on each phone. Both zero with a connection up means it punched
+  directly, which is the negative case. Copy details gives the raw JSON.
+  NOTE: `ConnectionDetails` itself has only been verified by the test suite and
+  the bundle build; nobody has seen it render on a phone yet. This gate is the
+  first time it will.
 
 - **Tap-test the universal links (human test only).** Actually TAP an
   `https://peerloomllc.com/petal/link|join` link on the iPhone and confirm it opens
@@ -31,11 +39,6 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
 
 ## Nice-to-have / UX polish
 
-- **No visibility into whether the relay was used.** PearTune surfaces
-  `dht.stats.relaying { attempts, successes, aborts }` in its connection
-  diagnostics; PearPetal has no diagnostics screen, so an escalation to the relay
-  is invisible to the user and to us. Wanted mainly to make the hardware gate
-  above unambiguous - without it, "it connected" does not say HOW. T1.
 - **Promote `src/relay.js` into `@peerloom/core` (rule of three).** It is
   app-agnostic and PearTune has a near twin (`protocol/relay.js`). Deliberately
   not done in PR #95: two copies of a ~110-line pure module beat a new core API

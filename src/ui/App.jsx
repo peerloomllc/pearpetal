@@ -1670,6 +1670,74 @@ function ConnectionCard () {
       {net.useRelay
         ? <Explainer>Some mobile networks will not let two phones talk to each other directly. When that happens, PearPetal passes the connection through a PeerLoom helper server so your phone and your partner's can still find each other. It only steps in <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>after</strong> a direct connection has already failed. Your cycle data stays scrambled the whole way and the helper cannot read any of it. It can see that two devices are talking, and how much data passes between them.</Explainer>
         : <Explainer>Your devices will only ever connect straight to each other. On a network that blocks that, pairing and syncing may never finish.</Explainer>}
+      <ConnectionDetails />
+    </div>
+  )
+}
+
+// A row of the details panel: a plain-language label and a number.
+function StatRow ({ label, value, hint }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.md }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ color: colors.text.secondary, fontSize: 13 }}>{label}</div>
+        {hint && <div style={{ color: colors.text.muted, fontSize: 11 }}>{hint}</div>}
+      </div>
+      <span style={{ color: colors.text.primary, fontSize: 14, fontFamily: MONO }}>{value}</span>
+    </div>
+  )
+}
+
+// What this device's connections actually did, since the app started. The point
+// is to tell "it connected" apart from "it connected THROUGH the relay" - both
+// for a user wondering whether the relay is earning its keep, and for the
+// off-LAN hardware verification, which is otherwise unfalsifiable.
+//
+// Collapsed by default: nobody opens Settings wanting hole-punch counters.
+function ConnectionDetails () {
+  const [open, setOpen] = useState(false)
+  const [s, setS] = useState(null)
+  const [copied, setCopied] = useState(false)
+  const load = () => call('network:stats').then(setS).catch(() => setS(null))
+  // Poll while open so the numbers move during a live pairing attempt.
+  useEffect(() => {
+    if (!open) return
+    load()
+    const t = setInterval(load, 2000)
+    return () => clearInterval(t)
+  }, [open])
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(s, null, 2))
+      setCopied(true); haptic('success'); setTimeout(() => setCopied(false), 1500)
+    } catch { call('shell:share', { text: JSON.stringify(s, null, 2) }).catch(() => {}) }
+  }
+  if (!open) {
+    return (
+      <button onClick={() => { haptic('light'); setOpen(true) }} style={{ background: 'none', border: 'none', padding: 0, color: colors.text.muted, fontSize: 12, textAlign: 'left', cursor: 'pointer', textDecoration: 'underline' }}>
+        Connection details
+      </button>
+    )
+  }
+  const p = s?.policy || {}
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+      {!s
+        ? <div style={{ color: colors.text.muted, fontSize: 12 }}>No connection info yet.</div>
+        : (
+          <>
+            <StatRow label='Connected right now' value={s.connections} hint='Other devices this phone is talking to.' />
+            <StatRow label='Direct connections tried' value={p.direct ?? 0} hint='Straight to the other device, no helper involved.' />
+            <StatRow label='Times the helper was offered' value={p.offered ?? 0} hint='A direct connection had already failed, so this phone asked to route around it.' />
+            {p.suppressed > 0 && <StatRow label='Times it was needed but off' value={p.suppressed} hint='A direct connection failed and the helper was switched off, so nothing was tried.' />}
+            <StatRow label='Connections we helped relay' value={s.relaying ? `${s.relaying.successes}/${s.relaying.attempts}` : '-'} hint='The other device asked to route through the helper to reach this one. Counted separately from the row above.' />
+            {s.randomizedNat && <Explainer title='This network never allows a direct connection.'>Every connection from this phone will use the helper. Switching it off means nothing will sync here.</Explainer>}
+            <div style={{ display: 'flex', gap: spacing.sm, marginTop: spacing.xs }}>
+              <Btn kind='ghost' onClick={copy} style={{ flex: 1, fontSize: 13 }}>{copied ? 'Copied' : 'Copy details'}</Btn>
+              <Btn kind='ghost' onClick={() => { haptic('light'); setOpen(false) }} style={{ flex: 1, fontSize: 13 }}>Hide</Btn>
+            </div>
+          </>
+        )}
     </div>
   )
 }

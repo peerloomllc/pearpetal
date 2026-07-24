@@ -263,6 +263,31 @@ test('network:get defaults the relay ON; network:set persists and updates the li
   await engine.close()
 })
 
+test('network:stats reports the client-side counters and degrades on a bare swarm', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  const relay = require('../src/relay')
+  relay._resetStats()
+
+  // The test swarm is a plain EventEmitter with no dht and no stats, standing in
+  // for "the engine is up but nothing has connected". Every hyperdht-sourced
+  // field must come back null rather than throwing.
+  const s = await call('network:stats', {})
+  assert.equal(s.connections, 0)
+  assert.equal(s.relaying, null)
+  assert.equal(s.punches, null)
+  assert.equal(s.connects, null)
+  assert.equal(s.randomizedNat, false)
+  assert.equal(s.relayConfigured, true)
+  assert.deepEqual(s.policy, { dials: 0, direct: 0, offered: 0, suppressed: 0 })
+
+  // Our own counters are the half hyperdht does not keep, so they must survive
+  // the trip through IPC.
+  relay.decideRelay({ force: true, randomized: false, useRelay: true, relayKey: relay.RELAY_PUBLIC_KEY })
+  assert.equal((await call('network:stats', {})).policy.offered, 1)
+  await engine.close()
+})
+
 test('share:connected: false for a fresh share (no peer) and an unknown group', async () => {
   const { engine, call } = driver()
   await call('init', {})
