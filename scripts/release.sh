@@ -449,6 +449,29 @@ if items:
 }
 
 # ---------------------------------------------------------------------------
+# _asc_prior_encryption
+#
+# Prints how this app's most recent ANSWERED build declared export compliance,
+# as "false", "true", or empty when no prior build has answered. Used to show
+# the actual precedent at the declaration prompt rather than asserting one.
+# ---------------------------------------------------------------------------
+_asc_prior_encryption() {
+  asc builds list --app "$ASC_APP_ID" --limit 20 --output json 2>/dev/null \
+    | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for x in d.get('data', d if isinstance(d, list) else []):
+    v = x.get('attributes', x).get('usesNonExemptEncryption')
+    if v is not None:
+        print(str(v).lower())
+        break
+" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
 # _asc_build_id <buildNumber>
 #
 # Prints "<uuid> <processingState>" for the build with that CFBundleVersion, or
@@ -2376,9 +2399,17 @@ with open('${VERSION_DIR}/$(basename "$f")', 'w') as out:
         _VALIDATE_JSON=$(asc validate --app "$ASC_APP_ID" --version "$APP_VERSION" \
           --output json 2>/dev/null || true)
         if printf '%s' "$_VALIDATE_JSON" | grep -q 'build.encryption.missing'; then
+          _PRIOR_ENC=$(_asc_prior_encryption)
           echo ""
           echo "    Apple needs an export-compliance answer for build ${_ios_build_number}."
-          echo "    Every prior ${APP_NAME:-app} build declared 'uses non-exempt encryption: NO'."
+          echo "    It is set per build, so a new build always starts unset, and it is a"
+          echo "    legal declaration - so this asks rather than assuming."
+          if [ -n "$_PRIOR_ENC" ]; then
+            echo "    Most recent answered build of this app declared:"
+            echo "      uses non-exempt encryption = ${_PRIOR_ENC}"
+          else
+            echo "    No prior build of this app has answered, so there is no precedent."
+          fi
           _confirm "Declare build ${_ios_build_number} as NOT using non-exempt encryption?"
           asc builds update --build-id "$_BUILD_ID" --uses-non-exempt-encryption=false >/dev/null \
             || echo "    WARNING: could not set export compliance."
