@@ -47,6 +47,21 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   confirmed the tap itself. Note the `with-ios-no-associated-domains` plugin STRIPS
   the entitlement by DEFAULT, so any iOS build that must have UL needs
   `PEARPETAL_ASSOCIATED_DOMAINS=1` at prebuild time.
+  THE iOS SIDE IS NOW READY TO TAP (2026-07-23). `com.pearpetal` 1.0.2 is installed
+  on the iPhone SE from a `PEARPETAL_ASSOCIATED_DOMAINS=1` build, and all three
+  preconditions were verified rather than assumed:
+  1. the signed binary carries `com.apple.developer.associated-domains` ->
+     `applinks:peerloomllc.com`, present in the code-signature blob (so it is signed,
+     not merely declared);
+  2. the embedded provisioning profile permits that entitlement (`*`), which is why
+     the archive did NOT hit the wildcard-profile failure the plugin warns about;
+  3. `https://peerloomllc.com/.well-known/apple-app-site-association` returns 200 as
+     `application/json` and lists `G79ALD29NA.com.pearpetal` with paths
+     `/petal/link`, `/petal/link/*`, `/petal/join`, `/petal/join/*`.
+  So all that remains on iOS is the human tap. Open the app once first so iOS fetches
+  the association file; an immediate tap can fall through to Safari once.
+  ANDROID IS STILL UNCHECKED end to end - `assetlinks.json` has not been re-verified
+  this session.
 
 ## Nice-to-have / UX polish
 

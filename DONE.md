@@ -6,6 +6,56 @@ work lives in `TODO.md`.
 
 ## 2026-07-23
 
+- **App Store release step fixed: submit works from Linux, and a blocked version
+  stops the run** (PR #102). The 1.0.3 release run failed twice on App Store
+  Connect paperwork while the build itself uploaded fine.
+  CAUSE 1: `versions create` was refused with "You cannot create a new version of
+  the App in the current state" because 1.0.2 was still `WAITING_FOR_REVIEW`, and
+  App Store Connect allows only ONE in-flight version. The script logged a warning
+  and carried on, so metadata apply then failed too and the real cause was buried.
+  CAUSE 2: `asc publish appstore --submit --confirm` could never have worked from
+  this box. It requires `--ipa` because it owns the whole upload-then-submit flow,
+  and the `.ipa` only ever exists on the Mac mini. Every release would have hit
+  `Error: --ipa is required` at that step.
+  FIX: the version-record step now classifies what already exists first - use it
+  if the target version is there, offer to RENAME an EDITABLE prior version
+  (`DEVELOPER_REJECTED` / `PREPARE_FOR_SUBMISSION` / `REJECTED` /
+  `METADATA_REJECTED` / `INVALID_BINARY`), or STOP and name the blocking version
+  and its state with the wait-or-cancel commands. Submission drops
+  `asc publish appstore` for the lower-level lifecycle, which needs no `.ipa`:
+  attach build -> declare export compliance -> validate -> submit, via
+  `asc versions attach-build` and `asc review submissions-create` / `items-add` /
+  `submissions-submit`.
+  THREE MORE BUGS surfaced on the way: the build was never attached to the version
+  at all (`asc publish appstore` would have done it, nothing else did); export
+  compliance is set per BUILD so a new build always starts unset and Apple blocks
+  on it (now detected via `asc validate` and confirmed before declaring, since it
+  is a legal declaration); and versioned metadata was only generated when its
+  directory was ABSENT, so a retry after a failed run silently shipped the first
+  run's release notes even after `release_notes.md` was corrected.
+  `release_notes.md` had also picked up literal `##` markdown headings, which the
+  App Store renders as raw text - rewritten in the 1.0.1 house style.
+  VERIFIED against live App Store Connect, not mocks: the classifier returns
+  `exists` for 1.0.3, `blocked` (naming 1.0.3, `WAITING_FOR_REVIEW`) for a
+  hypothetical 1.0.4, `rename` for a `DEVELOPER_REJECTED` prior and `create` for a
+  clean slate; `_asc_version_id` resolves 1.0.3 and returns empty for 9.9.9;
+  `_asc_build_id` resolves builds 8 and 9 with their processing state and returns
+  empty for 999; `bash -n` clean.
+  SUITE-WIDE: PearList, PearCal and PearGuard all carry the identical broken
+  submit step (3 occurrences each; PearCircle is clean). Logged in the
+  company-root `TODO.md`.
+
+- **1.0.3 submitted to the App Store** (build 9, 2026-07-23). Done by hand, with
+  the script fixed afterwards to make it repeatable. 1.0.2 had sat in
+  `WAITING_FOR_REVIEW` since 2026-07-21 carrying the pre-relay build 8 and
+  maintenance-release notes; Tim's call was to supersede it rather than wait. So:
+  cancelled the 1.0.2 submission (it goes to `DEVELOPER_REJECTED`), renamed that
+  version record 1.0.2 -> 1.0.3, attached build 9, declared export compliance
+  (`usesNonExemptEncryption: false`, matching builds 2, 7 and 8), applied the
+  corrected release notes and submitted. `asc validate` went from 1 blocking error
+  to 0 before submission. Ships the blind relay (PR #95), connection details
+  (PR #96), the Settings regroup (PR #99) and the Dial/Month overlap fix (PR #98).
+
 - **Settings page regrouped: one idiom, four groups, ~4 screens down to ~1.3**
   (PR #96, Tim's call after reviewing the page on device). The page had three
   competing card styles with no rule - centred-title always-open (flower,
@@ -99,6 +149,28 @@ work lives in `TODO.md`.
   still owed and is tracked in `TODO.md`.
 
 ## 2026-07-23
+
+- **All three devices on merged `main`, iPhone rebuilt with Universal Links**
+  (PR #101 for the tracking; the builds themselves are not code changes). After
+  merging PRs #95/#96/#98/#99/#100, built and installed from clean `main`:
+  Pixel 9 Pro + TCL on `com.pearpetal.debug` 1.0.2 via
+  `scripts/android-debug-install.sh`, and the iPhone SE on `com.pearpetal` 1.0.2 via
+  `scripts/ios-dev-install.sh` (archive on the Mac mini, `ideviceinstaller` over USB).
+  The iOS build was then REDONE with `PEARPETAL_ASSOCIATED_DOMAINS=1` so Universal
+  Links survive prebuild. The plugin's own comment warns that keeping the entitlement
+  makes a wildcard dev profile fail to sign - it did not, because the profile permits
+  `com.apple.developer.associated-domains` (`*`). Verified rather than assumed: the
+  entitlement is in the SIGNED binary (present in the code-signature blob, not just
+  the declared plist) pointing at `applinks:peerloomllc.com`, and the live
+  `apple-app-site-association` returns 200 as `application/json` listing
+  `G79ALD29NA.com.pearpetal` for `/petal/link`, `/petal/link/*`, `/petal/join`,
+  `/petal/join/*`. The UL tap-test in `TODO.md` is therefore unblocked on iOS;
+  Android was not re-checked.
+  PROCESS NOTE worth remembering: PR #97 (the Settings regroup, stacked on #96's
+  branch) was AUTO-CLOSED by GitHub when that base branch was deleted on merge, and a
+  closed PR cannot be retargeted. The commit was rebased onto `main` and reopened as
+  #99. If a stacked PR is used again, merge the child first or retarget it BEFORE
+  merging the parent.
 
 - **Dial/Month toggle no longer covers the flower and info buttons on a narrow
   phone** (PR #98, reported by Tim on the TCL). The floating view toggle was a FIXED
