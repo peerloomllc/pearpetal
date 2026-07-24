@@ -2,7 +2,7 @@
   "expo": {
     "name": "PearPetal",
     "slug": "pearpetal",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "newArchEnabled": true,
     "orientation": "portrait",
     "scheme": "pear",
@@ -10,7 +10,7 @@
     "icon": "./assets/images/icon.png",
     "ios": {
       "bundleIdentifier": "com.pearpetal",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "associatedDomains": [
         "applinks:peerloomllc.com"
       ],
@@ -29,7 +29,7 @@
     },
     "android": {
       "package": "com.pearpetal",
-      "versionCode": 1000001,
+      "versionCode": 1000002,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "monochromeImage": "./assets/images/monochrome-icon.png",
