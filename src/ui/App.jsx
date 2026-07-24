@@ -10,7 +10,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh, Target, Bell, Palette } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -1573,7 +1573,11 @@ function FlowerPicker ({ value, onPick }) {
 // list; independent open/close (not one-at-a-time, unlike About) since you may
 // adjust several. `icon` is optional so non-settings uses (e.g. Recent days) can
 // omit the glyph.
-function CollapsibleCard ({ title, open, onToggle, children, id, icon: Icon }) {
+// `right` is an optional control pinned to the header, outside the expand button
+// - a switch that must be flippable WITHOUT opening the section (Reminders,
+// Connect anywhere). It cannot go inside the button: a button nested in a button
+// is invalid, and the click would toggle both.
+function CollapsibleCard ({ title, open, onToggle, children, id, icon: Icon, right }) {
   const ref = useRef(null)
   // When a section opens, once the expand has finished, scroll it into view so its
   // content clears the fixed bottom nav (block:'nearest' + the root's scroll-padding
@@ -1585,13 +1589,16 @@ function CollapsibleCard ({ title, open, onToggle, children, id, icon: Icon }) {
   }, [open])
   return (
     <div id={id} ref={ref} style={{ ...card, padding: 0, overflow: 'hidden', scrollMarginTop: screenPadTop }}>
-      <button onClick={() => { haptic('light'); onToggle() }} aria-expanded={open} style={{ width: '100%', background: 'none', border: 'none', padding: `${spacing.md}px ${spacing.base}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: colors.text.secondary }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: 13, fontWeight: 400 }}>
-          {Icon ? <Icon size={17} weight='regular' color={colors.text.muted} /> : null}
-          {title}
-        </span>
-        <CaretRight size={15} color={colors.text.muted} weight='regular' style={{ transition: 'transform 0.3s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', paddingRight: right ? spacing.base : 0 }}>
+        <button onClick={() => { haptic('light'); onToggle() }} aria-expanded={open} style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', padding: `${spacing.md}px ${spacing.base}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, cursor: 'pointer', color: colors.text.secondary }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: 13, fontWeight: 400, textAlign: 'left' }}>
+            {Icon ? <Icon size={17} weight='regular' color={colors.text.muted} style={{ flexShrink: 0 }} /> : null}
+            {title}
+          </span>
+          <CaretRight size={15} color={colors.text.muted} weight='regular' style={{ flexShrink: 0, transition: 'transform 0.3s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+        </button>
+        {right}
+      </div>
       <div style={{ maxHeight: open ? 2500 : 0, overflow: 'hidden', transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1)' }}>
         <div style={{ padding: `0 ${spacing.lg}px ${spacing.lg}px`, display: 'flex', flexDirection: 'column', gap: spacing.md }}>{children}</div>
       </div>
@@ -1620,6 +1627,7 @@ function NotifRow ({ label, desc, on, onClick }) {
 // screen; period/fertility are goal-aware + confidence-gated downstream.
 function NotificationsCard () {
   const [n, setN] = useState(null)
+  const [open, setOpen] = useState(false)
   useEffect(() => { call('shell:notifications:get').then(setN).catch(() => setN({ enabled: false })) }, [])
   if (!n) return null
   const set = async (patch) => {
@@ -1631,14 +1639,11 @@ function NotificationsCard () {
   const denied = n.enabled && n.osGranted === false
   const input = { background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '6px 10px', fontSize: 15 }
   return (
-    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ color: colors.text.primary, fontSize: 15, fontWeight: 500 }}>Reminders</div>
-          <div style={{ color: colors.text.muted, fontSize: 12 }}>Gentle nudges on your own phone. Private to this device, never sent to anyone.</div>
-        </div>
-        <Toggle on={!!n.enabled} label='Reminders' onClick={() => set({ enabled: !n.enabled })} />
-      </div>
+    <CollapsibleCard
+      title='Reminders' icon={Bell} open={open} onToggle={() => setOpen((o) => !o)}
+      right={<Toggle on={!!n.enabled} label='Reminders' onClick={() => set({ enabled: !n.enabled })} />}
+    >
+      <div style={{ color: colors.text.muted, fontSize: 12 }}>Gentle nudges on your own phone. Private to this device, never sent to anyone.</div>
       {denied && <Explainer title='Notifications are off in system settings.'>Turn notifications on for PearPetal in your phone settings to start receiving reminders.</Explainer>}
       {n.enabled && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
@@ -1652,7 +1657,7 @@ function NotificationsCard () {
           <div style={{ color: colors.text.muted, fontSize: 11 }}>Reminders only appear once PearPetal is confident in your prediction, and pause while you are pregnant or on birth control.</div>
         </div>
       )}
-    </div>
+    </CollapsibleCard>
   )
 }
 
@@ -1664,6 +1669,7 @@ function NotificationsCard () {
 // cannot (anything you logged). Hidden entirely in a build with no relay key.
 function ConnectionCard () {
   const [net, setNet] = useState(null)
+  const [open, setOpen] = useState(false)
   useEffect(() => { call('network:get').then(setNet).catch(() => setNet(null)) }, [])
   if (!net || !net.relayConfigured) return null
   const toggle = async () => {
@@ -1674,25 +1680,16 @@ function ConnectionCard () {
     if (saved) setNet(saved)
   }
   return (
-    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
-        {/* flex-start, not center: the description wraps to three lines on a
-            narrow phone and a centred icon then floats beside the middle line
-            instead of the title. */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', gap: spacing.sm }}>
-          <WifiHigh size={18} color={colors.text.secondary} style={{ flexShrink: 0, marginTop: 2 }} />
-          <div>
-            <div style={{ color: colors.text.primary, fontSize: 15, fontWeight: 500 }}>Connect anywhere</div>
-            <div style={{ color: colors.text.muted, fontSize: 12 }}>Helps your devices reach each other on networks that block a direct connection.</div>
-          </div>
-        </div>
-        <Toggle on={!!net.useRelay} label='Connect anywhere' onClick={toggle} />
-      </div>
+    <CollapsibleCard
+      title='Connect anywhere' icon={WifiHigh} open={open} onToggle={() => setOpen((o) => !o)}
+      right={<Toggle on={!!net.useRelay} label='Connect anywhere' onClick={toggle} />}
+    >
+      <div style={{ color: colors.text.muted, fontSize: 12 }}>Helps your devices reach each other on networks that block a direct connection.</div>
       {net.useRelay
         ? <Explainer>Some mobile networks will not let two phones talk to each other directly. When that happens, PearPetal passes the connection through a PeerLoom helper server so your phone and your partner's can still find each other. It only steps in <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>after</strong> a direct connection has already failed. Your cycle data stays scrambled the whole way and the helper cannot read any of it. It can see that two devices are talking, and how much data passes between them.</Explainer>
         : <Explainer>Your devices will only ever connect straight to each other. On a network that blocks that, pairing and syncing may never finish.</Explainer>}
       <ConnectionDetails />
-    </div>
+    </CollapsibleCard>
   )
 }
 
@@ -1763,20 +1760,39 @@ function ConnectionDetails () {
   )
 }
 
-// Appearance (theme) picker - shared by the owner's Cycle settings and the
-// viewer's Settings (theme is a device-local visual pref, relevant to both).
+// A group heading in Settings. Small, muted and uppercase so it reads as a
+// divider between groups of rows rather than as another row.
+function SectionLabel ({ children }) {
+  return (
+    <div style={{ color: colors.text.muted, fontSize: 11, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', padding: `${spacing.md}px ${spacing.xs}px 0` }}>
+      {children}
+    </div>
+  )
+}
+
+// The Dark / Light / System segmented control on its own, so it can sit inside a
+// section (owner Settings) or in its own card (viewer Settings).
+function ThemeRow ({ themePref = 'dark', onTheme }) {
+  return (
+    <div style={{ display: 'flex', background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
+      {[['dark', 'Dark'], ['light', 'Light'], ['system', 'System']].map(([k, l]) => {
+        const on = (themePref || 'dark') === k
+        return (
+          <button key={k} onClick={() => onTheme && onTheme(k)} aria-pressed={on} style={{ flex: 1, border: 'none', borderRadius: radius.full, padding: '8px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>{l}</button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Appearance (theme) picker as a standalone card - the viewer's Settings, which
+// has no sections to slot ThemeRow into. The owner's Settings uses ThemeRow
+// directly inside its "How it looks" section.
 function AppearanceCard ({ themePref = 'dark', onTheme }) {
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
       <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Appearance</div>
-      <div style={{ display: 'flex', background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
-        {[['dark', 'Dark'], ['light', 'Light'], ['system', 'System']].map(([k, l]) => {
-          const on = (themePref || 'dark') === k
-          return (
-            <button key={k} onClick={() => onTheme && onTheme(k)} aria-pressed={on} style={{ flex: 1, border: 'none', borderRadius: radius.full, padding: '8px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: on ? colors.primary : 'transparent', color: on ? colors.text.onPrimary : colors.text.secondary }}>{l}</button>
-          )
-        })}
-      </div>
+      <ThemeRow themePref={themePref} onTheme={onTheme} />
     </div>
   )
 }
@@ -1994,15 +2010,13 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   )
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-      <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Cycle settings</div>
+      <div style={{ fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Settings</div>
+      {/* Identity stays pinned and open - it is who you are, not a setting you
+          go looking for, and it is the one thing a partner sees. */}
       <ProfileCard />
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>Your flower</div>
-        <FlowerPicker value={prefs.flower} onPick={pickFlower} />
-      </div>
-      <AppearanceCard themePref={themePref} onTheme={onTheme} />
-      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-        <div style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>What are you tracking for?</div>
+
+      <SectionLabel>Your cycle</SectionLabel>
+      <CollapsibleCard title="What you're tracking for" icon={Target} open={openSection.goal} onToggle={() => toggleSection('goal')}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.sm }}>
           {GOAL_OPTS.map(([k, l]) => (
             <Chip key={k} active={(prefs.goal || 'track') === k} onClick={() => save({ goal: k })} style={{ width: '100%' }}>{l}</Chip>
@@ -2011,9 +2025,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
         {prefs.goal === 'pregnant'
           ? <PregnancySetup prefs={prefs} save={save} />
           : <Explainer>{(GOAL_OPTS.find(([k]) => k === (prefs.goal || 'track')) || [])[2]}</Explainer>}
-      </div>
-      <NotificationsCard />
-      <ConnectionCard />
+      </CollapsibleCard>
       <CollapsibleCard title='Cycle lengths' icon={CalendarBlank} open={openSection.lengths} onToggle={() => toggleSection('lengths')}>
         <Stepper label='Average cycle length' value={prefs.avgCycleLength} def={28} min={21} max={45} field='avgCycleLength' />
         <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />
@@ -2037,7 +2049,23 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
         </div>
         {prefs.birthControl && <Explainer>On hormonal birth control, ovulation is usually suppressed, so the fertile-window and ovulation estimates may not apply. PearPetal hides them and leads with your period dates.</Explainer>}
       </CollapsibleCard>
-      <CollapsibleCard title='Your data' icon={Database} open={openSection.data} onToggle={() => toggleSection('data')}>
+
+      <SectionLabel>How it looks</SectionLabel>
+      {/* Theme and flower are one question - "what does the app look like" - so
+          they share a section rather than owning two always-open cards. */}
+      <CollapsibleCard title='Appearance & your flower' icon={Palette} open={openSection.look} onToggle={() => toggleSection('look')}>
+        <ThemeRow themePref={themePref} onTheme={onTheme} />
+        <FlowerPicker value={prefs.flower} onPick={pickFlower} />
+      </CollapsibleCard>
+
+      <SectionLabel>Alerts & connection</SectionLabel>
+      <NotificationsCard />
+      <ConnectionCard />
+
+      <SectionLabel>Your data</SectionLabel>
+      {dlEnabled && <DevicesCard />}
+      {dlEnabled && <RecoveryPhraseCard />}
+      <CollapsibleCard title='Backup & restore' icon={Database} open={openSection.data} onToggle={() => toggleSection('data')}>
         <input
           type='password'
           value={exportPw}
@@ -2053,8 +2081,6 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Set a password to save an <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>encrypted</strong> backup; leave it blank for a plain file. Either way the file only leaves your device if you share it, so keep it somewhere private. Import merges a backup into your log and will ask for the password if the file is encrypted. A forgotten password cannot be recovered.</div>
         {dataMsg && <div style={{ color: dataMsg.tone === 'error' ? colors.error : dataMsg.tone === 'muted' ? colors.text.muted : colors.success, fontSize: 13 }}>{dataMsg.text}</div>}
       </CollapsibleCard>
-      {dlEnabled && <RecoveryPhraseCard />}
-      {dlEnabled && <DevicesCard />}
       {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
       {successModal && <BackupSuccessModal title={successModal.title} message={successModal.message} onClose={() => setSuccessModal(null)} />}
     </div>

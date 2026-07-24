@@ -19,10 +19,19 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   counter only increments inside our `relayThrough` hook, so Hyperswarm is calling
   it on every outbound dial. Escalations were 0 on wifi, which IS the negative case
   the gate wanted: a punchable network is never relayed.
-  STILL OWED is the case that actually proves the feature: two devices on mobile
+  THE RELAY PATH ITSELF IS NOW PROVEN (2026-07-23, unplanned). While scrolling the
+  Settings page the TCL's panel moved from `0/0` to **Connections we helped relay
+  1/1** with both phones running PearPetal on the same wifi. That counter is
+  hyperdht's own server-side one (`lib/server.js` `_relayConnection` -> attempts,
+  then successes on pair), so a real remote peer escalated to the DEPLOYED relay
+  node and the relayed connection SUCCEEDED. The relay works end to end.
+  Two caveats on that result: the peer was not positively identified (the Pixel is
+  observe-only per rule 6, so its side could not be read), and it happened over
+  wifi, not cellular - a same-LAN hairpin-NAT punch failure is the likely trigger.
+  STILL OWED is therefore the CARRIER case specifically: two devices on mobile
   data with wifi OFF, a pairing whose direct punch fails, confirmed to complete
-  THROUGH the relay. Until that runs, "PearPetal works off-LAN" is an argument,
-  not a result. See `proposals/2026-07-23-blind-relay.md` (Verify).
+  THROUGH the relay, with the escalating side's own counter read too. See
+  `proposals/2026-07-23-blind-relay.md` (Verify).
   Read it off **Settings -> Connect anywhere -> Connection details**: "Times the
   helper was offered" is this device's escalation count and "Connections we helped
   relay" is the other end's, so a relayed pairing shows up as one non-zero on EACH

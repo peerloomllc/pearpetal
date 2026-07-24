@@ -6,6 +6,34 @@ work lives in `TODO.md`.
 
 ## 2026-07-23
 
+- **Settings page regrouped: one idiom, four groups, ~4 screens down to ~1.3**
+  (PR #96, Tim's call after reviewing the page on device). The page had three
+  competing card styles with no rule - centred-title always-open (flower,
+  appearance, tracking-for), left-title-plus-switch always-open (reminders,
+  connection) and icon-plus-chevron collapsed (lengths, health, data, recovery,
+  devices) - so a user could not predict whether a thing would be open or need a
+  tap. Appearance sat permanently expanded taking a third of a screen while
+  "Health & birth control", which actually moves predictions, was hidden. The
+  cycle settings were split, with "What are you tracking for?" near the top and
+  "Cycle lengths" + "Health" five cards later. And the title said "Cycle settings"
+  over a page where 7 of 11 cards had nothing to do with the cycle.
+  Now: titled **Settings**, profile pinned open at top (it is identity, and the one
+  thing a partner sees), then four labelled groups - YOUR CYCLE (tracking for /
+  lengths / health), HOW IT LOOKS (appearance + flower merged into one section),
+  ALERTS & CONNECTION (reminders / connect anywhere), YOUR DATA (devices /
+  recovery phrase / backup & restore). Every row is the same `CollapsibleCard`
+  with an icon.
+  `CollapsibleCard` gained an optional `right` slot for a control pinned to the
+  header outside the expand button - a switch has to be flippable WITHOUT opening
+  the section, and it cannot be nested inside the header button (invalid, and the
+  click would fire both). `AppearanceCard` split into `ThemeRow` (the segmented
+  control, now inside the owner's section) plus the old card wrapper, which the
+  VIEWER settings still uses since it has no sections to slot into.
+  VERIFIED on the TCL (debug 1.0.2): all four groups render, every section expands
+  and collapses with the caret rotating, the flower picker and theme control render
+  inside their merged section, and both switches flip without expanding their row.
+  `npm test` 131/131.
+
 - **Connection details: make a relayed connection observable** (PR #96): the relay
   shipped in PR #95 with no way to tell "it connected" from "it connected THROUGH the
   relay", which left the off-LAN hardware gate unfalsifiable.
@@ -37,8 +65,16 @@ work lives in `TODO.md`.
   calling the policy on every outbound dial and the PR #95 wiring is live on a real
   device. And 0 escalations on wifi is exactly the negative case the gate wants: a
   punchable network is never relayed.
-  STILL OWED: the positive case (two phones on cellular, a punch that fails, the
-  relay carrying it). Tracked in `TODO.md`.
+  THEN, UNPLANNED, THE POSITIVE CASE APPEARED. While scrolling the Settings page
+  the panel moved from `0/0` to **Connections we helped relay 1/1**, with both
+  phones running PearPetal on the same wifi. That is hyperdht's own server-side
+  counter, so a real remote peer escalated to the DEPLOYED relay node and the
+  relayed connection succeeded: the relay works end to end against live
+  infrastructure, not just in tests. Caveats recorded honestly - the peer was not
+  positively identified (the Pixel is observe-only, so its escalation counter could
+  not be read) and it was wifi, not cellular, so a same-LAN hairpin-NAT punch
+  failure is the likely trigger.
+  STILL OWED: the CARRIER case specifically. Tracked in `TODO.md`.
   Also fixed here: the card's wifi icon was vertically centred, so on a narrow phone
   it floated beside the middle line of the three-line description instead of the
   title. `alignItems: 'flex-start'`; re-verified on the TCL.
