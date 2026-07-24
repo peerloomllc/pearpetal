@@ -1658,8 +1658,11 @@ function ConnectionCard () {
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: spacing.sm }}>
-          <WifiHigh size={18} color={colors.text.secondary} />
+        {/* flex-start, not center: the description wraps to three lines on a
+            narrow phone and a centred icon then floats beside the middle line
+            instead of the title. */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', gap: spacing.sm }}>
+          <WifiHigh size={18} color={colors.text.secondary} style={{ flexShrink: 0, marginTop: 2 }} />
           <div>
             <div style={{ color: colors.text.primary, fontSize: 15, fontWeight: 500 }}>Connect anywhere</div>
             <div style={{ color: colors.text.muted, fontSize: 12 }}>Helps your devices reach each other on networks that block a direct connection.</div>

@@ -13,21 +13,23 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
 
 ## Verification still owed
 
-- **Hardware-gate the blind relay (owed by PR #95, 2026-07-23).** The code, tests
-  and Settings toggle shipped, but the relay has never been exercised on real
-  phones. Needed: two devices on mobile data with wifi OFF, a pairing that fails
-  to punch directly, confirmed to complete THROUGH the relay - and the negative
-  case, two devices on the same LAN confirmed never to relay. Until this runs,
-  "PearPetal works off-LAN" is an argument, not a result. See
-  `proposals/2026-07-23-blind-relay.md` (Verify).
-  Read the result off **Settings -> Connect anywhere -> Connection details**
-  (PR #96): "Times the helper was offered" is this device's escalation count and
-  "Connections we helped relay" is the other end's, so a relayed pairing shows up
-  as one non-zero on each phone. Both zero with a connection up means it punched
-  directly, which is the negative case. Copy details gives the raw JSON.
-  NOTE: `ConnectionDetails` itself has only been verified by the test suite and
-  the bundle build; nobody has seen it render on a phone yet. This gate is the
-  first time it will.
+- **Hardware-gate the blind relay: the POSITIVE case (owed by PR #95, 2026-07-23).**
+  HALF DONE 2026-07-23. Already confirmed on the TCL (debug 1.0.2, both phones
+  installed): the policy is LIVE - "Direct connections tried" read 4, and that
+  counter only increments inside our `relayThrough` hook, so Hyperswarm is calling
+  it on every outbound dial. Escalations were 0 on wifi, which IS the negative case
+  the gate wanted: a punchable network is never relayed.
+  STILL OWED is the case that actually proves the feature: two devices on mobile
+  data with wifi OFF, a pairing whose direct punch fails, confirmed to complete
+  THROUGH the relay. Until that runs, "PearPetal works off-LAN" is an argument,
+  not a result. See `proposals/2026-07-23-blind-relay.md` (Verify).
+  Read it off **Settings -> Connect anywhere -> Connection details**: "Times the
+  helper was offered" is this device's escalation count and "Connections we helped
+  relay" is the other end's, so a relayed pairing shows up as one non-zero on EACH
+  phone, not both on one. Copy details gives the raw JSON.
+  Practical note: the TCL is a poor second peer for this (PearGuard's ~2 min/day
+  limit on `com.pearpetal.debug`), and it needs two phones on CELLULAR, so this is
+  most likely a Tim-drives-it test rather than an adb one.
 
 - **Tap-test the universal links (human test only).** Actually TAP an
   `https://peerloomllc.com/petal/link|join` link on the iPhone and confirm it opens
