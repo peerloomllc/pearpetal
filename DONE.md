@@ -100,6 +100,28 @@ work lives in `TODO.md`.
 
 ## 2026-07-23
 
+- **All three devices on merged `main`, iPhone rebuilt with Universal Links**
+  (PR #101 for the tracking; the builds themselves are not code changes). After
+  merging PRs #95/#96/#98/#99/#100, built and installed from clean `main`:
+  Pixel 9 Pro + TCL on `com.pearpetal.debug` 1.0.2 via
+  `scripts/android-debug-install.sh`, and the iPhone SE on `com.pearpetal` 1.0.2 via
+  `scripts/ios-dev-install.sh` (archive on the Mac mini, `ideviceinstaller` over USB).
+  The iOS build was then REDONE with `PEARPETAL_ASSOCIATED_DOMAINS=1` so Universal
+  Links survive prebuild. The plugin's own comment warns that keeping the entitlement
+  makes a wildcard dev profile fail to sign - it did not, because the profile permits
+  `com.apple.developer.associated-domains` (`*`). Verified rather than assumed: the
+  entitlement is in the SIGNED binary (present in the code-signature blob, not just
+  the declared plist) pointing at `applinks:peerloomllc.com`, and the live
+  `apple-app-site-association` returns 200 as `application/json` listing
+  `G79ALD29NA.com.pearpetal` for `/petal/link`, `/petal/link/*`, `/petal/join`,
+  `/petal/join/*`. The UL tap-test in `TODO.md` is therefore unblocked on iOS;
+  Android was not re-checked.
+  PROCESS NOTE worth remembering: PR #97 (the Settings regroup, stacked on #96's
+  branch) was AUTO-CLOSED by GitHub when that base branch was deleted on merge, and a
+  closed PR cannot be retargeted. The commit was rebased onto `main` and reopened as
+  #99. If a stacked PR is used again, merge the child first or retarget it BEFORE
+  merging the parent.
+
 - **Dial/Month toggle no longer covers the flower and info buttons on a narrow
   phone** (PR #98, reported by Tim on the TCL). The floating view toggle was a FIXED
   240px centred with `left:50% / translateX(-50%)`, and it sits in the same top band
