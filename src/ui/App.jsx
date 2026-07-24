@@ -1279,11 +1279,29 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
   )
 }
 
+// How much room the floating view toggle must leave on each side of the dial
+// card, so it never lands on the two buttons that share that top band.
+// Horizontal clearance - distinct from TOGGLE_INSET above, which is the
+// VERTICAL padding the cards use to sit clear of the same toggle.
+//
+// Measured, not guessed. The flower button is left:spacing.md(12) +
+// padding:spacing.xs(4) + a 26px thumb + 4 = 46px wide. The info button is
+// right:12 + 4 + a 20px glyph + 4 = 40px. 52 clears the wider of the two with
+// 6px to spare, and stays symmetric so the toggle remains centred.
+//
+// This is why a fixed 240px toggle broke on a 360dp phone: content there is
+// 360 - 2*24 padding = 312px, so a centred 240 spans 36..276 and ran straight
+// under the flower thumb (12..46) and the info button (272..300).
+const TOGGLE_SIDE_CLEAR = 52
+
 // Toggle between the dial ("today at a glance") and the calendar ("the month").
 function ViewToggle ({ value, onChange }) {
   const opts = [['dial', 'Dial', Flower], ['calendar', 'Month', CalendarBlank]]
   return (
-    <div style={{ display: 'flex', alignSelf: 'center', width: 240, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
+    // maxWidth, not width: on a narrow phone the toggle has to give way to the
+    // flower and info buttons it floats between (see TOGGLE_SIDE_CLEAR), and a
+    // 240 overlapped them. It still renders at 240 wherever there is room.
+    <div style={{ display: 'flex', alignSelf: 'center', width: '100%', maxWidth: 240, margin: '0 auto', background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.full, padding: 3, gap: 2 }}>
       {opts.map(([k, l, Icon]) => {
         const on = value === k
         return (
@@ -2517,7 +2535,10 @@ export default function App () {
               key forces a remount so the fade replays on each toggle, softening the
               height change between the (taller) dial and the calendar. */}
           <div style={{ position: 'relative' }}>
-            <div style={{ position: 'absolute', top: spacing.md, left: '50%', transform: 'translateX(-50%)', zIndex: 2 }}>
+            {/* Inset from both edges rather than centred at a fixed width, so the
+                toggle can never overlap the flower thumb or the info button that
+                share this band. See TOGGLE_SIDE_CLEAR. */}
+            <div style={{ position: 'absolute', top: spacing.md, left: TOGGLE_SIDE_CLEAR, right: TOGGLE_SIDE_CLEAR, zIndex: 2, display: 'flex', justifyContent: 'center' }}>
               <ViewToggle value={cycleView} onChange={setView} />
             </div>
             <div key={cycleView} style={{ animation: 'pearpetal-fade 220ms ease' }}>

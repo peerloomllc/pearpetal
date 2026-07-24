@@ -25,6 +25,31 @@ work lives in `TODO.md`.
   bundles built. NOT YET VERIFIED ON HARDWARE - the two-phones-on-cellular gate is
   still owed and is tracked in `TODO.md`.
 
+## 2026-07-23
+
+- **Dial/Month toggle no longer covers the flower and info buttons on a narrow
+  phone** (PR #98, reported by Tim on the TCL). The floating view toggle was a FIXED
+  240px centred with `left:50% / translateX(-50%)`, and it sits in the same top band
+  as the flower-picker thumb (left) and the dial-info button (right). It also carries
+  `zIndex:2` against their `zIndex:1`, so where they collided the toggle won.
+  The arithmetic, since this is width-dependent and only bites small screens: a 360dp
+  phone gives 360 - 2*24 padding = 312px of content, so a centred 240 spans 36..276.
+  The flower button occupies 12..46 (left 12 + pad 4 + 26px thumb + 4) and the info
+  button 272..300 (right 12 + pad 4 + 20px glyph + 4). That is a 10px overlap on the
+  left and 4px on the right. On a 412dp phone content is 364px, the toggle spans
+  62..302 and nothing touches - which is why it looked fine everywhere else.
+  FIX: the wrapper is now inset `left/right: TOGGLE_SIDE_CLEAR (52)` instead of
+  centred at a fixed width, and `ViewToggle` takes `width:100% / maxWidth:240`. 52
+  clears the wider button (46) with 6px spare and stays symmetric, so the toggle is
+  still centred and still renders at exactly 240 wherever there is room. Nothing
+  changes on a wide screen.
+  Note the near-miss: `TOGGLE_INSET` already existed as the VERTICAL padding both
+  cards use to clear this same toggle. The new constant is `TOGGLE_SIDE_CLEAR` so the
+  two meanings cannot be conflated; the build caught the collision.
+  VERIFIED on the TCL (720x1600, 320dpi = 360dp wide): flower thumb and info button
+  both fully clear in the Dial view, Month view unaffected, toggle still centred.
+  `npm run verify` green (126 tests + all bundles).
+
 ## 2026-07-21
 
 - **GrapheneOS/Vanadium WebView resume-freeze fix - renderer-kill recovery** (PR #93):
