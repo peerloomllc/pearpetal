@@ -83,6 +83,40 @@ async function hydrateUseRelay (localDb) {
   return _useRelay
 }
 
+// --- what actually happened (the client-side counters) --------------------
+//
+// hyperdht keeps `dht.stats.relaying { attempts, successes, aborts }`, but ONLY
+// increments it in lib/server.js - i.e. on the side ACCEPTING a connection that
+// asked to be relayed. The side that ESCALATED gets no counter at all, so on a
+// phone that dialled out and got rescued by the relay, `relaying` reads 0.
+//
+// That is the number we most need for the hardware gate ("did WE relay?"), so we
+// count it here: the policy below is called on every outbound dial, and `force`
+// is Hyperswarm telling us the direct punch already failed for that peer.
+//
+//   dials      - policy consulted (one per outbound connection attempt)
+//   direct     - normal path, no relay offered, nothing had failed yet
+//   offered    - we handed Hyperswarm the relay key. THE escalation counter.
+//   suppressed - we would have relayed but did not, because the user opted out
+//                or the build has no key. A non-zero value here alongside a
+//                connection that never lands is the "your toggle is why" signal.
+const stats = { dials: 0, direct: 0, offered: 0, suppressed: 0 }
+
+function relayStats () { return { ...stats } }
+
+function _resetStats () { stats.dials = 0; stats.direct = 0; stats.offered = 0; stats.suppressed = 0 }
+
+// relayThroughFor stays pure (it is the thing worth unit-testing); this is the
+// counting wrapper the live swarm actually calls.
+function decideRelay ({ force, randomized, useRelay, relayKey }) {
+  stats.dials++
+  const key = relayThroughFor({ force, randomized, useRelay, relayKey })
+  if (key) stats.offered++
+  else if (force || randomized) stats.suppressed++
+  else stats.direct++
+  return key
+}
+
 // The `createSwarm` injection point @peerloom/core's engine already exposes.
 // Core builds `new Hyperswarm({ keyPair })` by default; the ONLY thing added
 // here is the relayThrough policy, so everything above the socket - pairing,
@@ -92,7 +126,7 @@ function createRelaySwarm ({ keyPair, localDb }) {
   if (localDb) hydrateUseRelay(localDb)
   return new Hyperswarm({
     keyPair,
-    relayThrough: (force, swarm) => relayThroughFor({
+    relayThrough: (force, swarm) => decideRelay({
       force,
       randomized: !!(swarm && swarm.dht && swarm.dht.randomized),
       useRelay: useRelayCached() === true,
@@ -106,9 +140,12 @@ module.exports = {
   RELAY_PUBLIC_KEY_Z,
   NETWORK_KEY,
   relayThroughFor,
+  decideRelay,
+  relayStats,
   setUseRelay,
   useRelayCached,
   hydrateUseRelay,
   createRelaySwarm,
-  _resetUseRelay
+  _resetUseRelay,
+  _resetStats
 }

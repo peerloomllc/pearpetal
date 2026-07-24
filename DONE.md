@@ -6,6 +6,43 @@ work lives in `TODO.md`.
 
 ## 2026-07-23
 
+- **Connection details: make a relayed connection observable** (PR #96): the relay
+  shipped in PR #95 with no way to tell "it connected" from "it connected THROUGH the
+  relay", which left the off-LAN hardware gate unfalsifiable.
+  FINDING that shaped the work: hyperdht keeps `stats.relaying { attempts, successes,
+  aborts }` but increments it ONLY in `lib/server.js`, on the side ACCEPTING a
+  connection that asked to be relayed. The side that ESCALATED gets no counter, so
+  copying PearTune's surface would have read a flat 0 on the phone that was actually
+  rescued. So `src/relay.js` now counts its own decisions (`dials` / `direct` /
+  `offered` / `suppressed`) in the policy function Hyperswarm calls per dial;
+  `offered` is the escalation counter that was missing, and `suppressed` distinguishes
+  "the network blocked it" from "you switched the helper off".
+  Surfaced via a new `network:stats` method and a collapsed "Connection details"
+  panel inside the Settings connection card, polling every 2s while open so the
+  numbers move during a live pairing, with a Copy details button for the raw JSON.
+  Every hyperdht-sourced field degrades to null rather than throwing when the swarm
+  has no dht yet.
+  VERIFIED: `npm run verify` green - 131 tests (up from 126: 4 new counter tests in
+  `test/relay.test.js` plus a `network:stats` graceful-degradation test in
+  `test/petalMethods.test.js`) and all three bundles built.
+  VERIFIED ON HARDWARE (2026-07-23, `com.pearpetal.debug` 1.0.2 built and installed
+  over USB to BOTH the Pixel 9 Pro `53071FDAP00038` and the TCL `4H65K7MFZXSCSWPR`;
+  driven on the TCL per CLAUDE.md rule 6, Pixel install confirmed by
+  `dumpsys package` and otherwise left untouched). Settings -> "Connect anywhere"
+  renders with the toggle ON, the explainer, and Connection details expanding to real
+  live numbers: Connected right now 0, Direct connections tried 4, Times the helper
+  was offered 0, Connections we helped relay 0/0.
+  THAT IS A RESULT, not just a screenshot. "Direct connections tried" only
+  increments INSIDE our `relayThrough` hook, so a non-zero value proves Hyperswarm is
+  calling the policy on every outbound dial and the PR #95 wiring is live on a real
+  device. And 0 escalations on wifi is exactly the negative case the gate wants: a
+  punchable network is never relayed.
+  STILL OWED: the positive case (two phones on cellular, a punch that fails, the
+  relay carrying it). Tracked in `TODO.md`.
+  Also fixed here: the card's wifi icon was vertically centred, so on a narrow phone
+  it floated beside the middle line of the three-line description instead of the
+  title. `alignItems: 'flex-start'`; re-verified on the TCL.
+
 - **Off-LAN backstop: adopt the shared PeerLoom blind relay** (PR #95): two phones on
   carrier CGNAT often cannot hole-punch to each other, and PearPetal is phone-to-phone
   on both of its paths (device linking and partner sharing) with no always-on node

@@ -13,13 +13,23 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
 
 ## Verification still owed
 
-- **Hardware-gate the blind relay (owed by PR #95, 2026-07-23).** The code, tests
-  and Settings toggle shipped, but the relay has never been exercised on real
-  phones. Needed: two devices on mobile data with wifi OFF, a pairing that fails
-  to punch directly, confirmed to complete THROUGH the relay - and the negative
-  case, two devices on the same LAN confirmed never to relay. Until this runs,
-  "PearPetal works off-LAN" is an argument, not a result. See
-  `proposals/2026-07-23-blind-relay.md` (Verify).
+- **Hardware-gate the blind relay: the POSITIVE case (owed by PR #95, 2026-07-23).**
+  HALF DONE 2026-07-23. Already confirmed on the TCL (debug 1.0.2, both phones
+  installed): the policy is LIVE - "Direct connections tried" read 4, and that
+  counter only increments inside our `relayThrough` hook, so Hyperswarm is calling
+  it on every outbound dial. Escalations were 0 on wifi, which IS the negative case
+  the gate wanted: a punchable network is never relayed.
+  STILL OWED is the case that actually proves the feature: two devices on mobile
+  data with wifi OFF, a pairing whose direct punch fails, confirmed to complete
+  THROUGH the relay. Until that runs, "PearPetal works off-LAN" is an argument,
+  not a result. See `proposals/2026-07-23-blind-relay.md` (Verify).
+  Read it off **Settings -> Connect anywhere -> Connection details**: "Times the
+  helper was offered" is this device's escalation count and "Connections we helped
+  relay" is the other end's, so a relayed pairing shows up as one non-zero on EACH
+  phone, not both on one. Copy details gives the raw JSON.
+  Practical note: the TCL is a poor second peer for this (PearGuard's ~2 min/day
+  limit on `com.pearpetal.debug`), and it needs two phones on CELLULAR, so this is
+  most likely a Tim-drives-it test rather than an adb one.
 
 - **Tap-test the universal links (human test only).** Actually TAP an
   `https://peerloomllc.com/petal/link|join` link on the iPhone and confirm it opens
@@ -31,11 +41,6 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
 
 ## Nice-to-have / UX polish
 
-- **No visibility into whether the relay was used.** PearTune surfaces
-  `dht.stats.relaying { attempts, successes, aborts }` in its connection
-  diagnostics; PearPetal has no diagnostics screen, so an escalation to the relay
-  is invisible to the user and to us. Wanted mainly to make the hardware gate
-  above unambiguous - without it, "it connected" does not say HOW. T1.
 - **Promote `src/relay.js` into `@peerloom/core` (rule of three).** It is
   app-agnostic and PearTune has a near twin (`protocol/relay.js`). Deliberately
   not done in PR #95: two copies of a ~110-line pure module beat a new core API

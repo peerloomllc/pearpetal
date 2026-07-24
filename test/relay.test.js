@@ -85,6 +85,60 @@ test('setUseRelay updates the cache live, no reconnect needed', () => {
   assert.equal(relay.useRelayCached(), true)
 })
 
+// --- the client-side counters ---------------------------------------------
+//
+// hyperdht's own `stats.relaying` only moves on the ACCEPTING side, so a phone
+// that escalated and was rescued by the relay reads 0 there. These counters are
+// the missing half, and the off-LAN hardware gate depends on them.
+
+test('decideRelay counts the direct path, the escalation and the suppression', () => {
+  relay._resetStats()
+  const on = { useRelay: true, relayKey: KEY }
+
+  relay.decideRelay({ force: false, randomized: false, ...on }) // normal dial
+  relay.decideRelay({ force: false, randomized: false, ...on })
+  assert.deepEqual(relay.relayStats(), { dials: 2, direct: 2, offered: 0, suppressed: 0 })
+
+  relay.decideRelay({ force: true, randomized: false, ...on }) // punch failed -> escalate
+  assert.deepEqual(relay.relayStats(), { dials: 3, direct: 2, offered: 1, suppressed: 0 })
+
+  // Needed but switched off. This is the counter that explains a connection
+  // that never lands: it says "your toggle is why", not "the network is why".
+  relay.decideRelay({ force: true, randomized: false, useRelay: false, relayKey: KEY })
+  assert.deepEqual(relay.relayStats(), { dials: 4, direct: 2, offered: 1, suppressed: 1 })
+
+  // A build with no key counts as suppressed too - we would have relayed.
+  relay.decideRelay({ force: true, randomized: false, useRelay: true, relayKey: null })
+  assert.deepEqual(relay.relayStats(), { dials: 5, direct: 2, offered: 1, suppressed: 2 })
+})
+
+test('decideRelay returns exactly what the pure policy returns', () => {
+  relay._resetStats()
+  const cases = [
+    { force: false, randomized: false, useRelay: true, relayKey: KEY },
+    { force: true, randomized: false, useRelay: true, relayKey: KEY },
+    { force: false, randomized: true, useRelay: true, relayKey: KEY },
+    { force: true, randomized: true, useRelay: false, relayKey: KEY },
+    { force: true, randomized: false, useRelay: true, relayKey: null },
+  ]
+  for (const c of cases) assert.deepEqual(relay.decideRelay(c), relay.relayThroughFor(c))
+})
+
+test('a randomized NAT counts as an escalation, not as a direct attempt', () => {
+  relay._resetStats()
+  relay.decideRelay({ force: false, randomized: true, useRelay: true, relayKey: KEY })
+  const s = relay.relayStats()
+  assert.equal(s.offered, 1)
+  assert.equal(s.direct, 0) // it never had a direct attempt to count
+})
+
+test('relayStats hands back a copy, so a caller cannot corrupt the counters', () => {
+  relay._resetStats()
+  const snap = relay.relayStats()
+  snap.offered = 999
+  assert.equal(relay.relayStats().offered, 0)
+})
+
 test('createRelaySwarm hands Hyperswarm a direct-first function, not a bare key', async () => {
   // Build the swarm the way the worklet does, then interrogate the policy
   // Hyperswarm stored. Constructing a real Hyperswarm stands up a DHT node, so
