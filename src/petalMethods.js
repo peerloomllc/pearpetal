@@ -17,6 +17,7 @@ const sodium = require('sodium-universal')
 const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, memberKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE, MEMBER_RANGE } = require('./petalWire')
 const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FLOW_VALUES } = require('./prediction')
 const { notificationEvents } = require('./notifications')
+const { TONES: NOTE_TONES, DEFAULT_TONE: DEFAULT_NOTE_TONE } = require('./petalNotes')
 const { isDeviceLinkEnabled } = require('./deviceLink')
 const ps = require('./privateStore')
 const relay = require('./relay')
@@ -383,6 +384,10 @@ async function getNotifPrefs (ctx) {
     discreet: !!n.discreet,
     period: n.period !== false,
     fertility: n.fertility !== false,
+    // The daily flower note is opt-in ON TOP of the master switch (default off),
+    // so turning reminders on never silently starts a daily push.
+    dailyNote: !!n.dailyNote,
+    noteTone: NOTE_TONES.includes(n.noteTone) ? n.noteTone : DEFAULT_NOTE_TONE,
     time: typeof n.time === 'string' && /^\d{2}:\d{2}$/.test(n.time) ? n.time : '09:00',
   }
 }
@@ -602,6 +607,8 @@ const methods = {
     if ('discreet' in args) next.discreet = !!args.discreet
     if ('period' in args) next.period = !!args.period
     if ('fertility' in args) next.fertility = !!args.fertility
+    if ('dailyNote' in args) next.dailyNote = !!args.dailyNote
+    if ('noteTone' in args && NOTE_TONES.includes(args.noteTone)) next.noteTone = args.noteTone
     if ('time' in args && typeof args.time === 'string' && /^\d{1,2}:\d{2}$/.test(args.time)) {
       const [h, m] = args.time.split(':').map(Number)
       if (h >= 0 && h <= 23 && m >= 0 && m <= 59) next.time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -622,7 +629,7 @@ const methods = {
     if (!(await privHas(ctx))) return { enabled: true, events: [] }
     try {
       const { proj } = await computeProjection(ctx)
-      return { enabled: true, events: notificationEvents(proj, { notif, goal, today: todayIso() }) }
+      return { enabled: true, events: notificationEvents(proj, { notif, goal, flower: prefs.flower, today: todayIso() }) }
     } catch { return { enabled: true, events: [] } }
   },
 

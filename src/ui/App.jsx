@@ -1649,12 +1649,22 @@ function NotificationsCard () {
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
           <NotifRow label='Period approaching' desc='The day before and the day your period is predicted.' on={n.period !== false} onClick={() => set({ period: !(n.period !== false) })} />
           <NotifRow label='Fertile window' desc='When your fertile window opens and on your predicted ovulation day.' on={n.fertility !== false} onClick={() => set({ fertility: !(n.fertility !== false) })} />
+          <NotifRow label='Daily flower note' desc='A short line from the garden each day, written for where you are in your cycle.' on={!!n.dailyNote} onClick={() => set({ dailyNote: !n.dailyNote })} />
+          {n.dailyNote && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
+              <span style={{ color: colors.text.secondary, fontSize: 14 }}>Note style</span>
+              <div style={{ display: 'flex', gap: spacing.sm }}>
+                <Chip active={(n.noteTone || 'playful') === 'playful'} onClick={() => set({ noteTone: 'playful' })}>Playful</Chip>
+                <Chip active={n.noteTone === 'gentle'} onClick={() => set({ noteTone: 'gentle' })}>Gentle</Chip>
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
             <span style={{ color: colors.text.secondary, fontSize: 14 }}>Time of day</span>
             <input type='time' value={n.time || '09:00'} onChange={(e) => set({ time: e.target.value })} style={input} />
           </div>
           <NotifRow label='Discreet' desc='Hide cycle details on the lock screen - reminders just read "PearPetal".' on={!!n.discreet} onClick={() => set({ discreet: !n.discreet })} />
-          <div style={{ color: colors.text.muted, fontSize: 11 }}>Reminders only appear once PearPetal is confident in your prediction, and pause while you are pregnant or on birth control.</div>
+          <div style={{ color: colors.text.muted, fontSize: 11 }}>Period and fertile-window reminders only appear once PearPetal is confident in your prediction. Everything here pauses while you are pregnant, and the fertile ones pause on birth control.</div>
         </div>
       )}
     </CollapsibleCard>

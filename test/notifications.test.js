@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { notificationEvents, parseTime, describe } = require('../src/notifications')
+const { notificationEvents, parseTime, describe, NOTE_HORIZON_DAYS, NOTE_HORIZON_LOW_CONF, MAX_EVENTS } = require('../src/notifications')
 const { projectionFromRows } = require('../src/prediction')
 
 // A trustworthy (medium-confidence) projection fixture, today = 2026-07-10.
@@ -112,6 +112,68 @@ test('event ids are deterministic (idempotent reschedule)', () => {
 
 test('describe: discreet ignores category + goal', () => {
   assert.deepEqual(describe('period-due', 'avoid', true), describe('ovulation', 'conceive', true))
+})
+
+// --- the daily flower note (proposals/2026-07-30-daily-flower-note.md) -------
+
+const notes = (ev) => ev.filter((e) => e.category === 'daily-note')
+
+test('the daily note is off unless asked for, even with reminders on', () => {
+  assert.equal(notes(notificationEvents(basePred(), opts({ notif: on() }))).length, 0)
+})
+
+test('daily note: one a day over the 14-day rolling window, starting today', () => {
+  const ev = notes(notificationEvents(basePred(), opts({ notif: on({ dailyNote: true }), flower: 'rose' })))
+  assert.equal(ev.length, NOTE_HORIZON_DAYS + 1) // today through today+14
+  assert.equal(ev[0].dateIso, '2026-07-10')
+  assert.equal(ev.at(-1).dateIso, '2026-07-24')
+  assert.deepEqual([...new Set(ev.map((e) => e.dateIso))].length, ev.length) // one per date
+  for (const e of ev) {
+    assert.ok(e.id.startsWith('pp:daily-note:'))
+    assert.ok(e.title.length && e.body.length)
+    assert.equal(e.hour, 9)
+  }
+  // consecutive days never repeat the same line
+  for (let i = 1; i < ev.length; i++) assert.notEqual(ev[i].title, ev[i - 1].title)
+})
+
+test('daily note: schedules on a low-confidence guess, but only a few days out', () => {
+  const ev = notificationEvents({ ...basePred(), confidence: 'low' }, opts({ notif: on({ dailyNote: true }) }))
+  const n = notes(ev)
+  assert.equal(n.length, NOTE_HORIZON_LOW_CONF + 1)
+  // ...and the cycle reminders stay suppressed at low confidence
+  assert.equal(ev.length, n.length)
+})
+
+test('daily note: the tone pref changes the wording', () => {
+  const one = (noteTone) => notes(notificationEvents(basePred(), opts({ notif: on({ dailyNote: true, noteTone }), flower: 'rose' })))
+  const playful = one('playful')
+  const gentle = one('gentle')
+  assert.equal(playful.length, gentle.length)
+  assert.ok(playful.some((e, i) => e.body !== gentle[i].body))
+})
+
+test('daily note: discreet mode neutralises it like every other category', () => {
+  const ev = notes(notificationEvents(basePred(), opts({ notif: on({ dailyNote: true, discreet: true }) })))
+  assert.ok(ev.length > 0)
+  for (const e of ev) {
+    assert.equal(e.title, 'PearPetal')
+    assert.equal(e.body, 'You have a reminder. Open the app to view it.')
+  }
+})
+
+test('daily note: suppressed while pregnant, and stable across reschedules', () => {
+  assert.deepEqual(notificationEvents(basePred(), opts({ notif: on({ dailyNote: true }), goal: 'pregnant' })), [])
+  const a = notificationEvents(basePred(), opts({ notif: on({ dailyNote: true }), flower: 'lotus' }))
+  const b = notificationEvents(basePred(), opts({ notif: on({ dailyNote: true }), flower: 'lotus' }))
+  assert.deepEqual(a, b)
+})
+
+test('the whole list is capped, so the iOS 64-pending limit can never be crowded', () => {
+  const ev = notificationEvents(basePred(), opts({ notif: on({ dailyNote: true }), horizonDays: 3000 }))
+  assert.equal(ev.length, MAX_EVENTS)
+  // the earliest are the ones kept
+  assert.equal(ev[0].dateIso, '2026-07-10')
 })
 
 test('integration: a real medium-confidence projection yields events', () => {

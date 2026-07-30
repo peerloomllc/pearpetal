@@ -1,0 +1,121 @@
+# Daily flower note
+
+**Goal** - An opt-in, once-a-day local notification written in a garden voice, chosen
+on-device from the cycle phase and the user's chosen flower, so tracking feels like a
+daily ritual rather than a clinical chore. The PearPetal answer to Stardust's astrology
+notifications, themed on flowers and seasons instead of planets.
+
+**Tier - T1.** Device-local only: two new fields on the existing `notifications` local
+row, a new pure copy module, and extra events in the list the shell already schedules.
+No wire change, no Autobase row, no new IPC method, no shell change at all. Proposal
+written anyway because it shares a surface with the T1 notifications proposal
+(`2026-07-09-notifications.md`) and because the *copy* is the feature, so the tone rules
+deserve to be written down before 80 lines of jokes are.
+
+## Decisions (resolved 2026-07-30 with Tim)
+
+1. **Both tones, user picks.** A `noteTone` pref with two corpora: **Playful** (dry,
+   witty, snack-positive - the Stardust register) and **Gentle** (almanac voice, seasonal
+   observation, no punchline). Default Playful. Nobody gets a joke on a day they did not
+   want one.
+2. **Every day.** Once daily at the existing reminder time, not only on phase changes.
+   The daily ritual is the entire point of the comparison.
+3. **Push, not just in-app.** It rides the existing OS local-notification path.
+4. **Opt-in twice over.** Master `notifications.enabled` is still off by default, and
+   `dailyNote` is additionally off by default, so an existing user who already turned on
+   cycle reminders does not silently start getting daily notes on upgrade.
+
+## Scope - what this builds
+
+### Copy (`src/petalNotes.js`, new, pure)
+
+- `NOTES[tone][phase]` - 8 `[title, body]` pairs per phase (`menstrual`, `follicular`,
+  `fertile`, `luteal`) per tone.
+- `SPECIES[flower][phase]` - one extra pair per phase for each of the five species in the
+  flower picker, in that flower's voice (the rose keeps its thorns, the lotus grows from
+  mud, the dahlia is a lumpy tuber holding all the ruffles). Mixed into the same pool, so
+  roughly one day in nine is species-specific and the picked flower actually shows up in
+  the writing, not just on the dial.
+- `noteFor(pred, dateIso, { tone, flower })` -> `{ title, body }`. **Deterministic**: the
+  index is `(dayNumber + hash(flower + tone)) % pool.length`, so (a) the same day always
+  renders the same note across the many reschedules the shell does, and (b) consecutive
+  days can never repeat a line.
+
+### Phase on a FUTURE date (`src/prediction.js`)
+
+`projectionFromRows` returns the phase for *today*. A note scheduled 10 days out needs the
+phase on *that* date, so `phaseOnDate(pred, dateIso)` projects the current cycle's pattern
+forward and back by cycle length, the same way `projectCalendar` already does. Exported
+and unit-tested on its own.
+
+### Events (`src/notifications.js`)
+
+A `daily-note` category alongside `period-*` and `fertile-*`, same shape, same `pp:` id
+prefix, so the shell needs **no change**: it already schedules whatever the worklet hands
+it.
+
+- Horizon **14 days** (not the 60 the cycle events use). Two reasons: iOS caps an app at
+  64 pending local notifications, and the phase estimate for a date two cycles out is not
+  worth the slot. The shell re-arms on every foreground and after every log entry.
+- A `MAX_EVENTS = 56` cap over the whole returned list (earliest kept) as a hard guard
+  against ever crowding the iOS limit. In practice the list is ~24.
+- **Confidence:** unlike the cycle reminders, a note is not an instruction to act on, so
+  it does not need the same "never nag on a guess" bar. It requires a known cycle, and at
+  `low` confidence it schedules only **3 days** ahead. `none` still schedules nothing.
+- **Fertile framing is softened, never faked.** When confidence is `low` or the user is on
+  hormonal birth control, a `fertile` day falls back to the follicular / luteal pool
+  rather than announcing a bloom we are guessing at. Matches how the dial and summary
+  already hide the fertile framing on birth control.
+- **Goal:** `pregnant` suppresses everything, as it already does for cycle reminders. The
+  corpus is otherwise deliberately goal-neutral: the lines are about energy, weather and
+  snacks, never about conceiving or avoiding, so a `conceive` user and an `avoid` user can
+  read the same line without either being nudged.
+- **Discreet mode wins.** A note inherits the existing discreet swap and reads exactly
+  "PearPetal / You have a reminder", identical to every other category, so the lock screen
+  still reveals nothing.
+
+### Prefs + UI
+
+`notifications` local row gains `dailyNote` (bool, default false) and `noteTone`
+(`playful` | `gentle`, default `playful`), validated in `notifications:set` like the
+existing fields, never crossing the wire. Settings' Reminders card gains a "Daily flower
+note" row and, when it is on, a two-chip tone picker.
+
+### What this does NOT do
+
+No in-app note on the main screen (the dial is the hero; revisit later). No partner-facing
+note. No streaks, no scores, no shareable cards. No copy fetched from anywhere - there is
+no network path for text in this app and this feature does not add one.
+
+## Compat
+
+Additive and device-local. A device with no `dailyNote` field defaults to off, so upgrade
+changes nothing until the user asks for it. No wire change, no migration, old and new
+peers are indistinguishable.
+
+## Verify
+
+- Unit (`test/petalNotes.test.js`): determinism (same date -> same note), no consecutive
+  repeats, species lines appear in the pool, both tones resolve, every pool entry is a
+  well-formed non-empty `[title, body]`.
+- Unit (`test/prediction.test.js`): `phaseOnDate` across a full projected cycle, forward
+  and backward from the anchor.
+- Unit (`test/notifications.test.js`): note events off by default; 14-day horizon; 3-day
+  horizon at low confidence; fertile softening on low confidence and on birth control;
+  discreet wording; suppressed while pregnant; the `MAX_EVENTS` cap.
+- On-device: enable reminders + daily note, set the time a few minutes out, confirm it
+  fires with the app killed, confirm the tone chip changes the wording, confirm discreet
+  neutralises it.
+
+## Rollback
+
+Gated by `dailyNote` (default off). Turning it off cancels the notes on the next resync,
+which happens on foreground. Removing the feature is deleting `petalNotes.js`, the events
+branch and the two prefs - no data or wire state to unwind.
+
+## Open questions
+
+- Whether the note should also appear in-app under the dial for users who keep
+  notifications off entirely. Deferred, not built.
+- Whether to widen the corpus over time (8 per phase per tone repeats roughly every two
+  cycles within a phase). Adding lines is a pure-data change with no migration.
