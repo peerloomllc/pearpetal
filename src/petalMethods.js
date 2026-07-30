@@ -15,7 +15,7 @@ const b4a = require('b4a')
 const sodium = require('sodium-universal')
 
 const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, memberKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE, MEMBER_RANGE } = require('./petalWire')
-const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FLOW_VALUES } = require('./prediction')
+const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FLOW_VALUES, DEFAULT_PERIOD_LEN } = require('./prediction')
 const { notificationEvents } = require('./notifications')
 const { TONES: NOTE_TONES, DEFAULT_TONE: DEFAULT_NOTE_TONE } = require('./petalNotes')
 const { isDeviceLinkEnabled } = require('./deviceLink')
@@ -978,7 +978,8 @@ const methods = {
   // period-span row alone anchors prediction but paints no days), so this stamps a
   // default 'medium' flow across start..(end||today) AND records the span row. It
   // never clobbers a day that already has a flow, so per-day intensities the user
-  // picked are preserved; the span is capped so a bad range can't write forever.
+  // picked are preserved; the span is capped so a bad range can't write forever, and
+  // an ONGOING period fills no further than the user's own average period length.
   'period:log': async ({ start, end }, ctx) => {
     const ns = normDate(start)
     if (!ns) throw new Error('start must be YYYY-MM-DD')
@@ -991,7 +992,17 @@ const methods = {
       endIso = ne.iso
       if (endIso < ns.iso) throw new Error('end is before start')
     } else if (today > ns.iso) {
-      endIso = today // ongoing: bleed through today
+      // Ongoing: bleed through today, but no further than a period actually lasts.
+      // "When did your last period start?" at onboarding is a HISTORICAL anchor, not
+      // a claim of still bleeding - answering "10 days ago" used to stamp 11 straight
+      // days of medium flow and leave the dial reading "Menstrual - day 11" (found on
+      // the emulator 2026-07-30). The span row still records end:null, so the end
+      // stays honestly unknown and the user can log the extra days if a bleed really
+      // does run long.
+      const prefs = await getPrefs(ctx)
+      const periodLen = Math.max(2, Math.min(10, Number(prefs.avgPeriodLength) || DEFAULT_PERIOD_LEN))
+      const capped = addDays(ns.iso, periodLen - 1)
+      endIso = today < capped ? today : capped
     }
     await requirePrivate(ctx)
     // Record the explicit span (start anchors the cycle; end marks its length).
