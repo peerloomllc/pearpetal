@@ -58,10 +58,13 @@ work lives in `TODO.md`.
   THE TCL WAS TRIED TOO (Android 15, Health Connect built in) and hit the same wall from the
   other side: the in-app permission request returns an empty grant, and Health Connect's own
   screen lists neither app - "Install apps that work with Health Connect to see them here".
-  So the blocker is probably not the emulator at all: Health Connect may not grant access to
-  a SIDELOADED build, which would make the Play Console health declaration a precondition
-  for TESTING rather than just paperwork before release. Logged in `TODO.md` as the thing to
-  confirm before spending more device time. The merge itself is covered by 24 tests,
+  A "Health Connect refuses sideloaded builds" theory was formed and then CHECKED, and it
+  does not hold: Android's docs say development access is unrestricted, and the Play
+  declaration gates Play-distributed builds, not sideloads. So the cause of the empty grant
+  is still unknown, and `TODO.md` records the candidates to check rather than a wrong
+  answer. Recorded deliberately: a plausible theory that survived one round of reasoning and
+  died on ten minutes of reading is exactly the kind of thing worth writing down as refuted,
+  so nobody spends a release cycle acting on it. The merge itself is covered by 24 tests,
   including one proving an imported BBT moves the prediction from calendar to bbt.
   Still to come: slice 3 (iOS HealthKit) and any UI polish. Logged in `TODO.md`.
 

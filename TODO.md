@@ -95,11 +95,19 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   - The TCL, which runs Android 15 with Health Connect built in. Same result: the in-app
     permission request returns an empty grant, and Health Connect's own screen lists
     neither app, showing "Install apps that work with Health Connect to see them here".
-  THE LIKELY EXPLANATION, and it changes the shape of the remaining work: Health Connect
-  may simply not grant access to a SIDELOADED debug build. If so, the Play Console health
-  declaration below is not just paperwork before release - it is a PRECONDITION for testing
-  the feature at all, and a non-empty read can first be proven on an internal-testing track
-  build rather than on any sideload. Worth confirming before spending more device time.
+  THAT THEORY WAS RESEARCHED AND DOES NOT HOLD (2026-07-30). Android's own documentation
+  says the opposite: "when you are developing with the Health Connect SDK data access is
+  unrestricted", and the Play declaration gates PLAY-DISTRIBUTED builds, with the documented
+  failure mode being a type that reads fine sideloaded and returns nothing from a Play
+  install. So a sideloaded debug build SHOULD be able to read, and the cause of the empty
+  grant is still UNKNOWN. Do not repeat the "it needs Play" assumption.
+  STILL TO CHECK, in rough order of likelihood: whether the permission request needs the
+  activity to be in the resumed state when it fires (the WebView tap path may fire it while
+  something else has focus); whether `requestPermission` needs the exact permission STRINGS
+  rather than the record-type objects on this library version; whether Health Connect
+  requires the app's target SDK or the androidx client version to line up with the platform
+  version on Android 15; and whether the rationale intent-filter has to sit on its own
+  activity rather than alongside MAIN/LAUNCHER on the same one.
   Until then the merge is covered by 24 tests, including one proving an imported BBT moves
   the prediction from calendar to bbt.
 
