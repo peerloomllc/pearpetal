@@ -6,6 +6,23 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
+- **An ongoing period no longer fills every day back to its start** (PR #108). Found
+  on the emulator the same session: onboarding asks "When did your last period start?"
+  as a HISTORICAL anchor, then called `period:log` with no end - which means "ongoing"
+  and stamped medium flow on every day from the start through today. Answering
+  "10 days ago" wrote 11 straight days of medium flow, said "Medium flow" for TODAY,
+  and left the dial reading "Menstrual - day 11". It is also what made the note/dial
+  phase disagreement visible in the first place.
+  An ongoing period now fills through today but no further than the user's own average
+  period length (clamped 2..10, default 5). The span row still records `end:null`, so
+  the end stays honestly unknown and a genuinely long bleed can be logged day by day.
+  Unchanged for the case the semantics were written for: a period started two days ago
+  and still going marks start, start+1 and today, exactly as before.
+  Verified: `npm run verify` green, 163 tests (3 new). RE-VERIFIED ON THE EMULATOR
+  through the real onboarding flow from a clean install, same 2026-07-20 answer:
+  5 days logged instead of 11, today reads "Nothing logged" instead of "Medium flow",
+  and the dial reads "Fertile - day 11" instead of "Menstrual - day 11".
+
 - **A logged flow day now wins over the projection in the daily note** (PR #107).
   Found on the emulator while verifying the note itself: the dial read
   "Menstrual - day 11" while the note spoke from the follicular pool. The dial calls a
