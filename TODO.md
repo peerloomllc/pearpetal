@@ -63,16 +63,34 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   ANDROID IS STILL UNCHECKED end to end - `assetlinks.json` has not been re-verified
   this session.
 
-## Ready to build (researched, proposal written)
+## Health import - slice 3 still to build
 
-- **Apple Health / Health Connect import.** ANSWERED 2026-07-30, see
-  `proposals/2026-07-30-health-import.md`: yes, it can be done without weakening the
-  model - read-only, on-device, additive, and de-duplicated for free by the date-keyed
-  `day:` schema. **The blocker is now cleared**: the iCloud/Google backup gap it uncovered
-  was fixed and verified on both platforms in PR #110, so App Store guideline 5.1.3 is no
-  longer in the way. Build it when wanted: T2, with scope, verify and rollback all in the
-  proposal. Rough size: a few days per platform, plus the Play Console health declaration
-  form, which is a review queue and not in our control.
+- **iOS HealthKit read (slice 3 of `proposals/2026-07-30-health-import.md`).** Slices 1
+  (the pure merge rules) and 2 (Android / Health Connect) shipped 2026-07-30 in PRs #113
+  and #114; the worklet method, the UI row and the whole merge policy are done and shared,
+  so this is only the platform read. Build a small read-only Expo module following
+  `modules/backup-exclusion/` and `modules/local-network/`, request `toRead` ONLY and never
+  `toShare` so no write-back path exists, and hand the shell the same normalised samples
+  Android already produces (local dates, Celsius, sorted ascending). Needs the HealthKit
+  entitlement plus `NSHealthShareUsageDescription`, both prebuild-time, so they go in a
+  config plugin like the associated-domains one.
+  DESIGN NOTE ALREADY ESTABLISHED: HealthKit deliberately makes a DENIED read
+  indistinguishable from "no such data", so the UI can never say "you denied access" - only
+  "no data found". The `read-failed` and `denied` messages added for Android exist and can
+  be reused, but iOS cannot tell them apart.
+  Verify on a real iPhone, not the Simulator: the Simulator has no meaningful HealthKit
+  data and fakes the permission surface.
+
+- **Seed data has never been read for real.** Both platforms have been proven to reach the
+  health app, ask for access and complete an EMPTY read. Nobody has watched actual
+  temperatures land in the log from a phone, because seeding Health Connect needs a writer
+  app with WRITE permission that PearPetal deliberately does not have. Worth doing once on
+  a real phone that already has BBT data in Apple Health or Health Connect.
+
+- **Play Console health declaration form.** Reading Health Connect data in a released build
+  requires the declaration ("Period tracking", with a justification per data type) or users
+  get an error dialog and the app cannot read at all. Not needed for debug builds; needed
+  before any release that ships the import.
 
 ## Next release notes - lines already drafted
 
