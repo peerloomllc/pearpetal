@@ -6,6 +6,36 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
+- **Health import from an exported FILE - the primary path** (PR #116). Per
+  `DECISIONS.md` 2026-07-30, after the Health Connect route was dropped: a file the user
+  picked needs no permission, no vendor and no network, so it works on every store and
+  every ROM and cannot be switched off by someone else's policy.
+  `src/healthFiles.js` is pure - text in, samples out - so every format tests without a
+  device, a picker or a permission. Apple Health `export.xml` is parsed LINE BY LINE rather
+  than as a document, because the real thing runs to hundreds of megabytes; `startDate`
+  wins over `creationDate` so a reading written into Health days late still lands on the
+  day it was taken; "Unspecified" flow is a bleeding day (medium) while "None" explicitly
+  is NOT and must never become one. Generic CSV covers Samsung Health, Fitbit, Oura and
+  anything else with a table - comma, semicolon and tab delimiters, quoted fields, a
+  per-row unit column. Fahrenheit is converted, and where no unit is given the RANGE
+  decides, since a basal temperature is never ~98 in Celsius nor ~36 in Fahrenheit.
+  TWO THINGS TESTS CAUGHT: the date column has to be findable by CONTENT, because a German
+  export heads it "Datum" and chasing translations is a losing game when the values
+  themselves are unambiguous; and the format must be sniffed from content rather than the
+  file name, because Android hands back a content:// URI whose name is often meaningless.
+  Nothing about merging is duplicated - `health:importFile` parses and then calls the
+  existing `health:import`, so gaps-only, per-field provenance and idempotence by date key
+  are shared with every source. The shell pre-filters an Apple export to the two record
+  types before passing it on, which is safe precisely because the parser is line-oriented.
+  VERIFIED END TO END ON THE API 34 EMULATOR, through the REAL system file picker (browse
+  to Downloads, tap the file), not a shortcut: a 9-record Apple export landed as 9 days -
+  six temperatures on Jul 20-25 and three flow days on Jul 14-16 with intensities intact -
+  and the Jul 18 record marked "None" was correctly NOT imported. The app went from
+  "Learning your cycle" to a full projection (Luteal day 17, next period Aug 11, fertile
+  window, ovulation estimate) computed from the imported data.
+  Settings carries forward Tim's Pixel feedback: the message sits under its own button and
+  can be tapped away.
+
 - **Health import: the merge rules shipped, the Android route was built and then dropped**
   (PR #113 merged; PR #114 closed unmerged).
   SHIPPED (#113), `src/healthImport.js`, pure so it tests without a base or a phone: gaps
