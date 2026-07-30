@@ -1,0 +1,9 @@
+{
+  "name": "backup-exclusion",
+  "version": "1.0.0",
+  "description": "Keep the private cycle store out of iCloud Backup",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "PeerLoom",
+  "homepage": "https://peerloomllc.com"
+}

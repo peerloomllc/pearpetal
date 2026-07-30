@@ -6,6 +6,30 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
+- **The private cycle log no longer goes to the OS cloud backup** (PR #110). The gap found
+  by the health-import research: the Corestore sits under `FileSystem.documentDirectory`,
+  which is iOS `<sandbox>/Documents` (in iCloud Backup by default) and the Android app
+  files dir under `android:allowBackup="true"` with no extraction rules. Nothing excluded
+  it, so every logged day, flow, symptom, note and BBT was eligible to leave the phone -
+  while onboarding promises "no accounts, no servers. Your data stays on your device."
+  ANDROID: `plugins/with-android-backup-exclusion.js` writes `data_extraction_rules.xml`
+  (API 31+) and `backup_rules.xml` (API 30-) and points the manifest at both. The split is
+  deliberate - CLOUD BACKUP excludes the store, DEVICE TRANSFER keeps everything, because
+  a direct phone-to-phone move is the same trust boundary device linking already has.
+  `allowBackup` stays true so settings still restore.
+  iOS: `modules/backup-exclusion` (new Expo module, mirroring `modules/local-network`)
+  sets `NSURLIsExcludedFromBackupKey` on `<Documents>/pearpetal`. The shell creates that
+  directory BEFORE `init` so the flag is set before any data lands in it, and re-asserts on
+  every launch since the flag lives in the filesystem and a restore starts it unset.
+  VERIFIED ON THE EMULATOR, and not by reading config: `bmgr backupnow` with the local
+  transport ran a real backup, and Android's own agent logged the file list it measured -
+  `databases/RKStorage`, two `shared_prefs` files and `files/profileInstalled`, with the
+  75 MB `files/pearpetal` store absent. Settings back up; the cycle log does not.
+  iOS side NOT yet verified on an Apple device - logged in `TODO.md`.
+  Honest cost, worth repeating in any user-facing note: after this, losing your only phone
+  loses the log unless the user has the recovery phrase or a JSON export. Both already
+  exist; this makes them matter more than they did.
+
 - **Apple Health / Health Connect import: researched and answered** (PR #109),
   `proposals/2026-07-30-health-import.md`. The `TODO.md` question was whether the import
   can be done without weakening the guarantee, not how to wire it up.

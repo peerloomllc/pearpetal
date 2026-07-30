@@ -72,30 +72,16 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   health information in iCloud and the private base currently lands in iCloud Backup.
   Build it when wanted: T2, scope + verify + rollback are all in the proposal.
 
-## Privacy gap - the OS backs the private base up to the cloud
+## Verification still owed (continued)
 
-- **The private cycle log is eligible for iCloud Backup and Google Auto Backup
-  (found 2026-07-30 researching the health import).** `app/index.tsx:179` puts the
-  Corestore under `FileSystem.documentDirectory`, which Expo resolves to iOS
-  `<sandbox>/Documents` (backed up to iCloud by default) and to the Android app data dir,
-  while the generated manifest carries `android:allowBackup="true"` with no extraction
-  rules. Nothing in the repo sets `NSURLIsExcludedFromBackupKey` or opts out. So every
-  logged day, flow, symptom, note and BBT can leave the phone via the platform's own
-  backup - while onboarding says "no accounts, no servers. Your data stays on your device"
-  and "Your cycle lives only on your devices."
-  Fair severity: both backups are encrypted (iCloud E2E only with Advanced Data
-  Protection on; Android Auto Backup client-side encrypted with the lockscreen secret
-  since Android 9). So it is "can be compelled from a third party", not "plaintext on a
-  server" - but for a menstrual tracker that IS the threat model.
-  FIX (~half a day, both dirs are generated so it goes in config plugins): iOS - move the
-  store to Application Support and set `NSURLIsExcludedFromBackupKey`, per Apple's
-  guidance that only non-user-generated content is excluded from `Documents`. Android -
-  either `allowBackup="false"` or a targeted `dataExtractionRules` exclusion, so settings
-  can still restore.
-  Name the cost honestly when it lands: after the fix, losing your only phone loses the
-  log unless the user has the recovery phrase or a JSON export. Both already exist; the
-  fix makes the recovery-phrase prompt matter more than it did.
-  BLOCKS the health import (guideline 5.1.3), but worth doing on its own merits. T2.
+- **Confirm the iCloud Backup exclusion on iOS (owed by PR #110, 2026-07-30).** The
+  Android half is proven end to end: Android's own backup agent measured `files/` and
+  took only `files/profileInstalled`, with the 75 MB `files/pearpetal` store absent from
+  the backup set, while settings still back up. The iOS half - `modules/backup-exclusion`
+  setting `NSURLIsExcludedFromBackupKey` on `<Documents>/pearpetal` - has NOT been run on
+  an Apple device. It is a filesystem attribute, so the Simulator can prove it (rule 7):
+  build, launch, then read the flag back with the module's own `isExcluded()`, or check
+  the container directly on the Mac mini. Until then the iOS side is written but unproven.
 
 ## Nice-to-have / UX polish
 
