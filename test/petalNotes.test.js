@@ -175,3 +175,54 @@ test('no projection -> no note', () => {
   assert.equal(noteFor(null, '2026-07-15', {}), null)
   assert.equal(noteFor(basePred({ nextPeriodStart: null }), '2026-07-15', {}), null)
 })
+
+// --- a logged flow day wins over the projection ------------------------------
+// The dial calls a day menstrual whenever flow is logged on it, so the note must
+// too. Found on the emulator 2026-07-30: a bleed running past the predicted
+// period length had the dial reading "Menstrual - day 11" against a follicular
+// note.
+
+test('a logged flow day always speaks from a menstrual pool, whatever the projection says', () => {
+  const p = basePred()
+  const opts = { tone: 'playful', flower: 'rose' }
+  // 2026-07-14 projects as fertile-rise; logging flow on it must override that.
+  assert.equal(noteFor(p, '2026-07-14', opts).bucket, 'fertile-rise')
+  const flowDays = new Set(['2026-07-13', '2026-07-14'])
+  const forced = noteFor(p, '2026-07-14', { ...opts, flowDays })
+  assert.equal(forced.bucket, 'menstrual-early') // day 2 of the run, still the early voice
+  assert.ok(NOTES.playful['menstrual-early'].some(([t]) => t === forced.title) ||
+    SPECIES.rose['menstrual-early'][0] === forced.title)
+})
+
+test('the early/late split follows the logged RUN, not the day of cycle', () => {
+  const p = basePred()
+  const opts = { tone: 'playful', flower: 'rose' }
+  // A bleed that starts mid-cycle: first two days early, the rest late.
+  const run = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23']
+  const flowDays = new Set(run)
+  const buckets = run.map((d) => noteFor(p, d, { ...opts, flowDays }).bucket)
+  assert.deepEqual(buckets, ['menstrual-early', 'menstrual-early', 'menstrual-late', 'menstrual-late'])
+})
+
+test('a long bleed past the predicted period length no longer contradicts the dial', () => {
+  // The emulator case: period start 2026-07-20 logged medium every day to 07-30,
+  // so the dial says menstrual on day 11 while the projection says otherwise.
+  const p = basePred({ nextPeriodStart: '2026-08-17', ovulationEst: '2026-08-03', fertileStart: '2026-07-29', fertileEnd: '2026-08-04', confidence: 'low' })
+  const flowDays = new Set(Array.from({ length: 11 }, (_, i) => addDays('2026-07-20', i)))
+  const bare = noteFor(p, '2026-07-30', { tone: 'playful', flower: 'rose' })
+  const withLog = noteFor(p, '2026-07-30', { tone: 'playful', flower: 'rose', flowDays })
+  assert.notEqual(bare.bucket, 'menstrual-late')       // what shipped, and disagreed
+  assert.equal(withLog.bucket, 'menstrual-late')       // now agrees with the dial
+})
+
+test('flow days never repeat a line on consecutive days either', () => {
+  const p = basePred()
+  const flowDays = new Set(Array.from({ length: 12 }, (_, i) => addDays('2026-07-04', i)))
+  let prev = null
+  let date = '2026-07-04'
+  for (let i = 0; i < 12; i++, date = addDays(date, 1)) {
+    const n = noteFor(p, date, { tone: 'playful', flower: 'rose', flowDays })
+    if (prev) assert.notEqual(n.title, prev.title, `repeat on ${date}`)
+    prev = n
+  }
+})

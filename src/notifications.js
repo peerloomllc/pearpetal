@@ -73,6 +73,9 @@ function describe (category, goal, discreet) {
 //                (device-local)
 //   opts.goal  = 'track' | 'conceive' | 'avoid' | 'pregnant'
 //   opts.flower = the chosen species key, so the daily note can speak in its voice
+//   opts.flowDays = Set of ISO dates with logged flow, so a daily note on a day the
+//                   user actually bled always reads as menstrual (never contradict
+//                   the dial)
 //   opts.today = iso (defaults to today)
 //   opts.horizonDays = how far ahead to schedule (default 60)
 // Returns [{ id, category, dateIso, hour, minute, title, body }], all in the
@@ -129,7 +132,7 @@ function notificationEvents (pred, opts = {}) {
     const bucketDays = bucketDaysFor(pred)
     for (let i = 0; i <= span; i++) {
       const dateIso = addDays(today, i)
-      const note = noteFor(pred, dateIso, { tone: notif.noteTone, flower: opts.flower, bucketDays })
+      const note = noteFor(pred, dateIso, { tone: notif.noteTone, flower: opts.flower, bucketDays, flowDays: opts.flowDays })
       if (note) push('daily-note', dateIso, { title: note.title, body: note.body })
     }
   }

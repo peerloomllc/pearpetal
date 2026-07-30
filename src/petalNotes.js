@@ -326,11 +326,34 @@ function positionInBucket (bucket, slot) {
   return slot.dayOfCycle
 }
 
-// The bucket a date really lands in, softening included (see noteFor).
-function bucketOn (pred, dateIso) {
+// How many logged bleeding days immediately PRECEDE this one, so a bleed that
+// runs longer than the predicted period still splits into an early and a late
+// voice. Walks back at most a fortnight.
+function flowRunIndex (dateIso, flowDays) {
+  let n = 0
+  for (let i = 1; i <= 14; i++) {
+    if (!flowDays.has(addDays(dateIso, -i))) break
+    n++
+  }
+  return n
+}
+
+// The bucket a date really lands in: what the user LOGGED wins over what the
+// projection predicted, then the fertile softening (see noteFor).
+//
+// The dial calls a day menstrual whenever there is a logged flow day on it
+// (projectionFromRows checks anyFlowDays), while the projection alone only knows
+// "day of cycle <= period length". A bleed that runs long therefore had the dial
+// saying menstrual while the note spoke as follicular - seen on the emulator
+// 2026-07-30. The log is the ground truth the user can see, so it wins.
+function bucketOn (pred, dateIso, flowDays) {
   const slot = cycleSlotOn(pred, dateIso)
-  const bucket = bucketForSlot(slot)
+  let bucket = bucketForSlot(slot)
   if (!bucket) return { slot, bucket }
+  if (flowDays && flowDays.has(dateIso)) {
+    bucket = flowRunIndex(dateIso, flowDays) < MENSTRUAL_EARLY_DAYS ? 'menstrual-early' : 'menstrual-late'
+    return { slot, bucket }
+  }
   if (bucket.startsWith('fertile') && (pred.birthControl || pred.confidence === 'low')) {
     const before = pred.ovulationEst && diffDays(dateIso, pred.ovulationEst) > 0
     return { slot, bucket: before ? 'follicular' : 'luteal-early' }
@@ -349,21 +372,28 @@ function bucketDaysFor (pred) {
   const L = pred.cycleLen || 28
   const counts = {}
   for (let i = 0; i < L; i++) {
+    // Deliberately projection-only, with no flow log: this measures the SHAPE of
+    // a typical cycle. Logged flow exists for today and the past, never for the
+    // future days the walk covers, so feeding it in would skew the advance.
     const { bucket } = bucketOn(pred, addDays(pred.nextPeriodStart, i))
     if (bucket) counts[bucket] = (counts[bucket] || 0) + 1
   }
   return counts
 }
 
-// The note for one date given a projection. Softens the fertile framing rather
-// than faking it: at `low` confidence (where the fertile window is the least
-// trustworthy part of a guess) a fertile day reads from the follicular or luteal
-// pool instead. Hormonal birth control is already handled upstream - cycleSlotOn
-// never reports a fertile phase then, matching the dial and summary. Returns null
-// when there is nothing honest to say.
+// The note for one date given a projection.
+//
+// `opts.flowDays` is a Set of ISO dates the user logged any flow on. A day in it
+// always speaks from a menstrual pool, so the note can never contradict the dial.
+//
+// Otherwise the fertile framing is softened rather than faked: at `low` confidence
+// (where the fertile window is the least trustworthy part of a guess) a fertile day
+// reads from the follicular or luteal pool instead. Hormonal birth control is
+// already handled upstream - cycleSlotOn never reports a fertile phase then,
+// matching the dial and summary. Returns null when there is nothing honest to say.
 function noteFor (pred, dateIso, opts = {}) {
   if (!pred || !pred.known || !pred.nextPeriodStart) return null
-  const { slot, bucket } = bucketOn(pred, dateIso)
+  const { slot, bucket } = bucketOn(pred, dateIso, opts.flowDays)
   if (!bucket) return null
   const perCycle = (opts.bucketDays || bucketDaysFor(pred))[bucket] || BUCKET_DAYS[bucket]
   const seq = positionInBucket(bucket, slot) + slot.cycleIndex * perCycle
@@ -371,6 +401,6 @@ function noteFor (pred, dateIso, opts = {}) {
 }
 
 module.exports = {
-  noteFor, noteForBucket, pickNote, bucketForSlot, bucketOn, bucketDaysFor, positionInBucket, poolFor, hash,
+  noteFor, noteForBucket, pickNote, bucketForSlot, bucketOn, bucketDaysFor, positionInBucket, flowRunIndex, poolFor, hash,
   NOTES, SPECIES, TONES, DEFAULT_TONE, BUCKETS, BUCKET_DAYS,
 }

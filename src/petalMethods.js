@@ -628,8 +628,11 @@ const methods = {
     const goal = prefs.goal || 'track'
     if (!(await privHas(ctx))) return { enabled: true, events: [] }
     try {
-      const { proj } = await computeProjection(ctx)
-      return { enabled: true, events: notificationEvents(proj, { notif, goal, flower: prefs.flower, today: todayIso() }) }
+      const { proj, dayRows } = await computeProjection(ctx)
+      // Days the user actually logged flow on. The dial calls those menstrual, so
+      // the daily note has to as well - see bucketOn in petalNotes.
+      const flowDays = new Set(dayRows.filter((d) => FLOW_VALUES.has(d.flow)).map((d) => d.date))
+      return { enabled: true, events: notificationEvents(proj, { notif, goal, flower: prefs.flower, flowDays, today: todayIso() }) }
     } catch { return { enabled: true, events: [] } }
   },
 
