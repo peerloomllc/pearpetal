@@ -101,13 +101,26 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   failure mode being a type that reads fine sideloaded and returns nothing from a Play
   install. So a sideloaded debug build SHOULD be able to read, and the cause of the empty
   grant is still UNKNOWN. Do not repeat the "it needs Play" assumption.
-  STILL TO CHECK, in rough order of likelihood: whether the permission request needs the
-  activity to be in the resumed state when it fires (the WebView tap path may fire it while
-  something else has focus); whether `requestPermission` needs the exact permission STRINGS
-  rather than the record-type objects on this library version; whether Health Connect
-  requires the app's target SDK or the androidx client version to line up with the platform
-  version on Android 15; and whether the rationale intent-filter has to sit on its own
-  activity rather than alongside MAIN/LAUNCHER on the same one.
+  NARROWED DOWN 2026-07-30 by running it on THREE devices with Tim driving by hand:
+  - Emulator (API 34): permission screen never renders.
+  - TCL (Android 15): same - AND Health Connect itself is broken there, showing "not set up"
+    with a Set up button that does nothing, so the TCL cannot run this test at all.
+  - PIXEL (Health Connect fully working, human tapping): SAME FAILURE. "No access was
+    granted, so nothing was read."
+  So it is OUR REQUEST that is wrong, not the devices, and not automation. The logs show
+  the request opening the STANDARD Android `com.android.permissioncontroller`
+  `GrantPermissionsActivity`, which closes itself in about 20ms
+  (`visibilityChanged oldVisibility=true newVisibility=false`) - the permission controller
+  decides there is nothing askable and finishes with an empty grant.
+  LEADING HYPOTHESIS: it should never have gone to the standard controller at all. Health
+  Connect has its own grant UI (`com.android.healthconnect.controller`), and
+  react-native-health-connect builds its contract with
+  `PermissionController.createRequestPermissionResultContract(providerPackageName)`
+  defaulting to `com.google.android.apps.healthdata` - the PRE-Android-14 standalone Health
+  Connect APK, which does not exist on 14+ where Health Connect is part of the platform.
+  Check first: pass the platform provider (or none) on API 34+, and check whether the
+  library version in use handles the platform provider at all. That is a library-level
+  question and worth an upstream issue if confirmed.
   Until then the merge is covered by 24 tests, including one proving an imported BBT moves
   the prediction from calendar to bbt.
 

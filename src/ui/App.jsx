@@ -1927,6 +1927,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   const [pendingImport, setPendingImport] = useState(null) // encrypted wrapper awaiting its password
   const [successModal, setSuccessModal] = useState(null) // { title, message } -> export/import result popup
   const [healthBusy, setHealthBusy] = useState(false) // Health Connect / Apple Health import in flight
+  const [healthMsg, setHealthMsg] = useState(null) // { text, tone } shown INSIDE the health block
   // The advanced/occasional sections collapse independently (collapsed by default).
   const [openSection, setOpenSection] = useState({})
   const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
@@ -1959,7 +1960,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   // merge is gaps-only, so anything typed by hand is left alone.
   const doHealthImport = async () => {
     setHealthBusy(true)
-    setDataMsg(null)
+    setHealthMsg(null)
     try {
       const r = await call('shell:health:import', { days: 180 })
       if (!r || !r.ok) {
@@ -1970,7 +1971,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
           denied: 'No access was granted, so nothing was read.',
           'read-failed': 'Your health app would not hand over its data. Check PearPetal has access in Health Connect, then try again.',
         }[r && r.reason] || 'Nothing could be read from your health app.'
-        setDataMsg({ text: why, tone: 'muted' })
+        setHealthMsg({ text: why, tone: 'muted' })
         return
       }
       const wrote = (r.added || 0) + (r.updated || 0)
@@ -1982,7 +1983,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
           : `Your log is already up to date with your health app.${kept}`,
       })
     } catch {
-      setDataMsg({ text: 'That import could not be completed.', tone: 'error' })
+      setHealthMsg({ text: 'That import could not be completed.', tone: 'error' })
     } finally { setHealthBusy(false) }
   }
   const doExport = async () => {
@@ -2128,6 +2129,12 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
             <div style={{ color: colors.text.secondary, fontSize: 14 }}>Bring in from your health app</div>
             <div style={{ color: colors.text.muted, fontSize: 11 }}>Fills in temperatures and period days you have already recorded elsewhere, for the last 6 months. It only fills gaps: anything you typed here is never changed, and PearPetal never writes anything back to your health app.</div>
             <Btn kind='ghost' onClick={doHealthImport} disabled={healthBusy}>{healthBusy ? 'Reading...' : 'Import from health app'}</Btn>
+            {healthMsg && (
+              <div onClick={() => setHealthMsg(null)} style={{ display: 'flex', alignItems: 'flex-start', gap: spacing.sm, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `${spacing.sm}px ${spacing.md}px`, cursor: 'pointer' }}>
+                <span style={{ flex: 1, color: healthMsg.tone === 'error' ? colors.error : colors.text.secondary, fontSize: 13 }}>{healthMsg.text}</span>
+                <span aria-label='Dismiss' style={{ color: colors.text.muted, fontSize: 13, lineHeight: 1.2 }}>✕</span>
+              </div>
+            )}
           </div>
         )}
       </CollapsibleCard>
