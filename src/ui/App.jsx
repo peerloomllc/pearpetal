@@ -1968,6 +1968,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
           unavailable: 'Health Connect is not set up on this phone. Install or open Health Connect, then try again.',
           'update-required': 'Health Connect needs updating on this phone before PearPetal can read from it.',
           denied: 'No access was granted, so nothing was read.',
+          'read-failed': 'Your health app would not hand over its data. Check PearPetal has access in Health Connect, then try again.',
         }[r && r.reason] || 'Nothing could be read from your health app.'
         setDataMsg({ text: why, tone: 'muted' })
         return
