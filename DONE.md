@@ -6,7 +6,7 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
-- **Daily flower note: an opt-in garden-voice line each day** (PR #104). PearPetal's
+- **Daily flower note: an opt-in garden-voice line each day** (PR #105). PearPetal's
   answer to Stardust's astrology notifications, themed on flowers and seasons. A new
   pure `src/petalNotes.js` carries two corpora the user picks between (Playful and
   Gentle), 8 `[title, body]` lines per phase per tone, plus one line per phase in each
