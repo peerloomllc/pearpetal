@@ -17,6 +17,7 @@ const sodium = require('sodium-universal')
 const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, memberKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE, MEMBER_RANGE } = require('./petalWire')
 const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FLOW_VALUES, DEFAULT_PERIOD_LEN } = require('./prediction')
 const { notificationEvents } = require('./notifications')
+const { planImport } = require('./healthImport')
 const { TONES: NOTE_TONES, DEFAULT_TONE: DEFAULT_NOTE_TONE } = require('./petalNotes')
 const { isDeviceLinkEnabled } = require('./deviceLink')
 const ps = require('./privateStore')
@@ -928,6 +929,44 @@ const methods = {
     await privPut(ctx, dayKey(nd.key), { ...base0, ...patch, deleted: false })
     await refreshShares(ctx).catch(() => {}) // keep any partner projections current
     return { ok: true, date: nd.iso }
+  },
+
+  // --- Apple Health / Health Connect import ---------------------------------
+  // The shell reads the platform (a native module, read authorization only) and
+  // hands the samples here already normalised: ISO dates, BBT in Celsius, sorted
+  // ascending. The merge rules live in src/healthImport.js and are pure - gaps
+  // only, never overwriting what the user typed, provenance recorded per FIELD.
+  // See proposals/2026-07-30-health-import.md.
+  //
+  // Nothing here writes back to the platform, and nothing touches a shared base:
+  // a partner still only sees the consent-scoped projection, which is recomputed
+  // from the private base and does not care where a row came from.
+  'health:import': async ({ samples, source } = {}, ctx) => {
+    if (source !== 'healthkit' && source !== 'healthconnect') throw new Error('source must be healthkit or healthconnect')
+    await requirePrivate(ctx)
+    const existing = {}
+    for (const v of await privRows(ctx, DAY_RANGE)) if (v && !v.deleted) existing[v.date] = v
+    const plan = planImport(existing, samples, { source, today: todayIso() })
+    for (const w of plan.writes) {
+      const nd = normDate(w.date)
+      if (!nd) continue
+      const row = await privReadRow(ctx, dayKey(nd.key))
+      const base0 = (row && !row.deleted) ? row : { date: nd.iso, createdBy: pubkeyHex(ctx), createdAt: Date.now() }
+      await privPut(ctx, dayKey(nd.key), {
+        ...base0, ...w.patch,
+        sources: { ...(base0.sources || {}), ...w.sources },
+        deleted: false,
+      })
+    }
+    if (plan.writes.length) await refreshShares(ctx).catch(() => {})
+    // The written count is what the UI reports; the rest explains what was left
+    // alone, so an import that changes nothing can say WHY.
+    return {
+      ok: true, source,
+      written: plan.writes.length,
+      added: plan.added, updated: plan.updated, keptManual: plan.keptManual,
+      unchanged: plan.unchanged, invalid: plan.invalid, future: plan.future, overflow: plan.overflow,
+    }
   },
 
   'day:get': async ({ date }, ctx) => {

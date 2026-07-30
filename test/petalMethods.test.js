@@ -421,3 +421,80 @@ test('a recent ongoing period still fills only up to today', async () => {
   assert.equal(r.marked, 3) // start, start+1, today - unchanged
   await engine.close()
 })
+
+// --- Apple Health / Health Connect import (proposals/2026-07-30-health-import.md)
+// The merge rules are unit-tested pure in healthImport.test.js; these run them
+// through the real engine to prove they actually land in the private base.
+
+test('health:import writes gaps into the log and records provenance per field', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const d1 = addDays(todayIso(), -3)
+  const d2 = addDays(todayIso(), -2)
+  const r = await call('health:import', {
+    source: 'healthkit',
+    samples: [{ date: d1, bbt: 36.4 }, { date: d2, flow: 'light', bbt: 36.6 }],
+  })
+  assert.equal(r.written, 2)
+  assert.equal(r.added, 3) // two temperatures and one flow
+  const byDate = Object.fromEntries((await call('day:getAll', {})).map((d) => [d.date, d]))
+  assert.equal(byDate[d1].bbt, 36.4)
+  assert.deepEqual(byDate[d1].sources, { bbt: 'healthkit' })
+  assert.equal(byDate[d2].flow, 'light')
+  assert.deepEqual(byDate[d2].sources, { flow: 'healthkit', bbt: 'healthkit' })
+  await engine.close()
+})
+
+test('health:import never overwrites a value the user typed', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const d = addDays(todayIso(), -3)
+  await call('day:set', { date: d, flow: 'heavy' })          // typed by hand
+  const r = await call('health:import', { source: 'healthkit', samples: [{ date: d, flow: 'light', bbt: 36.5 }] })
+  assert.equal(r.keptManual, 1)
+  const row = await call('day:get', { date: d })
+  assert.equal(row.flow, 'heavy')                             // untouched
+  assert.equal(row.bbt, 36.5)                                 // the empty slot filled
+  assert.deepEqual(row.sources, { bbt: 'healthkit' })          // and only that is marked imported
+  await engine.close()
+})
+
+test('health:import is idempotent: the same range twice adds nothing', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const d = addDays(todayIso(), -3)
+  const samples = [{ date: d, bbt: 36.4 }]
+  await call('health:import', { source: 'healthconnect', samples })
+  const second = await call('health:import', { source: 'healthconnect', samples })
+  assert.equal(second.written, 0)
+  assert.equal(second.unchanged, 1)
+  assert.equal((await call('day:getAll', {})).length, 1) // one row, not two
+  await engine.close()
+})
+
+test('health:import refuses an unknown source', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  await assert.rejects(() => call('health:import', { source: 'fitbit', samples: [] }), /source must be/)
+  await engine.close()
+})
+
+test('an imported BBT feeds the prediction like any other', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const start = addDays(todayIso(), -20)
+  await call('period:log', { start, end: addDays(start, 4) })
+  // A low-phase baseline then a sustained rise, all from the platform.
+  const samples = []
+  for (let i = 6; i < 14; i++) samples.push({ date: addDays(start, i), bbt: i < 12 ? 36.3 : 36.6 })
+  await call('health:import', { source: 'healthkit', samples })
+  const pred = await call('cycle:prediction', {})
+  assert.equal(pred.known, true)
+  assert.equal(pred.ovulationSource, 'bbt') // the import moved the prediction off calendar
+  await engine.close()
+})
