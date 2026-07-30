@@ -112,32 +112,32 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   `GrantPermissionsActivity`, which closes itself in about 20ms
   (`visibilityChanged oldVisibility=true newVisibility=false`) - the permission controller
   decides there is nothing askable and finishes with an empty grant.
-  RULED OUT, each by experiment rather than reasoning:
+  DIAGNOSED 2026-07-30 on Tim's Pixel, with a diagnostic build that logs the raw result.
+  Android answers `never_ask_again` for BOTH permissions - on the very FIRST request after
+  `pm clear` reset the permission state. Returned on a first ask, that does not mean "the
+  user refused before"; it means the permission is NOT ASKABLE by this app at all. React
+  Native maps "cannot be requested" onto the same string. So the auto-closing grant dialog
+  was a SYMPTOM: the system was never going to offer the choice.
+  That signature - `prot=dangerous`, restriction flags set, silently un-askable - is what a
+  RESTRICTED PERMISSION THAT HAS NOT BEEN ALLOWLISTED looks like. Naming an installer is not
+  the same as that installer allowlisting the restricted permission at install time, which
+  is why `-i com.android.vending` changed nothing.
+  RULED OUT ALONG THE WAY, each by experiment rather than argument:
   - Automation. A human tapping on a Pixel fails identically.
-  - A broken Health Connect. The Pixel's is fully working; the TCL's is genuinely broken
-    ("not set up", Set up does nothing) but the Pixel disproves that as the cause.
-  - Missing installer attribution. Health permissions are `prot=dangerous` with a
-    restriction flag and the app was sideloaded with `installerPackageName=null`, so the
-    "a restricted permission needs an installer to allowlist it" theory looked strong.
-    Reinstalled with `-i com.android.vending`, confirmed the installer was recorded, and the
-    failure is unchanged. Not it.
-  WHAT THE LOGS ESTABLISH: PearPetal's uid fires
-  `android.content.pm.action.REQUEST_PERMISSIONS` at
-  `com.android.permissioncontroller/.permission.ui.GrantPermissionsActivity` - the STANDARD
-  runtime-permission dialog, not Health Connect's own grant screen - and it closes in ~20ms
-  with an empty grant. The requested permission names sit in intent extras the log does not
-  print, which is the next thing to capture.
-  NEXT, and this is now a library-level question worth an upstream issue: whether
-  react-native-health-connect passes permission STRINGS the platform recognises on API 34+.
-  It builds its contract via
-  `PermissionController.createRequestPermissionResultContract(providerPackageName)` with the
-  default `com.google.android.apps.healthdata`, the PRE-Android-14 standalone APK that does
-  not exist on 14+. Capture the actual requested strings (a debug log in the delegate, or
-  `dumpsys package` before and after), compare them against
-  `android.permission.health.READ_*`, and check whether a newer library version routes to
-  the platform provider.
-  Until then the merge is covered by 24 tests, including one proving an imported BBT moves
-  the prediction from calendar to bbt.
+  - A broken Health Connect. The Pixel's works fully. (The TCL's is genuinely broken -
+    "not set up", Set up does nothing - so the TCL cannot run this test at all.)
+  - The react-native-health-connect contract. A DIRECT platform request via
+    `PermissionsAndroid.requestMultiple` with the raw permission strings fails identically,
+    so the library's provider-package default is not the cause.
+  - Installer attribution alone (`-i com.android.vending`).
+  - A poisoned never-ask-again state from repeated taps. `pm clear` reset it and the very
+    first ask still returned never_ask_again.
+  NEXT EXPERIMENT, and it is cheap compared to more sideload attempts: install the app from
+  an internal-testing track on Play and try once. If the permission becomes askable, the
+  Play install allowlists the restricted permission and the declaration below is a
+  precondition for TESTING, not just for release. NOTE this reverses an earlier retraction
+  in this file - the retraction leaned on Android's "data access is unrestricted while
+  developing", which is about READING data, not about whether the permission can be granted.
 
 - **Play Console health declaration form.** Reading Health Connect data in a released build
   requires the declaration ("Period tracking", with a justification per data type) or users
