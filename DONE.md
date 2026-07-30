@@ -6,6 +6,89 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
+- **Health import from an exported FILE - the primary path** (PR #116). Per
+  `DECISIONS.md` 2026-07-30, after the Health Connect route was dropped: a file the user
+  picked needs no permission, no vendor and no network, so it works on every store and
+  every ROM and cannot be switched off by someone else's policy.
+  `src/healthFiles.js` is pure - text in, samples out - so every format tests without a
+  device, a picker or a permission. Apple Health `export.xml` is parsed LINE BY LINE rather
+  than as a document, because the real thing runs to hundreds of megabytes; `startDate`
+  wins over `creationDate` so a reading written into Health days late still lands on the
+  day it was taken; "Unspecified" flow is a bleeding day (medium) while "None" explicitly
+  is NOT and must never become one. Generic CSV covers Samsung Health, Fitbit, Oura and
+  anything else with a table - comma, semicolon and tab delimiters, quoted fields, a
+  per-row unit column. Fahrenheit is converted, and where no unit is given the RANGE
+  decides, since a basal temperature is never ~98 in Celsius nor ~36 in Fahrenheit.
+  TWO THINGS TESTS CAUGHT: the date column has to be findable by CONTENT, because a German
+  export heads it "Datum" and chasing translations is a losing game when the values
+  themselves are unambiguous; and the format must be sniffed from content rather than the
+  file name, because Android hands back a content:// URI whose name is often meaningless.
+  Nothing about merging is duplicated - `health:importFile` parses and then calls the
+  existing `health:import`, so gaps-only, per-field provenance and idempotence by date key
+  are shared with every source. The shell pre-filters an Apple export to the two record
+  types before passing it on, which is safe precisely because the parser is line-oriented.
+  VERIFIED END TO END ON THE API 34 EMULATOR, through the REAL system file picker (browse
+  to Downloads, tap the file), not a shortcut: a 9-record Apple export landed as 9 days -
+  six temperatures on Jul 20-25 and three flow days on Jul 14-16 with intensities intact -
+  and the Jul 18 record marked "None" was correctly NOT imported. The app went from
+  "Learning your cycle" to a full projection (Luteal day 17, next period Aug 11, fertile
+  window, ovulation estimate) computed from the imported data.
+  Settings carries forward Tim's Pixel feedback: the message sits under its own button and
+  can be tapped away.
+  ALSO VERIFIED ON THE TCL (real hardware, Android 15) with a deliberately awkward CSV:
+  semicolon-delimited, a GERMAN "Datum" header, and a per-row unit column mixing Fahrenheit
+  and Celsius. Result `{format: csv, read: 10, written: 9, added: 9, keptManual: 1}`.
+  Reading the rows back off the phone: 97.34F landed as 36.3C and 97.88F as 36.6C while the
+  one Celsius row passed through untouched; imported fields carry `{"bbt":"file"}` /
+  `{"flow":"file"}`; and a day seeded by hand BEFORE the import (2026-07-15, spotting,
+  "typed by hand") survived intact with empty provenance even though the file called that
+  day heavy - the gaps-only rule holding on real hardware, not just in a test. The dial went
+  from "Learning your cycle" to Fertile day 15 with a next period, window and ovulation
+  estimate computed from the imported data.
+  The TCL leg did NOT exercise the system file picker - that ROM's DocumentsUI would not
+  list a pushed file even after a media scan (its storage view showed "No items"), so the
+  CSV was handed to the same `health:importFile` the picker feeds.
+  CLOSED ON THE PIXEL: Tim drove the whole thing himself on his own phone - real system
+  picker, both files - and BOTH parsers imported correctly, the CSV producing the expected
+  9 days. So the complete path (pick a file -> parse -> merge -> log updates) is proven on
+  real hardware for both formats, not just stitched together across two devices.
+  Note for anyone repeating this: a file pushed with `adb push` is invisible to the picker
+  until MediaStore indexes it. `content call --uri content://media/external/file --method
+  scan_file --arg /sdcard/Download/<name>` fixes it on a Pixel; the TCL's ROM ignored it.
+
+- **Health import: the merge rules shipped, the Android route was built and then dropped**
+  (PR #113 merged; PR #114 closed unmerged).
+  SHIPPED (#113), `src/healthImport.js`, pure so it tests without a base or a phone: gaps
+  only (never overwrites what the user typed, the same rule `period:log` follows), a
+  previous import's own value may be refreshed, implausible temperatures dropped (a stray
+  98.6 Fahrenheit would wreck the 0.2 degree BBT shift), real calendar dates enforced
+  (2026-07-32 matches the pattern and is not a day), first reading of a day wins because a
+  basal temperature is the waking one, and nothing dropped silently. Provenance is per
+  FIELD (a `sources` map), not per row, because a day can hold a flow the user typed AND a
+  BBT from the platform - a row-level marker would be a lie. Deliberately SOURCE-AGNOSTIC,
+  which is why it survived the direction change below unchanged.
+  BUILT THEN DROPPED (#114): the Health Connect route. It reached Health Connect, surfaced
+  refusals honestly and completed empty reads, and it found three real bugs on the way -
+  a crash on first import (the library registers its permission launcher from an Activity
+  hook that `expo prebuild` wipes), a failed read reporting itself as SUCCESS (a swallowed
+  error told the user "your log is already up to date" when nothing was read), and an
+  existing grant being ignored (`requestPermission` returns an empty list when permissions
+  are already held, so every read was skipped - that one would have hit real users on their
+  SECOND import and every one after).
+  WHY IT WAS DROPPED: the permission is not askable at all. A diagnostic build on Tim's
+  Pixel logged Android answering `never_ask_again` for both permissions on the FIRST request
+  after `pm clear` reset the state, which does not mean "refused before" - it means the
+  system will not offer the choice. Ruled out by experiment first: automation, a broken
+  Health Connect on the test device, the library's contract (a direct platform request with
+  raw permission strings fails identically), installer attribution, and a poisoned
+  never-ask-again state. The remaining explanation is a restricted permission only a real
+  store install allowlists - and PearPetal ships on Zapstore and GitHub to users
+  deliberately avoiding Google, so a Play-gated import serves almost none of them. See
+  `DECISIONS.md` 2026-07-30.
+  A throwaway writer app was also built (session scratchpad, never in this repo) to seed
+  Health Connect, and it wrote 11 records successfully - so seeding was solved; only the
+  read side was ever blocked.
+
 - **Users are now told their log is not in the phone's automatic backup** (PR #111).
   PR #110 was the right behaviour but silently changed what a user could expect - someone
   assuming iCloud had their back would have found out the hard way after losing a phone.

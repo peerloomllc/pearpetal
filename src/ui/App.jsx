@@ -1926,6 +1926,8 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   const [exportPw, setExportPw] = useState('') // optional backup password (blank = plaintext)
   const [pendingImport, setPendingImport] = useState(null) // encrypted wrapper awaiting its password
   const [successModal, setSuccessModal] = useState(null) // { title, message } -> export/import result popup
+  const [healthBusy, setHealthBusy] = useState(false) // health-export import in flight
+  const [healthMsg, setHealthMsg] = useState(null) // { text, tone } shown INSIDE the health block
   // The advanced/occasional sections collapse independently (collapsed by default).
   const [openSection, setOpenSection] = useState({})
   const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
@@ -1953,6 +1955,52 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   const pickFlower = (key) => { save({ flower: key }); onFlower && onFlower(key); haptic('light') }
 
   const inShell = typeof window !== 'undefined' && !!window.ReactNativeWebView
+  // Bring in temperatures and period days from a file exported by another health
+  // app. Files are the primary import path (DECISIONS.md 2026-07-30): no
+  // permission, no vendor, no network, so it works wherever PearPetal was
+  // installed from. The merge is gaps-only, so nothing typed here is overwritten.
+  const applyHealthResult = (r) => {
+    if (!r || r.ok === false) {
+      const why = {
+        cancelled: null, // the user backed out; say nothing
+        unreadable: 'That file could not be opened.',
+        unrecognised: 'That does not look like a health export. Try the file your other app produced, not a screenshot or a report.',
+      }[r && r.reason] || 'That file could not be read.'
+      if (why) setHealthMsg({ text: why, tone: 'muted' })
+      return
+    }
+    const wrote = (r.added || 0) + (r.updated || 0)
+    const kept = r.keptManual ? ' Your own entries were left as they are.' : ''
+    if (!r.read) { setHealthMsg({ text: 'That file had no temperatures or period days in it.', tone: 'muted' }); return }
+    setSuccessModal({
+      title: wrote ? 'Imported' : 'Nothing new to add',
+      message: wrote
+        ? `Added ${wrote} ${wrote === 1 ? 'entry' : 'entries'} from your file.${kept}`
+        : `Everything in that file was already in your log.${kept}`,
+    })
+  }
+  const doHealthImport = async () => {
+    setHealthBusy(true)
+    setHealthMsg(null)
+    try {
+      if (inShell) { applyHealthResult(await call('shell:health:importFile')) } else {
+        const input = document.createElement('input'); input.type = 'file'; input.accept = '.xml,.csv,.txt,text/csv,text/xml'
+        input.onchange = () => {
+          const f = input.files && input.files[0]
+          if (!f) { setHealthBusy(false); return }
+          const rd = new FileReader()
+          rd.onload = async () => {
+            try { applyHealthResult(await call('health:importFile', { text: String(rd.result) })) } catch { setHealthMsg({ text: 'That file could not be read.', tone: 'error' }) }
+            setHealthBusy(false)
+          }
+          rd.readAsText(f)
+        }
+        input.click()
+        return // the picker is async; busy clears in onload
+      }
+    } catch { setHealthMsg({ text: 'That import could not be completed.', tone: 'error' }) }
+    setHealthBusy(false)
+  }
   const doExport = async () => {
     try {
       const pw = exportPw.trim()
@@ -2091,6 +2139,17 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
         </div>
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Set a password to save an <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>encrypted</strong> backup; leave it blank for a plain file. Either way the file only leaves your device if you share it, so keep it somewhere private. Import merges a backup into your log and will ask for the password if the file is encrypted. A forgotten password cannot be recovered.</div>
         {dataMsg && <div style={{ color: dataMsg.tone === 'error' ? colors.error : dataMsg.tone === 'muted' ? colors.text.muted : colors.success, fontSize: 13 }}>{dataMsg.text}</div>}
+        <div style={{ borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+          <div style={{ color: colors.text.secondary, fontSize: 14 }}>Bring in from another app</div>
+          <div style={{ color: colors.text.muted, fontSize: 11 }}>Have temperatures or period days recorded in another app? Export them there, then pick that file here. It only fills gaps: anything you entered in PearPetal is never changed, and nothing is sent anywhere.</div>
+          <Btn kind='ghost' onClick={doHealthImport} disabled={healthBusy}>{healthBusy ? 'Reading...' : 'Import from a file'}</Btn>
+          {healthMsg && (
+            <div onClick={() => setHealthMsg(null)} style={{ display: 'flex', alignItems: 'flex-start', gap: spacing.sm, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `${spacing.sm}px ${spacing.md}px`, cursor: 'pointer' }}>
+              <span style={{ flex: 1, color: healthMsg.tone === 'error' ? colors.error : colors.text.secondary, fontSize: 13 }}>{healthMsg.text}</span>
+              <span aria-label='Dismiss' style={{ color: colors.text.muted, fontSize: 13, lineHeight: 1.2 }}>✕</span>
+            </div>
+          )}
+        </div>
       </CollapsibleCard>
       {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
       {successModal && <BackupSuccessModal title={successModal.title} message={successModal.message} onClose={() => setSuccessModal(null)} />}

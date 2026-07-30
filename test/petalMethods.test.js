@@ -498,3 +498,62 @@ test('an imported BBT feeds the prediction like any other', async () => {
   assert.equal(pred.ovulationSource, 'bbt') // the import moved the prediction off calendar
   await engine.close()
 })
+
+// --- file import (DECISIONS.md 2026-07-30: files are the primary path) -------
+
+test('health:importFile parses an Apple Health export and merges it', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const d = addDays(todayIso(), -4)
+  const xml = `<HealthData>
+ <Record type="HKQuantityTypeIdentifierBasalBodyTemperature" unit="degC" startDate="${d} 07:00:00 +0000" value="36.42"/>
+ <Record type="HKCategoryTypeIdentifierMenstrualFlow" startDate="${d} 00:00:00 +0000" value="HKCategoryValueMenstrualFlowHeavy"/>
+</HealthData>`
+  const r = await call('health:importFile', { text: xml })
+  assert.equal(r.format, 'apple-health')
+  assert.equal(r.read, 2)
+  assert.equal(r.added, 2)
+  const row = await call('day:get', { date: d })
+  assert.equal(row.bbt, 36.42)
+  assert.equal(row.flow, 'heavy')
+  assert.deepEqual(row.sources, { bbt: 'file', flow: 'file' })
+  await engine.close()
+})
+
+test('health:importFile takes a CSV and converts Fahrenheit on the way in', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const d = addDays(todayIso(), -3)
+  const r = await call('health:importFile', { text: `date,temp,unit\n${d},97.7,F\n` })
+  assert.equal(r.format, 'csv')
+  const row = await call('day:get', { date: d })
+  assert.ok(Math.abs(row.bbt - 36.5) < 0.01)
+  await engine.close()
+})
+
+test('health:importFile leaves a hand-typed value alone', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const d = addDays(todayIso(), -3)
+  await call('day:set', { date: d, flow: 'light' })
+  const r = await call('health:importFile', { text: `date,flow,temp\n${d},heavy,36.4\n` })
+  assert.equal(r.keptManual, 1)
+  const row = await call('day:get', { date: d })
+  assert.equal(row.flow, 'light')   // untouched
+  assert.equal(row.bbt, 36.4)       // the gap filled
+  await engine.close()
+})
+
+test('health:importFile refuses a file it does not recognise, and an empty one', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const r = await call('health:importFile', { text: 'this is not a health export' })
+  assert.equal(r.ok, false)
+  assert.equal(r.reason, 'unrecognised')
+  await assert.rejects(() => call('health:importFile', { text: '   ' }), /no file contents/)
+  await engine.close()
+})
