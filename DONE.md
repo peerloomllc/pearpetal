@@ -33,8 +33,32 @@ work lives in `TODO.md`.
   discreet mode neutralises it like every other category; pregnant suppresses it; the
   corpus is deliberately goal-neutral so conceive and avoid users read the same line.
   Design: `proposals/2026-07-30-daily-flower-note.md` (T1, device-local, no wire
-  change). Verified: `npm run verify` green, 156 tests (33 new). Device check still
-  owed - see `TODO.md`.
+  change). Verified: `npm run verify` green, 156 tests (33 new).
+  VERIFIED ON THE ANDROID EMULATOR (2026-07-30, `pp_note_a31`, android-31 google_apis
+  x86_64, `com.pearpetal.debug`). The Settings row is live and toggling it reveals the
+  Playful/Gentle picker. With the app process KILLED the note fired on its own at the
+  set time - `tag=pp:daily-note:2026-07-30`, `channel=reminders`, "Spring cleaning /
+  Sudden urge to reorganise a cupboard? Botanically on schedule." Discreet then
+  neutralised the same note to "PearPetal / You have a reminder. Open the app to view
+  it." The low-confidence softening also fired for real: the profile had one logged
+  cycle and today sat in the projected fertile window, and the note spoke from the
+  follicular pool rather than announcing a bloom.
+  THREE THINGS THAT COST TIME, worth knowing next time:
+  1. `am force-stop` CANCELS an app's alarms, so a notification test after one always
+     fails vacuously. Use `am kill`, which kills the process and leaves alarms armed -
+     that is also what a user's swipe-away actually does.
+  2. `-gpu swiftshader_indirect` segfaults on this box; `-gpu host` boots fine headless.
+  3. Play Store system images are `user` builds needing an on-screen "Allow USB
+     debugging" tap, which headless cannot give - adb sits at `unauthorized` forever.
+     Use a `google_apis` (non-playstore, userdebug) image instead.
+  Also: adb permanently shows a phantom `emulator-5554 offline` on this box because
+  podman's `pasta` holds 127.0.0.1:5555. Harmless, but it makes `adb -e` fail with
+  "more than one emulator" - address emulators by `-s` explicitly.
+  The WebView UI was driven over the Chrome DevTools Protocol (the debug build exposes
+  `webview_devtools_remote_<pid>`), not by blind taps: `uiautomator dump` cannot see
+  inside the WebView, and CDP gives exact text reads and real clicks.
+  FOUND WHILE VERIFYING: the note and the dial can disagree about the phase. Logged in
+  `TODO.md`.
 
 ## 2026-07-23
 
