@@ -40,15 +40,18 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   limit on `com.pearpetal.debug`), and it needs two phones on CELLULAR, so this is
   most likely a Tim-drives-it test rather than an adb one.
 
-- **See a daily flower note actually fire on a device (owed by PR for the daily
-  note, 2026-07-30).** The copy, the phase-on-a-future-date projection and the event
-  list are unit-covered (156 tests green) and the shell needed no change - the notes
-  ride the same `pp:`-prefixed local-notification path the cycle reminders have used
-  since PR #64. What nobody has watched yet is one landing on a lock screen. On an
-  emulator or the TCL: Settings -> Reminders on -> Daily flower note on, set the time
-  a couple of minutes out, kill the app, confirm it fires; then flip Playful/Gentle
-  and confirm the wording changes on the next resync, and Discreet and confirm it
-  neutralises to "PearPetal". Cheap, ~15 min, no hardware-only behaviour involved.
+- **The daily note and the dial can disagree about the phase (found 2026-07-30 while
+  verifying the note on the emulator).** The dial calls today menstrual if there is a
+  logged flow day today (`projectionFromRows`: `anyFlowDays.has(today)`), but the note
+  derives its bucket purely from the projection (`cycleSlotOn`: `dayOfCycle <=
+  periodLen`). Seen live: the dial read "Menstrual - day 11" while the note spoke from
+  the follicular pool. So a user whose bleeding runs past the predicted period length,
+  or who logs flow outside the predicted window, can get a note that contradicts their
+  own screen. The note is arguably right and the log is arguably righter; either way
+  they should agree. Fix is small: pass the logged flow dates into `noteFor` and let a
+  logged-flow day force a menstrual bucket. T1, no wire change. Note the projection
+  cannot know about flow on a FUTURE date, so this only affects today and the recent
+  past - which is exactly the note the user is looking at.
 
 - **Tap-test the universal links (human test only).** Actually TAP an
   `https://peerloomllc.com/petal/link|join` link on the iPhone and confirm it opens
