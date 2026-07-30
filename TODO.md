@@ -81,11 +81,19 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   Verify on a real iPhone, not the Simulator: the Simulator has no meaningful HealthKit
   data and fakes the permission surface.
 
-- **Seed data has never been read for real.** Both platforms have been proven to reach the
-  health app, ask for access and complete an EMPTY read. Nobody has watched actual
-  temperatures land in the log from a phone, because seeding Health Connect needs a writer
-  app with WRITE permission that PearPetal deliberately does not have. Worth doing once on
-  a real phone that already has BBT data in Apple Health or Health Connect.
+- **A non-empty read has never happened, and the emulator cannot do it.** Android has been
+  proven to reach Health Connect, ask for access, surface a refusal honestly and complete an
+  EMPTY read. What is missing is real records crossing into the log.
+  ALREADY TRIED, so nobody repeats it: a throwaway writer app was built (session scratchpad,
+  deliberately not in this repo) declaring the WRITE permissions PearPetal lacks, and it
+  wrote 11 records successfully. PearPetal still could not read them, because Health
+  Connect's permission screen does not render for this app on this emulator image, and the
+  only alternative - `pm grant` - bypasses Health Connect's own bookkeeping, after which the
+  platform refuses every read with "Incorrect health permission state".
+  So this needs a REAL PHONE with data already in Health Connect (or Apple Health, once
+  slice 3 exists). Do it once, on a phone whose health app already has BBT or period data:
+  Settings -> Backup & restore -> Import from health app, then confirm the days appear in
+  the log marked as imported rather than typed.
 
 - **Play Console health declaration form.** Reading Health Connect data in a released build
   requires the declaration ("Period tracking", with a justification per data type) or users

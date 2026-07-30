@@ -23,7 +23,7 @@ work lives in `TODO.md`.
   READ_MENSTRUATION and READ_BASAL_BODY_TEMPERATURE. There is no WRITE_* permission, so no
   write-back path EXISTS rather than merely being uncalled. The shell reads and normalises
   (local dates, Celsius, sorted ascending); the worklet keeps every merge rule.
-  TWO FAULTS THE EMULATOR FOUND, neither catchable by a unit test:
+  THREE FAULTS THE EMULATOR FOUND, none catchable by a unit test:
   1. The first import CRASHED the app - `UninitializedPropertyAccessException: lateinit
      property requestPermission has not been initialized`. The library registers its
      permission-result launcher from the host Activity's onCreate and documents a manual
@@ -34,15 +34,30 @@ work lives in `TODO.md`.
      `.catch(() => null)`, so an error became "no records" and the user was told "your log
      is already up to date" when nothing had been read. Seen live: the platform logged
      "Incorrect health permission state" while the app claimed success.
+  3. AN EXISTING GRANT WAS IGNORED. `requestPermission` can hand back an EMPTY list on a
+     device where both permissions are actually held, so every read was skipped and the
+     user was again told they were up to date - with 11 seeded records sitting in Health
+     Connect. This one would have hit real users on their SECOND import and every one
+     after. The read now asks the platform what is actually granted
+     (`getGrantedPermissions`) and only prompts for what is missing.
   VERIFIED ON THE API 34 EMULATOR (`pp_hc_a34`, google_apis x86_64 - which does carry
   Health Connect, `com.google.android.healthconnect.controller`): two READ permissions and
   no WRITE in the installed package; tapping import reaches Health Connect's own UI without
   crashing; denial degrades to "No access was granted, so nothing was read"; and with
   access granted the read runs, the worklet import runs, and the empty case reports "Your
   log is already up to date with your health app".
-  NOT verified: a non-empty read. Seeding Health Connect needs a writer app holding WRITE
-  permission, which this app deliberately does not have. The merge is covered by 24 tests
-  instead, including one proving an imported BBT moves the prediction from calendar to bbt.
+  NOT VERIFIED: a non-empty read, and the reason is worth recording. A throwaway writer app
+  WAS built (kept out of the repo, in the session scratchpad) declaring the WRITE
+  permissions PearPetal deliberately lacks, and it successfully wrote 11 records - eight
+  basal temperatures shaped as a low phase then a sustained rise, plus three bleeding days.
+  But PearPetal could never legitimately read them: Health Connect's permission screen does
+  not render for this app on this emulator image, so the grant can only be forced with
+  `pm grant`, and a grant that bypasses Health Connect's own bookkeeping makes the platform
+  refuse every read with "Incorrect health permission state". That refusal is what surfaced
+  fault 2 above, so the trip was worth it either way.
+  So the last hop - real records crossing from Health Connect into the log - needs a real
+  phone. The merge itself is covered by 24 tests, including one proving an imported BBT
+  moves the prediction from calendar to bbt.
   Still to come: slice 3 (iOS HealthKit) and any UI polish. Logged in `TODO.md`.
 
 - **Users are now told their log is not in the phone's automatic backup** (PR #111).
