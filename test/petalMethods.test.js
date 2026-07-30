@@ -379,3 +379,45 @@ test('period:log with no end marks through today (ongoing period)', async () => 
   assert.equal(span.end, null) // ongoing
   await engine.close()
 })
+
+// An ONGOING period (no end) fills through today, but never further than a period
+// actually lasts. Onboarding asks "when did your last period start?" as a
+// historical anchor; answering "10 days ago" used to stamp 11 straight days of
+// medium flow and leave the dial reading "Menstrual - day 11".
+test('period:log with no end does not fill past the average period length', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const start = addDays(todayIso(), -10)
+  const r = await call('period:log', { start })
+  assert.equal(r.marked, 5) // the default 5-day period, not 11 days
+  const days = (await call('day:getAll', {})).filter((d) => d.flow === 'medium').map((d) => d.date).sort()
+  assert.equal(days[0], start)
+  assert.equal(days.at(-1), addDays(start, 4))
+  const byDate = Object.fromEntries((await call('day:getAll', {})).map((d) => [d.date, d]))
+  assert.equal(byDate[todayIso()], undefined) // today is NOT marked as bleeding
+  const span = (await call('period:getAll', {})).find((p) => p.start === start)
+  assert.equal(span.end, null) // the end stays honestly unknown
+  await engine.close()
+})
+
+test('period:log with no end respects a custom average period length', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  await call('prefs:set', { avgPeriodLength: 7 })
+  const start = addDays(todayIso(), -10)
+  const r = await call('period:log', { start })
+  assert.equal(r.marked, 7)
+  await engine.close()
+})
+
+test('a recent ongoing period still fills only up to today', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const start = addDays(todayIso(), -2)
+  const r = await call('period:log', { start })
+  assert.equal(r.marked, 3) // start, start+1, today - unchanged
+  await engine.close()
+})
