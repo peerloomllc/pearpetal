@@ -112,15 +112,30 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   `GrantPermissionsActivity`, which closes itself in about 20ms
   (`visibilityChanged oldVisibility=true newVisibility=false`) - the permission controller
   decides there is nothing askable and finishes with an empty grant.
-  LEADING HYPOTHESIS: it should never have gone to the standard controller at all. Health
-  Connect has its own grant UI (`com.android.healthconnect.controller`), and
-  react-native-health-connect builds its contract with
-  `PermissionController.createRequestPermissionResultContract(providerPackageName)`
-  defaulting to `com.google.android.apps.healthdata` - the PRE-Android-14 standalone Health
-  Connect APK, which does not exist on 14+ where Health Connect is part of the platform.
-  Check first: pass the platform provider (or none) on API 34+, and check whether the
-  library version in use handles the platform provider at all. That is a library-level
-  question and worth an upstream issue if confirmed.
+  RULED OUT, each by experiment rather than reasoning:
+  - Automation. A human tapping on a Pixel fails identically.
+  - A broken Health Connect. The Pixel's is fully working; the TCL's is genuinely broken
+    ("not set up", Set up does nothing) but the Pixel disproves that as the cause.
+  - Missing installer attribution. Health permissions are `prot=dangerous` with a
+    restriction flag and the app was sideloaded with `installerPackageName=null`, so the
+    "a restricted permission needs an installer to allowlist it" theory looked strong.
+    Reinstalled with `-i com.android.vending`, confirmed the installer was recorded, and the
+    failure is unchanged. Not it.
+  WHAT THE LOGS ESTABLISH: PearPetal's uid fires
+  `android.content.pm.action.REQUEST_PERMISSIONS` at
+  `com.android.permissioncontroller/.permission.ui.GrantPermissionsActivity` - the STANDARD
+  runtime-permission dialog, not Health Connect's own grant screen - and it closes in ~20ms
+  with an empty grant. The requested permission names sit in intent extras the log does not
+  print, which is the next thing to capture.
+  NEXT, and this is now a library-level question worth an upstream issue: whether
+  react-native-health-connect passes permission STRINGS the platform recognises on API 34+.
+  It builds its contract via
+  `PermissionController.createRequestPermissionResultContract(providerPackageName)` with the
+  default `com.google.android.apps.healthdata`, the PRE-Android-14 standalone APK that does
+  not exist on 14+. Capture the actual requested strings (a debug log in the delegate, or
+  `dumpsys package` before and after), compare them against
+  `android.permission.health.READ_*`, and check whether a newer library version routes to
+  the platform provider.
   Until then the merge is covered by 24 tests, including one proving an imported BBT moves
   the prediction from calendar to bbt.
 
