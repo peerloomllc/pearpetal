@@ -63,14 +63,16 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   ANDROID IS STILL UNCHECKED end to end - `assetlinks.json` has not been re-verified
   this session.
 
-## Research / feasibility
+## Ready to build (researched, proposal written)
 
-- **ANSWERED 2026-07-30, see `proposals/2026-07-30-health-import.md`.** Yes, the import
-  can be done without weakening the model - read-only, on-device, additive, and
-  de-duplicated for free by the date-keyed `day:` schema. But it is blocked behind the
-  backup-exclusion item below, because App Store guideline 5.1.3 forbids storing personal
-  health information in iCloud and the private base currently lands in iCloud Backup.
-  Build it when wanted: T2, scope + verify + rollback are all in the proposal.
+- **Apple Health / Health Connect import.** ANSWERED 2026-07-30, see
+  `proposals/2026-07-30-health-import.md`: yes, it can be done without weakening the
+  model - read-only, on-device, additive, and de-duplicated for free by the date-keyed
+  `day:` schema. **The blocker is now cleared**: the iCloud/Google backup gap it uncovered
+  was fixed and verified on both platforms in PR #110, so App Store guideline 5.1.3 is no
+  longer in the way. Build it when wanted: T2, with scope, verify and rollback all in the
+  proposal. Rough size: a few days per platform, plus the Play Console health declaration
+  form, which is a review queue and not in our control.
 
 ## Next release notes - lines already drafted
 
