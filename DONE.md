@@ -35,6 +35,21 @@ work lives in `TODO.md`.
   window, ovulation estimate) computed from the imported data.
   Settings carries forward Tim's Pixel feedback: the message sits under its own button and
   can be tapped away.
+  ALSO VERIFIED ON THE TCL (real hardware, Android 15) with a deliberately awkward CSV:
+  semicolon-delimited, a GERMAN "Datum" header, and a per-row unit column mixing Fahrenheit
+  and Celsius. Result `{format: csv, read: 10, written: 9, added: 9, keptManual: 1}`.
+  Reading the rows back off the phone: 97.34F landed as 36.3C and 97.88F as 36.6C while the
+  one Celsius row passed through untouched; imported fields carry `{"bbt":"file"}` /
+  `{"flow":"file"}`; and a day seeded by hand BEFORE the import (2026-07-15, spotting,
+  "typed by hand") survived intact with empty provenance even though the file called that
+  day heavy - the gaps-only rule holding on real hardware, not just in a test. The dial went
+  from "Learning your cycle" to Fertile day 15 with a next period, window and ovulation
+  estimate computed from the imported data.
+  ONE PART NOT EXERCISED ON THE TCL: the system file PICKER. That ROM's DocumentsUI would
+  not list a pushed file (its storage view showed "No items" even after a media scan), so
+  the CSV was handed to the same `health:importFile` the picker feeds. The picker path
+  itself was proven end to end on the emulator, so between the two devices every step is
+  covered - but neither device covered both halves at once.
 
 - **Health import: the merge rules shipped, the Android route was built and then dropped**
   (PR #113 merged; PR #114 closed unmerged).
