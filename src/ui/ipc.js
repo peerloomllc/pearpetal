@@ -69,7 +69,7 @@ export function haptic (kind = 'light') {
 // a browser preview. index.html?seed lands on a populated log.
 const rid = (n = 22) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('')
 const MOCK_SELF = 'ab'.repeat(32)
-const mock = { base: null, days: new Map(), periods: new Map(), devices: new Map(), deviceLabel: 'This device', shares: new Map(), partners: new Map(), prefs: null, notif: { enabled: false, discreet: false, period: true, fertility: true, time: '09:00' }, network: { useRelay: true } }
+const mock = { base: null, days: new Map(), periods: new Map(), devices: new Map(), deviceLabel: 'This device', shares: new Map(), partners: new Map(), prefs: null, notif: { enabled: false, discreet: false, period: true, fertility: true, dailyNote: false, noteTone: 'playful', time: '09:00' }, network: { useRelay: true } }
 const mockProjection = () => {
   const starts = [...mock.periods.keys(), ...[...mock.days.values()].filter((d) => ['light', 'medium', 'heavy'].includes(d.flow)).map((d) => d.date)].sort()
   if (!starts.length) return { known: false, phase: 'follicular' }

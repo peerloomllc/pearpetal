@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { projectionFromRows, pregnancyProjection, projectCalendar, cycleStarts, median, addDays, diffDays } = require('../src/prediction')
+const { projectionFromRows, pregnancyProjection, projectCalendar, phaseOnDate, cycleStarts, median, addDays, diffDays } = require('../src/prediction')
 
 const day = (date, flow, bbt) => (bbt === undefined ? { date, flow } : { date, flow, bbt })
 const at = (today) => ({ today })
@@ -143,4 +143,35 @@ test('pregnancy: dueDate-only derives the LMP and progress clamps', () => {
   assert.equal(p.daysUntilDue, 0)
   assert.equal(p.weeks, 40)
   assert.equal(p.progress, 1) // at/after term, clamped
+})
+
+// --- phaseOnDate: the phase on an ARBITRARY date -----------------------------
+// Needed by the daily flower note, which is scheduled days ahead and so has to
+// know the phase on the day it fires, not the phase today.
+
+test('phaseOnDate agrees with the projection for today, and projects both ways', () => {
+  // Four tight 28-day cycles -> a known, high-confidence projection.
+  const starts = ['2026-04-14', '2026-05-12', '2026-06-09', '2026-07-07']
+  const days = starts.map((d) => ({ date: d, flow: 'medium' }))
+  const pred = projectionFromRows(days, [], { today: '2026-07-10' })
+  assert.equal(phaseOnDate(pred, '2026-07-10'), pred.phase)
+  // Day 1 of the current cycle, and of the next two projected ones.
+  for (const d of ['2026-07-07', '2026-08-04', '2026-09-01']) assert.equal(phaseOnDate(pred, d), 'menstrual')
+  // Predicted ovulation, this cycle and one cycle on.
+  assert.equal(phaseOnDate(pred, pred.ovulationEst), 'fertile')
+  assert.equal(phaseOnDate(pred, addDays(pred.ovulationEst, pred.cycleLen)), 'fertile')
+  // Before the fertile window opens is follicular; after it closes is luteal.
+  assert.equal(phaseOnDate(pred, addDays(pred.fertileStart, -1)), 'follicular')
+  assert.equal(phaseOnDate(pred, addDays(pred.fertileEnd, 1)), 'luteal')
+  // A whole projected cycle only ever yields the four known phases.
+  const seen = new Set()
+  for (let i = 0; i < pred.cycleLen; i++) seen.add(phaseOnDate(pred, addDays('2026-08-04', i)))
+  assert.deepEqual([...seen].sort(), ['fertile', 'follicular', 'luteal', 'menstrual'])
+})
+
+test('phaseOnDate: birth control drops the fertile framing, and an unknown projection yields null', () => {
+  const pred = projectionFromRows([{ date: '2026-07-07', flow: 'medium' }], [], { today: '2026-07-10' })
+  assert.equal(phaseOnDate({ ...pred, birthControl: true }, pred.ovulationEst), 'luteal')
+  assert.equal(phaseOnDate({ known: false }, '2026-07-10'), null)
+  assert.equal(phaseOnDate(null, '2026-07-10'), null)
 })

@@ -80,7 +80,7 @@ const PARTNER_VIEW = {
   summary: SUMMARY, revoked: false, revokedAt: null,
 }
 
-const NOTIF = { enabled: true, discreet: false, period: true, fertility: true, time: '09:00', osGranted: true, permissionDenied: false }
+const NOTIF = { enabled: true, discreet: false, period: true, fertility: true, dailyNote: true, noteTone: 'playful', time: '09:00', osGranted: true, permissionDenied: false }
 
 // Per-scene routing the UI applies after boot (see App.jsx).
 const ROUTES = {

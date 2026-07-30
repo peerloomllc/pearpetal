@@ -40,6 +40,16 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   limit on `com.pearpetal.debug`), and it needs two phones on CELLULAR, so this is
   most likely a Tim-drives-it test rather than an adb one.
 
+- **See a daily flower note actually fire on a device (owed by PR for the daily
+  note, 2026-07-30).** The copy, the phase-on-a-future-date projection and the event
+  list are unit-covered (156 tests green) and the shell needed no change - the notes
+  ride the same `pp:`-prefixed local-notification path the cycle reminders have used
+  since PR #64. What nobody has watched yet is one landing on a lock screen. On an
+  emulator or the TCL: Settings -> Reminders on -> Daily flower note on, set the time
+  a couple of minutes out, kill the app, confirm it fires; then flip Playful/Gentle
+  and confirm the wording changes on the next resync, and Discreet and confirm it
+  neutralises to "PearPetal". Cheap, ~15 min, no hardware-only behaviour involved.
+
 - **Tap-test the universal links (human test only).** Actually TAP an
   `https://peerloomllc.com/petal/link|join` link on the iPhone and confirm it opens
   PearPetal (iOS UL), and the same on Android (App Links against the live
@@ -62,6 +72,30 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   the association file; an immediate tap can fall through to Safari once.
   ANDROID IS STILL UNCHECKED end to end - `assetlinks.json` has not been re-verified
   this session.
+
+## Research / feasibility
+
+- **Investigate Apple Health / Health Connect import. Is it possible without
+  compromising the design model?** Frequently-asked v2 item (pull BBT, and possibly
+  cycle dates, from HealthKit on iOS and Health Connect on Android) rather than
+  hand-entering them. The question to answer FIRST is whether it can be done without
+  weakening the guarantee, not how to wire it up. Things to establish:
+  - Does it stay a one-way READ into the private base only, with nothing written back
+    out to the health platform and nothing added to any shared base? A write-back path
+    would put cycle data in a store we do not control (iCloud-synced HealthKit, Google
+    account-backed Health Connect), which is exactly the thing the two-base split
+    exists to prevent.
+  - Where does the read run? The Bare worklet cannot reach these APIs, so it needs a
+    native module + shell -> worklet IPC, i.e. a new trust edge into the private base.
+  - Permissions and store review: HealthKit needs entitlement + usage strings and
+    Apple's health-data privacy rules; Health Connect needs its own permission set and
+    a Play data-safety declaration. Confirm none of it forces a privacy-policy claim
+    that contradicts "nothing leaves your phones".
+  - Dedup/provenance: imported rows need a source marker so re-import does not double
+    up and so a user can tell what they typed from what came from the platform.
+  Likely T2/T3 (new native surface + a new writer into the private base) - write a
+  proposal before any code. If the answer is "not without compromising the model",
+  record that as a decision and close it.
 
 ## Nice-to-have / UX polish
 
