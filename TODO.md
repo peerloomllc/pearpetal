@@ -65,27 +65,37 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
 
 ## Research / feasibility
 
-- **Investigate Apple Health / Health Connect import. Is it possible without
-  compromising the design model?** Frequently-asked v2 item (pull BBT, and possibly
-  cycle dates, from HealthKit on iOS and Health Connect on Android) rather than
-  hand-entering them. The question to answer FIRST is whether it can be done without
-  weakening the guarantee, not how to wire it up. Things to establish:
-  - Does it stay a one-way READ into the private base only, with nothing written back
-    out to the health platform and nothing added to any shared base? A write-back path
-    would put cycle data in a store we do not control (iCloud-synced HealthKit, Google
-    account-backed Health Connect), which is exactly the thing the two-base split
-    exists to prevent.
-  - Where does the read run? The Bare worklet cannot reach these APIs, so it needs a
-    native module + shell -> worklet IPC, i.e. a new trust edge into the private base.
-  - Permissions and store review: HealthKit needs entitlement + usage strings and
-    Apple's health-data privacy rules; Health Connect needs its own permission set and
-    a Play data-safety declaration. Confirm none of it forces a privacy-policy claim
-    that contradicts "nothing leaves your phones".
-  - Dedup/provenance: imported rows need a source marker so re-import does not double
-    up and so a user can tell what they typed from what came from the platform.
-  Likely T2/T3 (new native surface + a new writer into the private base) - write a
-  proposal before any code. If the answer is "not without compromising the model",
-  record that as a decision and close it.
+- **ANSWERED 2026-07-30, see `proposals/2026-07-30-health-import.md`.** Yes, the import
+  can be done without weakening the model - read-only, on-device, additive, and
+  de-duplicated for free by the date-keyed `day:` schema. But it is blocked behind the
+  backup-exclusion item below, because App Store guideline 5.1.3 forbids storing personal
+  health information in iCloud and the private base currently lands in iCloud Backup.
+  Build it when wanted: T2, scope + verify + rollback are all in the proposal.
+
+## Privacy gap - the OS backs the private base up to the cloud
+
+- **The private cycle log is eligible for iCloud Backup and Google Auto Backup
+  (found 2026-07-30 researching the health import).** `app/index.tsx:179` puts the
+  Corestore under `FileSystem.documentDirectory`, which Expo resolves to iOS
+  `<sandbox>/Documents` (backed up to iCloud by default) and to the Android app data dir,
+  while the generated manifest carries `android:allowBackup="true"` with no extraction
+  rules. Nothing in the repo sets `NSURLIsExcludedFromBackupKey` or opts out. So every
+  logged day, flow, symptom, note and BBT can leave the phone via the platform's own
+  backup - while onboarding says "no accounts, no servers. Your data stays on your device"
+  and "Your cycle lives only on your devices."
+  Fair severity: both backups are encrypted (iCloud E2E only with Advanced Data
+  Protection on; Android Auto Backup client-side encrypted with the lockscreen secret
+  since Android 9). So it is "can be compelled from a third party", not "plaintext on a
+  server" - but for a menstrual tracker that IS the threat model.
+  FIX (~half a day, both dirs are generated so it goes in config plugins): iOS - move the
+  store to Application Support and set `NSURLIsExcludedFromBackupKey`, per Apple's
+  guidance that only non-user-generated content is excluded from `Documents`. Android -
+  either `allowBackup="false"` or a targeted `dataExtractionRules` exclusion, so settings
+  can still restore.
+  Name the cost honestly when it lands: after the fix, losing your only phone loses the
+  log unless the user has the recovery phrase or a JSON export. Both already exist; the
+  fix makes the recovery-phrase prompt matter more than it did.
+  BLOCKS the health import (guideline 5.1.3), but worth doing on its own merits. T2.
 
 ## Nice-to-have / UX polish
 

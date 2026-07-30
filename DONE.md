@@ -6,6 +6,27 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
+- **Apple Health / Health Connect import: researched and answered** (PR #109),
+  `proposals/2026-07-30-health-import.md`. The `TODO.md` question was whether the import
+  can be done without weakening the guarantee, not how to wire it up.
+  ANSWER: yes, with preconditions. The import itself is clean - request READ authorization
+  only (so no write-back path can exist even by accident), and the date-keyed `day:` schema
+  makes de-duplication structurally free, a real dividend of the 2026-07-06 decision. A
+  `source` field for provenance is additive: `rowApplyDecision` validates structure and
+  never whitelists fields, and the signature covers the whole value, so it replicates and
+  verifies unchanged on an older peer. Store paperwork does not force a contradictory
+  claim: both Apple's and Google's definitions of "collect" turn on transmission OFF the
+  device, so the existing "Data Not Collected" label stays truthful.
+  THE BLOCKER IS SOMETHING ELSE, and it is true today: the private base sits in a directory
+  the OS backs up to the cloud on both platforms. Logged in `TODO.md` as its own item.
+  App Store guideline 5.1.3 forbids storing personal health information in iCloud, so the
+  import cannot ship before that is fixed - but the gap exists regardless of the import.
+  Two smaller corrections to the TODO's own framing: the "new trust edge into the private
+  base" is overstated (the RN shell already brokers every IPC message and can call
+  `day:set` today - what is new is a write the user did not type, which is a UX
+  mitigation); and HealthKit deliberately makes a DENIED read indistinguishable from "no
+  such data", so the import UI can never say "you denied access", only "no data found".
+
 - **An ongoing period no longer fills every day back to its start** (PR #108). Found
   on the emulator the same session: onboarding asks "When did your last period start?"
   as a HISTORICAL anchor, then called `period:log` with no end - which means "ongoing"
