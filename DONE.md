@@ -6,6 +6,25 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
+- **A logged flow day now wins over the projection in the daily note** (PR #107).
+  Found on the emulator while verifying the note itself: the dial read
+  "Menstrual - day 11" while the note spoke from the follicular pool. The dial calls a
+  day menstrual whenever flow is logged on it (`projectionFromRows` checks
+  `anyFlowDays`), but the note derived its bucket from the projection alone
+  (`dayOfCycle <= periodLen`), so a bleed running past the predicted period length
+  produced a note contradicting the user's own screen. The log is the ground truth the
+  user can see, so it wins: `notifications:schedule` passes the logged flow dates down
+  and a day in that set always reads from a menstrual pool. The early/late split
+  follows the logged RUN rather than the day of cycle, so a bleed starting mid-cycle
+  still gets a day-one voice on day one. `bucketDaysFor` deliberately keeps measuring
+  the projection with no flow log - it measures the SHAPE of a typical cycle, and
+  logged flow only ever exists for today and the past, never for the future days that
+  walk covers.
+  Verified: `npm run verify` green, 160 tests (4 new). RE-VERIFIED ON THE EMULATOR on
+  the same profile that exposed it - the note fired with the app killed reading "Roots
+  first / Nothing blooms while it is busy holding on. This is the holding on."
+  (menstrual-late), where the shipped build gave "Digging in" (follicular).
+
 - **Daily flower note: an opt-in garden-voice line each day** (PR #105). PearPetal's
   answer to Stardust's astrology notifications, themed on flowers and seasons. A new
   pure `src/petalNotes.js` carries **159 lines**: two corpora the user picks between
@@ -57,8 +76,8 @@ work lives in `TODO.md`.
   The WebView UI was driven over the Chrome DevTools Protocol (the debug build exposes
   `webview_devtools_remote_<pid>`), not by blind taps: `uiautomator dump` cannot see
   inside the WebView, and CDP gives exact text reads and real clicks.
-  FOUND WHILE VERIFYING: the note and the dial can disagree about the phase. Logged in
-  `TODO.md`.
+  FOUND WHILE VERIFYING: the note and the dial disagreed about the phase. Fixed in the
+  next entry.
 
 ## 2026-07-23
 
