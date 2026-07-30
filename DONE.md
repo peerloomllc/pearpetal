@@ -25,7 +25,16 @@ work lives in `TODO.md`.
   transport ran a real backup, and Android's own agent logged the file list it measured -
   `databases/RKStorage`, two `shared_prefs` files and `files/profileInstalled`, with the
   75 MB `files/pearpetal` store absent. Settings back up; the cycle log does not.
-  iOS side NOT yet verified on an Apple device - logged in `TODO.md`.
+  VERIFIED ON THE iOS SIMULATOR TOO (rule 7): built Release for the Simulator on the Mac
+  mini, installed to a throwaway iPhone 17 Pro sim, launched, then read the attribute off
+  the real container - `Documents/pearpetal` carries
+  `com.apple.metadata:com_apple_backup_excludeItem: com.apple.MobileBackup`, which is
+  exactly what NSURLIsExcludedFromBackupKey sets, while `Documents` itself carries none.
+  Build note for next time: a DEBUG Simulator build of this app fails to link
+  (`facebook::react::Sealable` undefined, from libExpoModulesCore + libRNScreens). The
+  repo's own `scripts/ios-screenshots.sh` invocation works - `-configuration Release
+  -destination "generic/platform=iOS Simulator" -sdk iphonesimulator
+  CODE_SIGNING_ALLOWED=NO`. Use Release for Simulator builds here.
   Honest cost, worth repeating in any user-facing note: after this, losing your only phone
   loses the log unless the user has the recovery phrase or a JSON export. Both already
   exist; this makes them matter more than they did.

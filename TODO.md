@@ -72,17 +72,6 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   health information in iCloud and the private base currently lands in iCloud Backup.
   Build it when wanted: T2, scope + verify + rollback are all in the proposal.
 
-## Verification still owed (continued)
-
-- **Confirm the iCloud Backup exclusion on iOS (owed by PR #110, 2026-07-30).** The
-  Android half is proven end to end: Android's own backup agent measured `files/` and
-  took only `files/profileInstalled`, with the 75 MB `files/pearpetal` store absent from
-  the backup set, while settings still back up. The iOS half - `modules/backup-exclusion`
-  setting `NSURLIsExcludedFromBackupKey` on `<Documents>/pearpetal` - has NOT been run on
-  an Apple device. It is a filesystem attribute, so the Simulator can prove it (rule 7):
-  build, launch, then read the flag back with the module's own `isExcluded()`, or check
-  the container directly on the Mac mini. Until then the iOS side is written but unproven.
-
 ## Nice-to-have / UX polish
 
 - **Promote `src/relay.js` into `@peerloom/core` (rule of three).** It is
