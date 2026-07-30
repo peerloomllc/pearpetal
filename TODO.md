@@ -85,21 +85,20 @@ someone else's policy.
   All of it is pure parsing over a user-chosen file: testable without a device, and it needs
   no new permission on either platform.
 
-- **iOS HealthKit read (slice 3), unaffected by any of the above.** HealthKit has no store
-  gate - a dev build, TestFlight build and App Store build all get the same access - so this
-  stands as originally designed. Small read-only Expo module following
-  `modules/backup-exclusion/`, request `toRead` ONLY and never `toShare`, hand the shell the
-  same normalised samples (local dates, Celsius, sorted ascending). Needs the HealthKit
-  entitlement plus `NSHealthShareUsageDescription`, both prebuild-time, so a config plugin.
-  HealthKit deliberately makes a DENIED read indistinguishable from "no data", so the UI can
-  never say "you denied access" - only "no data found". Verify on a real iPhone; the
-  Simulator has no meaningful HealthKit data.
-
-- **Decide what happens to PR #114 (the Android Health Connect plumbing).** It works up to
-  the permission gate, fixes three real bugs, and would benefit whoever installs from Play.
-  Either keep it as a documented Play-only bonus, or revert it and carry only the file path.
-  Optionally confirm the gate first with one upload to the existing Play closed-testing
-  track and a single tap - cheap certainty, but it does not change the direction either way.
+- **Verify the Apple Health read on a real iPhone (owed by the iOS slice, 2026-07-30).**
+  The module is built and PROVEN TO COMPILE AND LINK: `pod install` links `HealthRead`, a
+  Release Simulator build succeeds, and the built app's Info.plist carries
+  `NSHealthShareUsageDescription` with NO update string, so read-only is structural rather
+  than promised. What has NOT happened is a real read.
+  The SIMULATOR CANNOT settle it - it has no meaningful HealthKit data and fakes the
+  permission surface - so this needs the iPhone SE (`scripts/ios-dev-install.sh`) with some
+  basal temperature or period data already in Health. Check: the permission sheet appears
+  and names only the two types; granting then importing brings days in marked as imported;
+  and a day typed in PearPetal is left alone.
+  ALSO NOT YET DONE: enable the HealthKit capability on the App ID in the developer portal.
+  The wildcard dev profile does not include it, so a Release archive will fail with
+  "Provisioning profile ... doesn't include the com.apple.developer.healthkit entitlement"
+  until that one-off account change is made. Same trap as associated-domains.
 
 ## Nice-to-have / UX polish
 
