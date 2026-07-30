@@ -55,9 +55,14 @@ work lives in `TODO.md`.
   `pm grant`, and a grant that bypasses Health Connect's own bookkeeping makes the platform
   refuse every read with "Incorrect health permission state". That refusal is what surfaced
   fault 2 above, so the trip was worth it either way.
-  So the last hop - real records crossing from Health Connect into the log - needs a real
-  phone. The merge itself is covered by 24 tests, including one proving an imported BBT
-  moves the prediction from calendar to bbt.
+  THE TCL WAS TRIED TOO (Android 15, Health Connect built in) and hit the same wall from the
+  other side: the in-app permission request returns an empty grant, and Health Connect's own
+  screen lists neither app - "Install apps that work with Health Connect to see them here".
+  So the blocker is probably not the emulator at all: Health Connect may not grant access to
+  a SIDELOADED build, which would make the Play Console health declaration a precondition
+  for TESTING rather than just paperwork before release. Logged in `TODO.md` as the thing to
+  confirm before spending more device time. The merge itself is covered by 24 tests,
+  including one proving an imported BBT moves the prediction from calendar to bbt.
   Still to come: slice 3 (iOS HealthKit) and any UI polish. Logged in `TODO.md`.
 
 - **Users are now told their log is not in the phone's automatic backup** (PR #111).
