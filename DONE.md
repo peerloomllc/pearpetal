@@ -45,11 +45,16 @@ work lives in `TODO.md`.
   day heavy - the gaps-only rule holding on real hardware, not just in a test. The dial went
   from "Learning your cycle" to Fertile day 15 with a next period, window and ovulation
   estimate computed from the imported data.
-  ONE PART NOT EXERCISED ON THE TCL: the system file PICKER. That ROM's DocumentsUI would
-  not list a pushed file (its storage view showed "No items" even after a media scan), so
-  the CSV was handed to the same `health:importFile` the picker feeds. The picker path
-  itself was proven end to end on the emulator, so between the two devices every step is
-  covered - but neither device covered both halves at once.
+  The TCL leg did NOT exercise the system file picker - that ROM's DocumentsUI would not
+  list a pushed file even after a media scan (its storage view showed "No items"), so the
+  CSV was handed to the same `health:importFile` the picker feeds.
+  CLOSED ON THE PIXEL: Tim drove the whole thing himself on his own phone - real system
+  picker, both files - and BOTH parsers imported correctly, the CSV producing the expected
+  9 days. So the complete path (pick a file -> parse -> merge -> log updates) is proven on
+  real hardware for both formats, not just stitched together across two devices.
+  Note for anyone repeating this: a file pushed with `adb push` is invisible to the picker
+  until MediaStore indexes it. `content call --uri content://media/external/file --method
+  scan_file --arg /sdcard/Download/<name>` fixes it on a Pixel; the TCL's ROM ignored it.
 
 - **Health import: the merge rules shipped, the Android route was built and then dropped**
   (PR #113 merged; PR #114 closed unmerged).
