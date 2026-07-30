@@ -2076,6 +2076,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
       {dlEnabled && <DevicesCard />}
       {dlEnabled && <RecoveryPhraseCard />}
       <CollapsibleCard title='Backup & restore' icon={Database} open={openSection.data} onToggle={() => toggleSection('data')}>
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>Your phone's own backup (iCloud or Google) does <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>not</strong> include your cycle log. That is deliberate: it keeps your log off servers you do not control. A backup you make here is how you keep a copy, and you choose where it goes.</div>
         <input
           type='password'
           value={exportPw}

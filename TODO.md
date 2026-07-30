@@ -72,6 +72,31 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   health information in iCloud and the private base currently lands in iCloud Backup.
   Build it when wanted: T2, scope + verify + rollback are all in the proposal.
 
+## Next release notes - lines already drafted
+
+- **Include the backup change in the next release's notes.** `release_notes.md` currently
+  holds the shipped 1.0.3 copy the store is serving, so it was deliberately NOT overwritten.
+  Drop these in when the next version is cut (plain language per rule 13):
+
+  Improved
+    - Your cycle log now stays out of your phone's automatic backup. iPhone and Android
+      both copy app data to iCloud or Google by default. PearPetal's log no longer goes
+      with it, so your cycle stays on your own devices the way the app has always said it
+      does. Moving to a new phone directly still brings everything across.
+
+  Please note
+    - Because your log is not in your phone's automatic backup, the way to keep a copy is
+      Settings, Backup and restore. You can set a password so the file is encrypted, and
+      you choose where it is stored.
+
+  Also worth a line if the daily flower note ships in the same version:
+
+  New
+    - A daily note from the garden. Turn it on under Settings, Reminders, and each day
+      PearPetal sends a short line written for where you are in your cycle, in the voice
+      of the flower you picked. Choose Playful or Gentle, and it stays hidden on your lock
+      screen if you use Discreet mode.
+
 ## Nice-to-have / UX polish
 
 - **Promote `src/relay.js` into `@peerloom/core` (rule of three).** It is
