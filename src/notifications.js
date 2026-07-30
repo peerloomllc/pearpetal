@@ -20,7 +20,7 @@
 // src/petalNotes.js from the phase on that date and the chosen flower.
 
 const { addDays, diffDays, todayIso } = require('./prediction')
-const { noteFor } = require('./petalNotes')
+const { noteFor, bucketDaysFor } = require('./petalNotes')
 
 const DEFAULT_HOUR = 9
 const DEFAULT_HORIZON_DAYS = 60 // ~2 cycles ahead, so reminders survive the app
@@ -124,9 +124,12 @@ function notificationEvents (pred, opts = {}) {
   // start getting notes on upgrade.
   if (notif.dailyNote) {
     const span = Math.min(horizonDays, trusted ? NOTE_HORIZON_DAYS : NOTE_HORIZON_LOW_CONF)
+    // Measured once and passed down: it walks a whole projected cycle, and every
+    // day in the window would otherwise repeat that walk.
+    const bucketDays = bucketDaysFor(pred)
     for (let i = 0; i <= span; i++) {
       const dateIso = addDays(today, i)
-      const note = noteFor(pred, dateIso, { tone: notif.noteTone, flower: opts.flower })
+      const note = noteFor(pred, dateIso, { tone: notif.noteTone, flower: opts.flower, bucketDays })
       if (note) push('daily-note', dateIso, { title: note.title, body: note.body })
     }
   }

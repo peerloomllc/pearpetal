@@ -1,8 +1,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { noteFor, noteForPhase, poolFor, NOTES, SPECIES, TONES, PHASES } = require('../src/petalNotes')
+const { noteFor, noteForBucket, bucketForSlot, bucketDaysFor, poolFor, NOTES, SPECIES, TONES, BUCKETS } = require('../src/petalNotes')
 const { FLOWER_KEYS } = require('../src/ui/flowers')
-const { addDays } = require('../src/prediction')
+const { addDays, cycleSlotOn } = require('../src/prediction')
 
 // Same fixture shape as the notifications tests: today = 2026-07-10, the next
 // period is 2026-08-01, so the current cycle runs 2026-07-04 -> 2026-07-31.
@@ -13,11 +13,15 @@ const basePred = (over = {}) => ({
   ...over,
 })
 
+// How many days of a cycle each bucket really covers, measured off the fixture.
+// The pool has to outlast two cycles of that, or a line comes back too soon.
+const DAYS_PER_CYCLE = bucketDaysFor(basePred())
+
 test('corpus is well formed: every entry a non-empty [title, body]', () => {
   const entries = []
-  for (const tone of TONES) for (const phase of PHASES) entries.push(...NOTES[tone][phase])
-  for (const flower of Object.keys(SPECIES)) for (const phase of PHASES) entries.push(SPECIES[flower][phase])
-  assert.ok(entries.length >= 8 * TONES.length * PHASES.length)
+  for (const tone of TONES) for (const bucket of BUCKETS) entries.push(...NOTES[tone][bucket])
+  for (const flower of Object.keys(SPECIES)) for (const bucket of BUCKETS) entries.push(SPECIES[flower][bucket])
+  assert.ok(entries.length >= 150, `corpus is ${entries.length} lines, expected 150+`)
   for (const e of entries) {
     assert.equal(e.length, 2)
     const [title, body] = e
@@ -26,33 +30,63 @@ test('corpus is well formed: every entry a non-empty [title, body]', () => {
   }
 })
 
-test('every tone has all four phases, with at least 8 lines each', () => {
+test('no line is used twice anywhere in the corpus', () => {
+  const seen = new Map()
+  const add = (where, [title, body]) => {
+    const key = `${title}|${body}`
+    assert.ok(!seen.has(key), `duplicate line in ${where} and ${seen.get(key)}: ${title}`)
+    seen.set(key, where)
+  }
+  for (const tone of TONES) for (const bucket of BUCKETS) for (const e of NOTES[tone][bucket]) add(`${tone}/${bucket}`, e)
+  for (const flower of Object.keys(SPECIES)) for (const bucket of BUCKETS) add(`${flower}/${bucket}`, SPECIES[flower][bucket])
+})
+
+test('titles are unique within everything one user can see (their tone + their flower)', () => {
+  // Two different lines sharing a title read as a repeat even when the body
+  // differs, so the constraint is per tone-and-flower, not per bucket.
   for (const tone of TONES) {
-    for (const phase of PHASES) {
-      assert.ok(Array.isArray(NOTES[tone][phase]), `${tone}/${phase} missing`)
-      assert.ok(NOTES[tone][phase].length >= 8, `${tone}/${phase} too thin`)
+    for (const flower of Object.keys(SPECIES)) {
+      const seen = new Map()
+      const add = (where, title) => {
+        assert.ok(!seen.has(title), `${tone}/${flower}: "${title}" in ${where} and ${seen.get(title)}`)
+        seen.set(title, where)
+      }
+      for (const bucket of BUCKETS) {
+        for (const [title] of NOTES[tone][bucket]) add(`${tone}/${bucket}`, title)
+        add(`${flower}/${bucket}`, SPECIES[flower][bucket][0])
+      }
     }
   }
 })
 
-test('every flower in the picker has a voice in every phase', () => {
+test('every bucket is sized to outlast two cycles of its own phase', () => {
+  for (const tone of TONES) {
+    for (const bucket of BUCKETS) {
+      assert.ok(Array.isArray(NOTES[tone][bucket]), `${tone}/${bucket} missing`)
+      // +1 for the species line every user gets, since a flower is always set.
+      const pool = NOTES[tone][bucket].length + 1
+      const need = DAYS_PER_CYCLE[bucket] * 2
+      assert.ok(pool >= need, `${tone}/${bucket}: pool ${pool} < ${need} (${DAYS_PER_CYCLE[bucket]} days/cycle x 2)`)
+    }
+  }
+})
+
+test('every flower in the picker has a voice in every bucket', () => {
   for (const key of FLOWER_KEYS) {
     assert.ok(SPECIES[key], `no species lines for ${key}`)
-    for (const phase of PHASES) assert.ok(SPECIES[key][phase], `${key}/${phase} missing`)
+    for (const bucket of BUCKETS) assert.ok(SPECIES[key][bucket], `${key}/${bucket} missing`)
   }
 })
 
 test('the species line joins the pool; an unknown flower just uses the base pool', () => {
-  assert.equal(poolFor('menstrual', 'playful', 'rose').length, NOTES.playful.menstrual.length + 1)
-  assert.deepEqual(poolFor('menstrual', 'playful', 'rose').at(-1), SPECIES.rose.menstrual)
-  assert.equal(poolFor('menstrual', 'playful', 'nope').length, NOTES.playful.menstrual.length)
+  assert.equal(poolFor('menstrual-early', 'playful', 'rose').length, NOTES.playful['menstrual-early'].length + 1)
+  assert.deepEqual(poolFor('menstrual-early', 'playful', 'rose').at(-1), SPECIES.rose['menstrual-early'])
+  assert.equal(poolFor('menstrual-early', 'playful', 'nope').length, NOTES.playful['menstrual-early'].length)
 })
 
 test('deterministic: the same date always renders the same note', () => {
   const opts = { tone: 'playful', flower: 'lotus' }
-  const a = noteFor(basePred(), '2026-07-15', opts)
-  const b = noteFor(basePred(), '2026-07-15', opts)
-  assert.deepEqual(a, b)
+  assert.deepEqual(noteFor(basePred(), '2026-07-15', opts), noteFor(basePred(), '2026-07-15', opts))
 })
 
 test('consecutive days never repeat a line', () => {
@@ -60,8 +94,8 @@ test('consecutive days never repeat a line', () => {
     for (const flower of FLOWER_KEYS) {
       let prev = null
       let date = '2026-07-01'
-      for (let i = 0; i < 60; i++, date = addDays(date, 1)) {
-        const n = noteForPhase('luteal', date, { tone, flower })
+      for (let i = 0; i < 90; i++, date = addDays(date, 1)) {
+        const n = noteFor(basePred(), date, { tone, flower })
         if (prev) assert.notEqual(n.title, prev.title, `repeat on ${date} (${tone}/${flower})`)
         prev = n
       }
@@ -69,38 +103,68 @@ test('consecutive days never repeat a line', () => {
   }
 })
 
+test('no line comes back inside eight weeks', () => {
+  // Walk 56 days of every tone + flower combination and assert nothing repeats.
+  for (const tone of TONES) {
+    for (const flower of FLOWER_KEYS) {
+      const seen = new Map()
+      let date = '2026-07-04' // day 1 of the fixture's current cycle
+      for (let i = 0; i < 56; i++, date = addDays(date, 1)) {
+        const n = noteFor(basePred(), date, { tone, flower })
+        assert.ok(!seen.has(n.title), `${tone}/${flower}: "${n.title}" repeats on ${date}, first seen ${seen.get(n.title)}`)
+        seen.set(n.title, date)
+      }
+    }
+  }
+})
+
+test('the pick rotates per cycle, so the same cycle day is not the same line every month', () => {
+  const pred = basePred()
+  const opts = { tone: 'playful', flower: 'rose' }
+  // Day 1 of three consecutive cycles.
+  const titles = ['2026-07-04', '2026-08-01', '2026-08-29'].map((d) => noteFor(pred, d, opts).title)
+  assert.equal(new Set(titles).size, 3, `same-cycle-day lines repeat: ${titles.join(', ')}`)
+})
+
 test('different flowers see a different order (the pick is salted per flower + tone)', () => {
-  const titles = new Set(FLOWER_KEYS.map((f) => noteForPhase('luteal', '2026-07-25', { tone: 'playful', flower: f }).title))
+  const titles = new Set(FLOWER_KEYS.map((f) => noteForBucket('luteal-early', '2026-07-25', { tone: 'playful', flower: f }).title))
   assert.ok(titles.size > 1)
-  const rose = noteForPhase('luteal', '2026-07-25', { tone: 'playful', flower: 'rose' })
-  const gentleRose = noteForPhase('luteal', '2026-07-25', { tone: 'gentle', flower: 'rose' })
-  assert.ok(NOTES.gentle.luteal.some(([t]) => t === gentleRose.title) || SPECIES.rose.luteal[0] === gentleRose.title)
-  assert.ok(NOTES.playful.luteal.some(([t]) => t === rose.title) || SPECIES.rose.luteal[0] === rose.title)
 })
 
-test('an unknown tone falls back to playful, an unknown phase to follicular', () => {
-  assert.deepEqual(noteForPhase('luteal', '2026-07-25', { tone: 'sarcastic', flower: 'rose' }),
-    noteForPhase('luteal', '2026-07-25', { tone: 'playful', flower: 'rose' }))
-  assert.deepEqual(noteForPhase('nonsense', '2026-07-25', { tone: 'playful', flower: 'rose' }),
-    noteForPhase('follicular', '2026-07-25', { tone: 'playful', flower: 'rose' }))
+test('an unknown tone falls back to playful, an unknown bucket to follicular', () => {
+  assert.deepEqual(noteForBucket('luteal-late', '2026-07-25', { tone: 'sarcastic', flower: 'rose' }),
+    noteForBucket('luteal-late', '2026-07-25', { tone: 'playful', flower: 'rose' }))
+  assert.deepEqual(noteForBucket('nonsense', '2026-07-25', { tone: 'playful', flower: 'rose' }),
+    noteForBucket('follicular', '2026-07-25', { tone: 'playful', flower: 'rose' }))
 })
 
-test('phase tracks the projection across the cycle', () => {
+test('buckets track the projection across the cycle', () => {
   const p = basePred()
-  const at = (d) => noteFor(p, d, { tone: 'playful', flower: 'rose' }).phase
-  assert.equal(at('2026-07-05'), 'menstrual')  // day 2 of the current cycle
-  assert.equal(at('2026-07-11'), 'follicular') // after the period, before fertile
-  assert.equal(at('2026-07-18'), 'fertile')    // predicted ovulation day
-  assert.equal(at('2026-07-25'), 'luteal')     // after ovulation, before the next period
-  assert.equal(at('2026-08-02'), 'menstrual')  // day 2 of the NEXT cycle
-  assert.equal(at('2026-08-15'), 'fertile')    // next cycle's window, one length on
+  const at = (d) => noteFor(p, d, { tone: 'playful', flower: 'rose' }).bucket
+  assert.equal(at('2026-07-04'), 'menstrual-early') // day 1
+  assert.equal(at('2026-07-06'), 'menstrual-late')  // day 3, still bleeding
+  assert.equal(at('2026-07-11'), 'follicular')      // after the period, before fertile
+  assert.equal(at('2026-07-13'), 'fertile-rise')    // window opens, 5 days out from ovulation
+  assert.equal(at('2026-07-18'), 'fertile-peak')    // predicted ovulation day
+  assert.equal(at('2026-07-22'), 'luteal-early')    // just after the window closes
+  assert.equal(at('2026-07-29'), 'luteal-late')     // the last few days before the next period
+  assert.equal(at('2026-08-02'), 'menstrual-early') // day 2 of the NEXT cycle
+  assert.equal(at('2026-08-15'), 'fertile-peak')    // next cycle's ovulation, one length on
+})
+
+test('every bucket is actually reachable from a real projection', () => {
+  const pred = basePred()
+  const seen = new Set()
+  let date = '2026-07-04'
+  for (let i = 0; i < 28; i++, date = addDays(date, 1)) seen.add(bucketForSlot(cycleSlotOn(pred, date)))
+  assert.deepEqual([...seen].sort(), [...BUCKETS].sort())
 })
 
 test('fertile framing is softened, not faked, on birth control and on a low-confidence guess', () => {
   const opts = { tone: 'playful', flower: 'rose' }
-  assert.equal(noteFor(basePred({ birthControl: true }), '2026-07-18', opts).phase, 'luteal')
-  assert.equal(noteFor(basePred({ birthControl: true }), '2026-07-14', opts).phase, 'follicular')
-  assert.equal(noteFor(basePred({ confidence: 'low' }), '2026-07-14', opts).phase, 'follicular')
+  assert.equal(noteFor(basePred({ birthControl: true }), '2026-07-18', opts).bucket, 'luteal-early')
+  assert.equal(noteFor(basePred({ birthControl: true }), '2026-07-14', opts).bucket, 'follicular')
+  assert.equal(noteFor(basePred({ confidence: 'low' }), '2026-07-14', opts).bucket, 'follicular')
   // ...and the softened note really does come from the fallback pool.
   const soft = noteFor(basePred({ confidence: 'low' }), '2026-07-14', opts)
   assert.ok(NOTES.playful.follicular.some(([t]) => t === soft.title) || SPECIES.rose.follicular[0] === soft.title)

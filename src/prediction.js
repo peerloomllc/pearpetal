@@ -157,34 +157,47 @@ function projectCalendar (pred, startIso, endIso) {
   return out
 }
 
-// The phase on an ARBITRARY date, projecting the current cycle's pattern forward
-// and back by cycle length (the same repetition projectCalendar uses). Needed
-// because projectionFromRows only reports the phase for TODAY, while a daily note
-// scheduled days ahead has to know the phase on the day it will fire. Returns one
-// of 'menstrual' | 'follicular' | 'fertile' | 'luteal', or null when the
-// projection has nothing to anchor on.
-function phaseOnDate (pred, dateIso) {
+// Where an ARBITRARY date sits in the cycle, projecting the current cycle's
+// pattern forward and back by cycle length (the same repetition projectCalendar
+// uses). Needed because projectionFromRows only reports on TODAY, while a daily
+// note scheduled days ahead has to know about the day it will fire. Returns
+// { phase, dayOfCycle, cycleIndex, daysToOvulation, daysToNextPeriod }, or null
+// when the projection has nothing to anchor on. `cycleIndex` counts projected
+// cycles from `nextPeriodStart` (so the CURRENT cycle is -1); the daily note uses
+// it to rotate its copy from one cycle to the next.
+function cycleSlotOn (pred, dateIso) {
   if (!pred || !pred.known || !pred.nextPeriodStart) return null
   const L = pred.cycleLen || DEFAULT_CYCLE_LEN
   const pLen = pred.periodLen || DEFAULT_PERIOD_LEN
   const d = isoToDays(dateIso)
   const anchorP = isoToDays(pred.nextPeriodStart)
-  // k = which projected cycle `date` falls in, relative to the next period start.
   const k = Math.floor((d - anchorP) / L)
-  const dayOfCycle = d - (anchorP + k * L) + 1
-  if (dayOfCycle <= pLen) return 'menstrual'
+  const cycleStart = anchorP + k * L
+  const dayOfCycle = d - cycleStart + 1
+  const daysToNextPeriod = cycleStart + L - d
   // The ovulation / fertile anchors sit in the CURRENT cycle, one cycle earlier
   // than nextPeriodStart, so their repetition index is one ahead of the period's
   // (the same off-by-one-cycle relationship projectCalendar's two anchors have).
   const j = k + 1
-  if (!pred.birthControl && pred.fertileStart && pred.fertileEnd) {
-    const fs = isoToDays(pred.fertileStart) + j * L
-    const fe = isoToDays(pred.fertileEnd) + j * L
-    if (d >= fs && d <= fe) return 'fertile'
-  }
   const ov = pred.ovulationEst ? isoToDays(pred.ovulationEst) + j * L : null
-  if (ov == null) return 'follicular'
-  return d < ov ? 'follicular' : 'luteal'
+  let phase = null
+  const inFertile = !pred.birthControl && pred.fertileStart && pred.fertileEnd &&
+    d >= isoToDays(pred.fertileStart) + j * L && d <= isoToDays(pred.fertileEnd) + j * L
+  if (dayOfCycle <= pLen) phase = 'menstrual'
+  else if (inFertile) phase = 'fertile'
+  else if (ov == null || d < ov) phase = 'follicular'
+  else phase = 'luteal'
+  return {
+    phase, dayOfCycle, cycleIndex: k, daysToNextPeriod,
+    daysToOvulation: ov == null ? null : ov - d,
+  }
+}
+
+// Just the phase on a date: 'menstrual' | 'follicular' | 'fertile' | 'luteal',
+// or null when there is nothing to project from.
+function phaseOnDate (pred, dateIso) {
+  const slot = cycleSlotOn(pred, dateIso)
+  return slot ? slot.phase : null
 }
 
 // --- pregnancy (gestational) projection -------------------------------------
@@ -213,7 +226,7 @@ function pregnancyProjection (prefs = {}, todayArg) {
 }
 
 module.exports = {
-  projectionFromRows, pregnancyProjection, projectCalendar, phaseOnDate, cycleStarts, bbtOvulation, median,
+  projectionFromRows, pregnancyProjection, projectCalendar, phaseOnDate, cycleSlotOn, cycleStarts, bbtOvulation, median,
   isoToDays, daysToIso, addDays, diffDays, todayIso,
   FLOW_VALUES, BLEEDING_FLOWS, DEFAULT_CYCLE_LEN, DEFAULT_LUTEAL_LEN, DEFAULT_PERIOD_LEN, GESTATION_DAYS,
 }

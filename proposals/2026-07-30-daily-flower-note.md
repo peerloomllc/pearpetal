@@ -29,24 +29,47 @@ deserve to be written down before 80 lines of jokes are.
 
 ### Copy (`src/petalNotes.js`, new, pure)
 
-- `NOTES[tone][phase]` - 8 `[title, body]` pairs per phase (`menstrual`, `follicular`,
-  `fertile`, `luteal`) per tone.
-- `SPECIES[flower][phase]` - one extra pair per phase for each of the five species in the
+**Seven sub-phase buckets, not four phases.** Early and late luteal are different weeks to
+live through, and so are day one of a period and its tail. Splitting them is both more
+lines and better-aimed lines: `menstrual-early`, `menstrual-late`, `follicular`,
+`fertile-rise`, `fertile-peak`, `luteal-early`, `luteal-late`.
+
+- `NOTES[tone][bucket]` - `[title, body]` pairs, **sized to how many days of a cycle the
+  bucket actually covers**. Luteal-early gets 14 lines and menstrual-early gets 6, because
+  one is a 6-day stretch and the other is 2 days.
+- `SPECIES[flower][bucket]` - one extra pair per bucket for each of the five species in the
   flower picker, in that flower's voice (the rose keeps its thorns, the lotus grows from
   mud, the dahlia is a lumpy tuber holding all the ruffles). Mixed into the same pool, so
-  roughly one day in nine is species-specific and the picked flower actually shows up in
-  the writing, not just on the dial.
-- `noteFor(pred, dateIso, { tone, flower })` -> `{ title, body }`. **Deterministic**: the
-  index is `(dayNumber + hash(flower + tone)) % pool.length`, so (a) the same day always
-  renders the same note across the many reschedules the shell does, and (b) consecutive
-  days can never repeat a line.
+  the picked flower shows up in the writing, not just on the dial.
+- **159 lines in all**: 62 per tone plus 7 per species.
+- `noteFor(pred, dateIso, { tone, flower })` -> `{ title, body, bucket, phase }`.
 
-### Phase on a FUTURE date (`src/prediction.js`)
+**The pick walks the pool, it does not sample it.** The index is a counter that steps by
+one per day spent in that bucket and carries across cycles (`positionInBucket +
+cycleIndex * daysThatBucketCoversForThisUser`), offset by `hash(flower + tone)`. So:
 
-`projectionFromRows` returns the phase for *today*. A note scheduled 10 days out needs the
-phase on *that* date, so `phaseOnDate(pred, dateIso)` projects the current cycle's pattern
-forward and back by cycle length, the same way `projectCalendar` already does. Exported
-and unit-tested on its own.
+- the same date always renders the same note, across the many reschedules the shell does;
+- consecutive days can never repeat;
+- a pool is walked end to end before anything comes back, which makes "pool size divided by
+  days per cycle" the true repeat interval - **nothing a user can see returns inside eight
+  weeks**, asserted by walking 56 days of every tone x flower combination;
+- and a given cycle day does not land on the same line every month.
+
+The per-cycle advance is **measured off the user's own projection** rather than hardcoded,
+because a 35-day cycle stretches the follicular stretch far more than the rest. An advance
+shorter than the days actually spent in a bucket would overlap and repeat within a single
+cycle - the bug the first draft of this had.
+
+Growing a pool later is a pure-data change: no migration, no wire, nothing persisted.
+
+### Where a FUTURE date sits in the cycle (`src/prediction.js`)
+
+`projectionFromRows` reports on *today*. A note scheduled 10 days out needs to know about
+*that* date, so `cycleSlotOn(pred, dateIso)` projects the current cycle's pattern forward
+and back by cycle length, the same way `projectCalendar` already does, and returns
+`{ phase, dayOfCycle, cycleIndex, daysToOvulation, daysToNextPeriod }` - enough to place
+the date in a sub-phase bucket and to rotate the copy per cycle. `phaseOnDate()` is the
+thin wrapper for callers that only want the phase. Exported and unit-tested on its own.
 
 ### Events (`src/notifications.js`)
 
@@ -96,8 +119,11 @@ peers are indistinguishable.
 ## Verify
 
 - Unit (`test/petalNotes.test.js`): determinism (same date -> same note), no consecutive
-  repeats, species lines appear in the pool, both tones resolve, every pool entry is a
-  well-formed non-empty `[title, body]`.
+  repeats, **no repeat inside 56 days for any tone x flower**, every bucket sized to
+  outlast two cycles of its own phase (measured, not assumed), no duplicated line and no
+  duplicated title within what one user can see, every picker flower has a voice in every
+  bucket, per-cycle rotation, both tones resolve, every entry a well-formed non-empty
+  `[title, body]`.
 - Unit (`test/prediction.test.js`): `phaseOnDate` across a full projected cycle, forward
   and backward from the anchor.
 - Unit (`test/notifications.test.js`): note events off by default; 14-day horizon; 3-day
@@ -117,5 +143,7 @@ branch and the two prefs - no data or wire state to unwind.
 
 - Whether the note should also appear in-app under the dial for users who keep
   notifications off entirely. Deferred, not built.
-- Whether to widen the corpus over time (8 per phase per tone repeats roughly every two
-  cycles within a phase). Adding lines is a pure-data change with no migration.
+- Whether to widen the corpus again once it has been lived with. Eight weeks without a
+  repeat is the bar this hits at a 28-day cycle; a much longer cycle sees the follicular
+  and luteal lines sooner. Adding lines is a pure-data change with no migration, and the
+  sizing test will say exactly which bucket needs them.

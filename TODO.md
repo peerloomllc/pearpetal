@@ -42,7 +42,7 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
 
 - **See a daily flower note actually fire on a device (owed by PR for the daily
   note, 2026-07-30).** The copy, the phase-on-a-future-date projection and the event
-  list are unit-covered (151 tests green) and the shell needed no change - the notes
+  list are unit-covered (156 tests green) and the shell needed no change - the notes
   ride the same `pp:`-prefixed local-notification path the cycle reminders have used
   since PR #64. What nobody has watched yet is one landing on a lock screen. On an
   emulator or the TCL: Settings -> Reminders on -> Daily flower note on, set the time

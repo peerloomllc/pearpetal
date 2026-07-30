@@ -8,13 +8,23 @@ work lives in `TODO.md`.
 
 - **Daily flower note: an opt-in garden-voice line each day** (PR #105). PearPetal's
   answer to Stardust's astrology notifications, themed on flowers and seasons. A new
-  pure `src/petalNotes.js` carries two corpora the user picks between (Playful and
-  Gentle), 8 `[title, body]` lines per phase per tone, plus one line per phase in each
+  pure `src/petalNotes.js` carries **159 lines**: two corpora the user picks between
+  (Playful and Gentle) across SEVEN sub-phase buckets, plus one line per bucket in each
   of the five picker species' own voices, so the flower on the dial shows up in the
-  writing. `phaseOnDate()` (new, in `src/prediction.js`) gives the phase on a FUTURE
-  date, which the existing projection did not - it only reported today. The note
+  writing. `cycleSlotOn()` (new, in `src/prediction.js`) places a FUTURE date in the
+  cycle, which the existing projection did not - it only reported today. The note
   becomes a `daily-note` category in the list the shell already schedules, so the RN
   shell needed NO change at all.
+  SIZING was the real design work, after Tim asked whether a static corpus would go
+  stale. It would have: the first draft had 4 phases x 8 lines, and luteal is 13 days of
+  a 28-day cycle against a pool of 9, so a line came back INSIDE the same cycle. Fixed by
+  splitting each phase into early/late buckets (the PMS week and the week after ovulation
+  are not the same week to live through), sizing each pool to the days its bucket covers,
+  and making the pick WALK the pool consecutively across cycles instead of indexing off
+  the absolute date - the latter lets the pointer wrap mod the pool length between visits
+  and collide. The per-cycle advance is measured off the user's own projection, since a
+  35-day cycle stretches the follicular stretch far more than the rest. Nothing a user can
+  see now repeats inside eight weeks, asserted by walking 56 days of every tone x flower.
   Guardrails, all tested: opt-in on top of the master switch (default off, so an
   upgrade never starts a daily push); 14-day rolling window (3 days at low confidence)
   against iOS's 64-pending-notification cap, plus a hard 56-event cap on the whole
@@ -23,7 +33,7 @@ work lives in `TODO.md`.
   discreet mode neutralises it like every other category; pregnant suppresses it; the
   corpus is deliberately goal-neutral so conceive and avoid users read the same line.
   Design: `proposals/2026-07-30-daily-flower-note.md` (T1, device-local, no wire
-  change). Verified: `npm run verify` green, 151 tests (28 new). Device check still
+  change). Verified: `npm run verify` green, 156 tests (33 new). Device check still
   owed - see `TODO.md`.
 
 ## 2026-07-23
