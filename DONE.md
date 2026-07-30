@@ -6,6 +6,39 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
+- **The private cycle log no longer goes to the OS cloud backup** (PR #110). The gap found
+  by the health-import research: the Corestore sits under `FileSystem.documentDirectory`,
+  which is iOS `<sandbox>/Documents` (in iCloud Backup by default) and the Android app
+  files dir under `android:allowBackup="true"` with no extraction rules. Nothing excluded
+  it, so every logged day, flow, symptom, note and BBT was eligible to leave the phone -
+  while onboarding promises "no accounts, no servers. Your data stays on your device."
+  ANDROID: `plugins/with-android-backup-exclusion.js` writes `data_extraction_rules.xml`
+  (API 31+) and `backup_rules.xml` (API 30-) and points the manifest at both. The split is
+  deliberate - CLOUD BACKUP excludes the store, DEVICE TRANSFER keeps everything, because
+  a direct phone-to-phone move is the same trust boundary device linking already has.
+  `allowBackup` stays true so settings still restore.
+  iOS: `modules/backup-exclusion` (new Expo module, mirroring `modules/local-network`)
+  sets `NSURLIsExcludedFromBackupKey` on `<Documents>/pearpetal`. The shell creates that
+  directory BEFORE `init` so the flag is set before any data lands in it, and re-asserts on
+  every launch since the flag lives in the filesystem and a restore starts it unset.
+  VERIFIED ON THE EMULATOR, and not by reading config: `bmgr backupnow` with the local
+  transport ran a real backup, and Android's own agent logged the file list it measured -
+  `databases/RKStorage`, two `shared_prefs` files and `files/profileInstalled`, with the
+  75 MB `files/pearpetal` store absent. Settings back up; the cycle log does not.
+  VERIFIED ON THE iOS SIMULATOR TOO (rule 7): built Release for the Simulator on the Mac
+  mini, installed to a throwaway iPhone 17 Pro sim, launched, then read the attribute off
+  the real container - `Documents/pearpetal` carries
+  `com.apple.metadata:com_apple_backup_excludeItem: com.apple.MobileBackup`, which is
+  exactly what NSURLIsExcludedFromBackupKey sets, while `Documents` itself carries none.
+  Build note for next time: a DEBUG Simulator build of this app fails to link
+  (`facebook::react::Sealable` undefined, from libExpoModulesCore + libRNScreens). The
+  repo's own `scripts/ios-screenshots.sh` invocation works - `-configuration Release
+  -destination "generic/platform=iOS Simulator" -sdk iphonesimulator
+  CODE_SIGNING_ALLOWED=NO`. Use Release for Simulator builds here.
+  Honest cost, worth repeating in any user-facing note: after this, losing your only phone
+  loses the log unless the user has the recovery phrase or a JSON export. Both already
+  exist; this makes them matter more than they did.
+
 - **Apple Health / Health Connect import: researched and answered** (PR #109),
   `proposals/2026-07-30-health-import.md`. The `TODO.md` question was whether the import
   can be done without weakening the guarantee, not how to wire it up.
