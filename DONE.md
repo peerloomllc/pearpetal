@@ -6,6 +6,26 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
+- **Users are now told their log is not in the phone's automatic backup** (PR #111).
+  PR #110 was the right behaviour but silently changed what a user could expect - someone
+  assuming iCloud had their back would have found out the hard way after losing a phone.
+  Settings -> Backup & restore now opens by saying the phone's own backup does not include
+  the cycle log, that this is deliberate, and that a backup made there is how to keep a
+  copy.
+  NO OPT-IN TOGGLE, deliberately, after Tim asked whether there should be one. Two
+  reasons. (1) The app already has the stronger version: `export:data` already takes a
+  password and the UI already exposes it, so a user can make a backup encrypted with
+  THEIR passphrase and put it in iCloud Drive or anywhere else - same recovery, without
+  handing a fertility dataset to a third party under a key they hold and could be
+  compelled to use. (2) It would not be symmetrical: on iOS the exclusion is a runtime
+  filesystem flag so a toggle is easy, but on Android the rules are compiled into the APK
+  and varying them at runtime needs a custom `BackupAgent`. A switch on one platform only
+  is hard to explain in a sentence of copy.
+  Release notes deliberately NOT written into `release_notes.md`, which still holds the
+  shipped 1.0.3 copy the store is serving; the lines are drafted in `TODO.md`.
+  Verified: `npm run verify` green at 163 tests, and the card read back off the emulator
+  after installing the build.
+
 - **The private cycle log no longer goes to the OS cloud backup** (PR #110). The gap found
   by the health-import research: the Corestore sits under `FileSystem.documentDirectory`,
   which is iOS `<sandbox>/Documents` (in iCloud Backup by default) and the Android app
@@ -124,7 +144,7 @@ work lives in `TODO.md`.
   corpus is deliberately goal-neutral so conceive and avoid users read the same line.
   Design: `proposals/2026-07-30-daily-flower-note.md` (T1, device-local, no wire
   change). Verified: `npm run verify` green, 156 tests (33 new).
-  VERIFIED ON THE ANDROID EMULATOR (2026-07-30, `pp_note_a31`, android-31 google_apis
+  VERIFIED ON THE ANDROID EMULATOR (2026-07-30, recorded in PR #106, `pp_note_a31`, android-31 google_apis
   x86_64, `com.pearpetal.debug`). The Settings row is live and toggling it reveals the
   Playful/Gentle picker. With the app process KILLED the note fired on its own at the
   set time - `tag=pp:daily-note:2026-07-30`, `channel=reminders`, "Spring cleaning /
