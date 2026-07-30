@@ -2,6 +2,40 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-30 - Health import: reading exported FILES is the primary path, Health Connect is a bonus
+Tier: T2 (proposal 2026-07-30-health-import). Reverses the platform-first framing in that
+proposal, which assumed the OS health APIs were the way in.
+Context: the Android half was built and the plumbing proven, and then the permission grant
+turned out to be unobtainable. A diagnostic build on Tim's Pixel logged Android answering
+`never_ask_again` for both health permissions on the FIRST request after `pm clear` reset
+the state. On a first ask that does not mean "refused before" - it means the permission is
+not askable by this app at all. Ruled out by experiment, not argument: automation, a broken
+Health Connect on the test device, the react-native-health-connect contract (a direct
+platform request with raw permission strings fails identically), installer attribution, and
+a poisoned never-ask-again state. The remaining explanation is a restricted permission that
+only a real store install allowlists.
+THE PRODUCT PROBLEM THAT FOLLOWS is worse than the technical one. PearPetal ships on
+Zapstore and as a GitHub APK, and its users are people deliberately avoiding Google, often
+on GrapheneOS or CalyxOS. A feature that only works for Play installs is a Google-only
+feature for an anti-Google audience. Meanwhile Health Connect is the ONLY system-level
+option on Android - Google Fit's APIs stopped accepting developers in May 2024 and shut
+down at the end of 2026 - so there is no second platform API to fall back to.
+Choice: make reading EXPORTED FILES the primary import path. Every serious health app
+exports (Apple Health XML, Samsung Health / Fitbit / Oura CSV, Google Fit via Takeout), and
+PearPetal already has a document picker and a JSON importer for its own backups. Keep the
+Health Connect work as a bonus for whoever does install from Play.
+Alternatives: push a build to the existing Play closed-testing track to confirm the gate
+(cheap, still leaves sideload users with nothing); Samsung Health SDK (Samsung-only, also
+gated); Fitbit / Oura / Withings cloud APIs (accounts and servers, the opposite of this
+app). iOS is unaffected either way - HealthKit has no equivalent store gate, so slice 3
+stands as designed.
+Consequences: file import needs no permissions, no vendor, and no network, so it works on
+every store and every ROM and cannot be switched off by someone else's policy. It is more
+parsing work and less platform-fighting. The merge rules already shipped (src/healthImport.js,
+PR #113) are unchanged and serve both paths - gaps only, per-field provenance, idempotent by
+date key - so nothing built so far is wasted. PR #114 (the Android plumbing) stays open
+pending a decision on whether to keep it as the Play-only bonus.
+
 ## 2026-07-23 - Blind relay adopted as the off-LAN backstop; default ON with a toggle
 Tier: T3 (proposal 2026-07-23-blind-relay). PR #95.
 Context: PearPetal is phone-to-phone on BOTH of its connection paths - own-device

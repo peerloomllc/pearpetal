@@ -18,6 +18,7 @@ const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, memberKe
 const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FLOW_VALUES, DEFAULT_PERIOD_LEN } = require('./prediction')
 const { notificationEvents } = require('./notifications')
 const { planImport } = require('./healthImport')
+const { parseHealthFile } = require('./healthFiles')
 const { TONES: NOTE_TONES, DEFAULT_TONE: DEFAULT_NOTE_TONE } = require('./petalNotes')
 const { isDeviceLinkEnabled } = require('./deviceLink')
 const ps = require('./privateStore')
@@ -941,8 +942,21 @@ const methods = {
   // Nothing here writes back to the platform, and nothing touches a shared base:
   // a partner still only sees the consent-scoped projection, which is recomputed
   // from the private base and does not care where a row came from.
+  // Parse a file the user exported from another health app, then merge it. The
+  // shell reads the picked file and passes its TEXT; parsing is pure
+  // (src/healthFiles.js) so every format is tested without a device or a picker.
+  // Files are the PRIMARY import path - see DECISIONS.md 2026-07-30.
+  'health:importFile': async ({ text, format } = {}, ctx) => {
+    if (typeof text !== 'string' || !text.trim()) throw new Error('no file contents')
+    const parsed = parseHealthFile(text, format ? { format } : {})
+    if (!parsed.format) return { ok: false, reason: 'unrecognised' }
+    if (!parsed.samples.length) return { ok: true, format: parsed.format, written: 0, added: 0, updated: 0, keptManual: 0, unchanged: 0, read: 0 }
+    const res = await methods['health:import']({ samples: parsed.samples, source: 'file' }, ctx)
+    return { ...res, format: parsed.format, read: parsed.samples.length }
+  },
+
   'health:import': async ({ samples, source } = {}, ctx) => {
-    if (source !== 'healthkit' && source !== 'healthconnect') throw new Error('source must be healthkit or healthconnect')
+    if (!['healthkit', 'healthconnect', 'file'].includes(source)) throw new Error('source must be healthkit, healthconnect or file')
     await requirePrivate(ctx)
     const existing = {}
     for (const v of await privRows(ctx, DAY_RANGE)) if (v && !v.deleted) existing[v.date] = v

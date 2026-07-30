@@ -6,6 +6,39 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
+- **Health import: the merge rules shipped, the Android route was built and then dropped**
+  (PR #113 merged; PR #114 closed unmerged).
+  SHIPPED (#113), `src/healthImport.js`, pure so it tests without a base or a phone: gaps
+  only (never overwrites what the user typed, the same rule `period:log` follows), a
+  previous import's own value may be refreshed, implausible temperatures dropped (a stray
+  98.6 Fahrenheit would wreck the 0.2 degree BBT shift), real calendar dates enforced
+  (2026-07-32 matches the pattern and is not a day), first reading of a day wins because a
+  basal temperature is the waking one, and nothing dropped silently. Provenance is per
+  FIELD (a `sources` map), not per row, because a day can hold a flow the user typed AND a
+  BBT from the platform - a row-level marker would be a lie. Deliberately SOURCE-AGNOSTIC,
+  which is why it survived the direction change below unchanged.
+  BUILT THEN DROPPED (#114): the Health Connect route. It reached Health Connect, surfaced
+  refusals honestly and completed empty reads, and it found three real bugs on the way -
+  a crash on first import (the library registers its permission launcher from an Activity
+  hook that `expo prebuild` wipes), a failed read reporting itself as SUCCESS (a swallowed
+  error told the user "your log is already up to date" when nothing was read), and an
+  existing grant being ignored (`requestPermission` returns an empty list when permissions
+  are already held, so every read was skipped - that one would have hit real users on their
+  SECOND import and every one after).
+  WHY IT WAS DROPPED: the permission is not askable at all. A diagnostic build on Tim's
+  Pixel logged Android answering `never_ask_again` for both permissions on the FIRST request
+  after `pm clear` reset the state, which does not mean "refused before" - it means the
+  system will not offer the choice. Ruled out by experiment first: automation, a broken
+  Health Connect on the test device, the library's contract (a direct platform request with
+  raw permission strings fails identically), installer attribution, and a poisoned
+  never-ask-again state. The remaining explanation is a restricted permission only a real
+  store install allowlists - and PearPetal ships on Zapstore and GitHub to users
+  deliberately avoiding Google, so a Play-gated import serves almost none of them. See
+  `DECISIONS.md` 2026-07-30.
+  A throwaway writer app was also built (session scratchpad, never in this repo) to seed
+  Health Connect, and it wrote 11 records successfully - so seeding was solved; only the
+  read side was ever blocked.
+
 - **Users are now told their log is not in the phone's automatic backup** (PR #111).
   PR #110 was the right behaviour but silently changed what a user could expect - someone
   assuming iCloud had their back would have found out the hard way after losing a phone.

@@ -63,41 +63,43 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   ANDROID IS STILL UNCHECKED end to end - `assetlinks.json` has not been re-verified
   this session.
 
-## Ready to build (researched, proposal written)
+## Health import - file import is now the primary path
 
-- **Apple Health / Health Connect import.** ANSWERED 2026-07-30, see
-  `proposals/2026-07-30-health-import.md`: yes, it can be done without weakening the
-  model - read-only, on-device, additive, and de-duplicated for free by the date-keyed
-  `day:` schema. **The blocker is now cleared**: the iCloud/Google backup gap it uncovered
-  was fixed and verified on both platforms in PR #110, so App Store guideline 5.1.3 is no
-  longer in the way. Build it when wanted: T2, with scope, verify and rollback all in the
-  proposal. Rough size: a few days per platform, plus the Play Console health declaration
-  form, which is a review queue and not in our control.
+See `DECISIONS.md` 2026-07-30. Health Connect's permission is not askable to a sideloaded
+build, and PearPetal ships on Zapstore and GitHub to users who are deliberately avoiding
+Google - so a Play-only import is a Google-only feature for an anti-Google audience.
+Reading exported FILES works everywhere, needs no permissions and cannot be switched off by
+someone else's policy.
 
-## Next release notes - lines already drafted
+- **Build file import (the primary path).** The merge rules already exist and are unchanged
+  by this - `src/healthImport.js` (PR #113) is gaps-only, per-field provenance, idempotent
+  by date key, and serves any source. What is needed is PARSERS plus a file picker entry:
+  - Apple Health export (`export.xml` inside the zip Apple's Health app produces): pull
+    `HKCategoryTypeIdentifierMenstrualFlow` and
+    `HKQuantityTypeIdentifierBasalBodyTemperature` records. Note Apple's export is large,
+    so stream or pre-filter rather than parsing the whole document into memory.
+  - Generic CSV with a column mapping step, which covers Samsung Health, Fitbit, Oura and
+    anything else that exports a table.
+  - Reuse the existing document picker (`import:data` already goes through the shell's
+    share-sheet / picker path) and the existing "only fills gaps" copy.
+  All of it is pure parsing over a user-chosen file: testable without a device, and it needs
+  no new permission on either platform.
 
-- **Include the backup change in the next release's notes.** `release_notes.md` currently
-  holds the shipped 1.0.3 copy the store is serving, so it was deliberately NOT overwritten.
-  Drop these in when the next version is cut (plain language per rule 13):
+- **iOS HealthKit read (slice 3), unaffected by any of the above.** HealthKit has no store
+  gate - a dev build, TestFlight build and App Store build all get the same access - so this
+  stands as originally designed. Small read-only Expo module following
+  `modules/backup-exclusion/`, request `toRead` ONLY and never `toShare`, hand the shell the
+  same normalised samples (local dates, Celsius, sorted ascending). Needs the HealthKit
+  entitlement plus `NSHealthShareUsageDescription`, both prebuild-time, so a config plugin.
+  HealthKit deliberately makes a DENIED read indistinguishable from "no data", so the UI can
+  never say "you denied access" - only "no data found". Verify on a real iPhone; the
+  Simulator has no meaningful HealthKit data.
 
-  Improved
-    - Your cycle log now stays out of your phone's automatic backup. iPhone and Android
-      both copy app data to iCloud or Google by default. PearPetal's log no longer goes
-      with it, so your cycle stays on your own devices the way the app has always said it
-      does. Moving to a new phone directly still brings everything across.
-
-  Please note
-    - Because your log is not in your phone's automatic backup, the way to keep a copy is
-      Settings, Backup and restore. You can set a password so the file is encrypted, and
-      you choose where it is stored.
-
-  Also worth a line if the daily flower note ships in the same version:
-
-  New
-    - A daily note from the garden. Turn it on under Settings, Reminders, and each day
-      PearPetal sends a short line written for where you are in your cycle, in the voice
-      of the flower you picked. Choose Playful or Gentle, and it stays hidden on your lock
-      screen if you use Discreet mode.
+- **Decide what happens to PR #114 (the Android Health Connect plumbing).** It works up to
+  the permission gate, fixes three real bugs, and would benefit whoever installs from Play.
+  Either keep it as a documented Play-only bonus, or revert it and carry only the file path.
+  Optionally confirm the gate first with one upload to the existing Play closed-testing
+  track and a single tap - cheap certainty, but it does not change the direction either way.
 
 ## Nice-to-have / UX polish
 
