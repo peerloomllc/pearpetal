@@ -116,7 +116,9 @@
       "./plugins/with-android-release-signing",
       "./plugins/with-android-abis",
       "./plugins/with-android-webview-recovery",
-      "./plugins/with-android-backup-exclusion"
+      "./plugins/with-android-backup-exclusion",
+      "react-native-health-connect",
+      "./plugins/with-android-health-connect"
     ],
     "assets": [
       "./assets/bare-universal.bundle",

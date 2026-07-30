@@ -1926,6 +1926,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   const [exportPw, setExportPw] = useState('') // optional backup password (blank = plaintext)
   const [pendingImport, setPendingImport] = useState(null) // encrypted wrapper awaiting its password
   const [successModal, setSuccessModal] = useState(null) // { title, message } -> export/import result popup
+  const [healthBusy, setHealthBusy] = useState(false) // Health Connect / Apple Health import in flight
   // The advanced/occasional sections collapse independently (collapsed by default).
   const [openSection, setOpenSection] = useState({})
   const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
@@ -1953,6 +1954,36 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   const pickFlower = (key) => { save({ flower: key }); onFlower && onFlower(key); haptic('light') }
 
   const inShell = typeof window !== 'undefined' && !!window.ReactNativeWebView
+  // Pull BBT and period days from the phone's health app. One shot, on request,
+  // never in the background - see proposals/2026-07-30-health-import.md. The
+  // merge is gaps-only, so anything typed by hand is left alone.
+  const doHealthImport = async () => {
+    setHealthBusy(true)
+    setDataMsg(null)
+    try {
+      const r = await call('shell:health:import', { days: 180 })
+      if (!r || !r.ok) {
+        const why = {
+          unsupported: 'Importing from Apple Health is not available yet.',
+          unavailable: 'Health Connect is not set up on this phone. Install or open Health Connect, then try again.',
+          'update-required': 'Health Connect needs updating on this phone before PearPetal can read from it.',
+          denied: 'No access was granted, so nothing was read.',
+        }[r && r.reason] || 'Nothing could be read from your health app.'
+        setDataMsg({ text: why, tone: 'muted' })
+        return
+      }
+      const wrote = (r.added || 0) + (r.updated || 0)
+      const kept = r.keptManual ? ` Your own entries were left as they are.` : ''
+      setSuccessModal({
+        title: wrote ? 'Imported' : 'Nothing new to add',
+        message: wrote
+          ? `Added ${wrote} ${wrote === 1 ? 'entry' : 'entries'} from your health app.${kept}`
+          : `Your log is already up to date with your health app.${kept}`,
+      })
+    } catch {
+      setDataMsg({ text: 'That import could not be completed.', tone: 'error' })
+    } finally { setHealthBusy(false) }
+  }
   const doExport = async () => {
     try {
       const pw = exportPw.trim()
@@ -2091,6 +2122,13 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
         </div>
         <div style={{ color: colors.text.muted, fontSize: 11 }}>Set a password to save an <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>encrypted</strong> backup; leave it blank for a plain file. Either way the file only leaves your device if you share it, so keep it somewhere private. Import merges a backup into your log and will ask for the password if the file is encrypted. A forgotten password cannot be recovered.</div>
         {dataMsg && <div style={{ color: dataMsg.tone === 'error' ? colors.error : dataMsg.tone === 'muted' ? colors.text.muted : colors.success, fontSize: 13 }}>{dataMsg.text}</div>}
+        {inShell && (
+          <div style={{ borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+            <div style={{ color: colors.text.secondary, fontSize: 14 }}>Bring in from your health app</div>
+            <div style={{ color: colors.text.muted, fontSize: 11 }}>Fills in temperatures and period days you have already recorded elsewhere, for the last 6 months. It only fills gaps: anything you typed here is never changed, and PearPetal never writes anything back to your health app.</div>
+            <Btn kind='ghost' onClick={doHealthImport} disabled={healthBusy}>{healthBusy ? 'Reading...' : 'Import from health app'}</Btn>
+          </div>
+        )}
       </CollapsibleCard>
       {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
       {successModal && <BackupSuccessModal title={successModal.title} message={successModal.message} onClose={() => setSuccessModal(null)} />}
