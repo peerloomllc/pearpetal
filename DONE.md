@@ -23,12 +23,22 @@ work lives in `TODO.md`.
   of a day wins" picks the waking temperature), and the shell hands them to the same
   `health:import`. Apple's "no flow" category is dropped rather than becoming a bleeding
   day, matching the file parser.
-  VERIFIED AS FAR AS A LINUX BOX AND A SIMULATOR ALLOW: `npm run verify` green at 205 tests;
-  `expo prebuild` emits the entitlement; `pod install` links `HealthRead` (93 pods, up from
-  92); a Release Simulator build on the Mac mini SUCCEEDS with the module compiling; and the
-  built app carries the read usage string with no update string. A real read on an iPhone is
-  still owed - logged in `TODO.md`, along with enabling the HealthKit capability on the App
-  ID before any Release archive.
+  VERIFIED ON THE IPHONE SE, end to end, with Tim driving. The signed binary carries
+  `com.apple.developer.healthkit` and NO `healthkit.access` key (so no clinical records).
+  The permission sheet appeared and named only the two types. An empty Health app correctly
+  reported "nothing found" - which is also what a DENIAL looks like, by Apple's design, and
+  the copy is written so it never accuses the user either way. Tim then added a couple of
+  basal temperatures and a period day BY HAND in the Health app - something Health Connect
+  cannot do, which is exactly what blocked the Android equivalent - and the retry IMPORTED
+  THEM. So the non-empty read is proven on iOS.
+  Earlier steps that also held: `npm run verify` green at 205 tests, `pod install` links
+  `HealthRead` (93 pods, up from 92), and a Release Simulator build compiles the module.
+  THE SIGNING DANCE, worth knowing before the next capability is added: enabling HealthKit
+  on the App ID invalidates the provisioning profile, and `xcodebuild` over SSH cannot
+  regenerate it - it reports "No Accounts: Add a new account in Accounts settings" because
+  the login keychain is locked in a non-GUI session, which is why the repo already uses a
+  separate `buildkey.keychain` for the CERT. Opening the workspace in the Xcode GUI once
+  created the profile; after that SSH builds signed fine.
   BUILD GOTCHA WORTH KNOWING: `pod install` failed with "invalid byte sequence in UTF-8"
   from xcodeproj's plist scanner, and the cause was leftover `ios/build-sim/` output from an
   earlier Debug attempt containing BINARY plists. Deleting the stale build directory fixed
