@@ -85,20 +85,18 @@ someone else's policy.
   All of it is pure parsing over a user-chosen file: testable without a device, and it needs
   no new permission on either platform.
 
-- **Verify the Apple Health read on a real iPhone (owed by the iOS slice, 2026-07-30).**
-  The module is built and PROVEN TO COMPILE AND LINK: `pod install` links `HealthRead`, a
-  Release Simulator build succeeds, and the built app's Info.plist carries
-  `NSHealthShareUsageDescription` with NO update string, so read-only is structural rather
-  than promised. What has NOT happened is a real read.
-  The SIMULATOR CANNOT settle it - it has no meaningful HealthKit data and fakes the
-  permission surface - so this needs the iPhone SE (`scripts/ios-dev-install.sh`) with some
-  basal temperature or period data already in Health. Check: the permission sheet appears
-  and names only the two types; granting then importing brings days in marked as imported;
-  and a day typed in PearPetal is left alone.
-  ALSO NOT YET DONE: enable the HealthKit capability on the App ID in the developer portal.
-  The wildcard dev profile does not include it, so a Release archive will fail with
-  "Provisioning profile ... doesn't include the com.apple.developer.healthkit entitlement"
-  until that one-off account change is made. Same trap as associated-domains.
+- **Any iOS build that needs HealthKit must prebuild with `PEARPETAL_HEALTHKIT=1`.** The
+  entitlement is gated and STRIPPED by default, because an unconditional one blocks every
+  iOS device build until the provisioning profile carries the capability. Same shape as
+  `PEARPETAL_ASSOCIATED_DOMAINS`, and for the same reason. The App ID now HAS the capability
+  (enabled 2026-07-30) and a matching profile exists, so this is a flag to remember rather
+  than a blocker.
+  IF A BUILD FAILS with both "doesn't include the HealthKit capability" AND "No Accounts:
+  Add a new account in Accounts settings", the cause is `xcodebuild` over SSH being unable
+  to regenerate a profile while the login keychain is locked in a non-GUI session. Opening
+  the workspace once in the Xcode GUI on the Mac mini creates it; SSH builds sign fine after
+  that. (The repo already works around the same class of problem for the signing CERT with
+  `buildkey.keychain`.)
 
 ## Nice-to-have / UX polish
 
