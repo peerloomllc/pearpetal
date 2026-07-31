@@ -1,0 +1,9 @@
+{
+  "name": "health-read",
+  "version": "1.0.0",
+  "description": "Read-only HealthKit access for cycle and basal temperature data",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "PeerLoom",
+  "homepage": "https://peerloomllc.com"
+}

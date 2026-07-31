@@ -6,6 +6,44 @@ work lives in `TODO.md`.
 
 ## 2026-07-30
 
+- **Apple Health read on iOS** (PR #117). The iOS half, unaffected by the Android story:
+  HealthKit has no store gate, so a dev build, TestFlight build and App Store build all get
+  the same access. File import stays the primary path and the only one on Android.
+  READ ONLY, STRUCTURALLY. `requestAuthorization` is called with `toShare: nil`, so the app
+  holds no write authorization at all - not "does not call write", cannot. The config plugin
+  adds `NSHealthShareUsageDescription` and deliberately NOT `NSHealthUpdateUsageDescription`,
+  which iOS requires only to WRITE; its absence is the guarantee rather than an oversight,
+  and it was confirmed in the BUILT app's Info.plist, not just the source.
+  A HEALTHKIT QUIRK SHAPES THE UI: an app cannot tell whether a READ was denied, because
+  Apple makes refusal indistinguishable from "no such data" - the refusal itself would leak
+  health information. So nothing ever reports "denied"; an empty result says "no
+  temperatures or period days were found" and points at Health's Sharing settings.
+  Nothing about merging is duplicated: the module returns samples shaped exactly like the
+  file parsers produce (ISO local dates, Celsius, ascending by timestamp so "first reading
+  of a day wins" picks the waking temperature), and the shell hands them to the same
+  `health:import`. Apple's "no flow" category is dropped rather than becoming a bleeding
+  day, matching the file parser.
+  VERIFIED ON THE IPHONE SE, end to end, with Tim driving. The signed binary carries
+  `com.apple.developer.healthkit` and NO `healthkit.access` key (so no clinical records).
+  The permission sheet appeared and named only the two types. An empty Health app correctly
+  reported "nothing found" - which is also what a DENIAL looks like, by Apple's design, and
+  the copy is written so it never accuses the user either way. Tim then added a couple of
+  basal temperatures and a period day BY HAND in the Health app - something Health Connect
+  cannot do, which is exactly what blocked the Android equivalent - and the retry IMPORTED
+  THEM. So the non-empty read is proven on iOS.
+  Earlier steps that also held: `npm run verify` green at 205 tests, `pod install` links
+  `HealthRead` (93 pods, up from 92), and a Release Simulator build compiles the module.
+  THE SIGNING DANCE, worth knowing before the next capability is added: enabling HealthKit
+  on the App ID invalidates the provisioning profile, and `xcodebuild` over SSH cannot
+  regenerate it - it reports "No Accounts: Add a new account in Accounts settings" because
+  the login keychain is locked in a non-GUI session, which is why the repo already uses a
+  separate `buildkey.keychain` for the CERT. Opening the workspace in the Xcode GUI once
+  created the profile; after that SSH builds signed fine.
+  BUILD GOTCHA WORTH KNOWING: `pod install` failed with "invalid byte sequence in UTF-8"
+  from xcodeproj's plist scanner, and the cause was leftover `ios/build-sim/` output from an
+  earlier Debug attempt containing BINARY plists. Deleting the stale build directory fixed
+  it. The UTF-8 env vars the repo scripts already set were not the problem.
+
 - **Health import from an exported FILE - the primary path** (PR #116). Per
   `DECISIONS.md` 2026-07-30, after the Health Connect route was dropped: a file the user
   picked needs no permission, no vendor and no network, so it works on every store and

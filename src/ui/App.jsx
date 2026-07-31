@@ -387,6 +387,9 @@ function Onboarding ({ onReady, onViewerReady, onStartSetup }) {
   // flag flips); a partner-viewer + core-group installs never see it.
   const [dlEnabled, setDlEnabled] = useState(false)
   useEffect(() => { call('deviceLink:status').then((r) => setDlEnabled(!!(r && r.enabled))).catch(() => {}) }, [])
+  // Apple Health is offered only where it actually works (iOS, HealthKit present).
+  // Everywhere else the file import is the whole story, and needs no permission.
+  useEffect(() => { call('shell:health:appleAvailable').then((r) => setAppleHealth(!!(r && r.available))).catch(() => {}) }, [])
 
   // Name/photo, collected for a tracker or a partner-viewer (NOT a linked device -
   // that inherits the primary's profile). profile:set is device-local (no base
@@ -1928,6 +1931,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   const [successModal, setSuccessModal] = useState(null) // { title, message } -> export/import result popup
   const [healthBusy, setHealthBusy] = useState(false) // health-export import in flight
   const [healthMsg, setHealthMsg] = useState(null) // { text, tone } shown INSIDE the health block
+  const [appleHealth, setAppleHealth] = useState(false) // iOS: HealthKit usable on this device
   // The advanced/occasional sections collapse independently (collapsed by default).
   const [openSection, setOpenSection] = useState({})
   const toggleSection = (id) => setOpenSection((s) => ({ ...s, [id]: !s[id] }))
@@ -1935,6 +1939,9 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   // device-link path is active; hidden in production until the flag flips.
   const [dlEnabled, setDlEnabled] = useState(false)
   useEffect(() => { call('deviceLink:status').then((r) => setDlEnabled(!!(r && r.enabled))).catch(() => {}) }, [])
+  // Apple Health is offered only where it actually works (iOS, HealthKit present).
+  // Everywhere else the file import is the whole story, and needs no permission.
+  useEffect(() => { call('shell:health:appleAvailable').then((r) => setAppleHealth(!!(r && r.available))).catch(() => {}) }, [])
   // Live-refresh prefs on sync so settings changed on another device appear
   // without leaving the screen. Controlled chips/steppers only (no free-text tied
   // to prefs), so re-reading is safe; an optimistic save re-reads the same value.
@@ -1978,6 +1985,26 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
         ? `Added ${wrote} ${wrote === 1 ? 'entry' : 'entries'} from your file.${kept}`
         : `Everything in that file was already in your log.${kept}`,
     })
+  }
+  // iOS only. HealthKit cannot tell us a read was DENIED - Apple hides that on
+  // purpose - so an empty result says "nothing found", never "you denied us".
+  const doAppleImport = async () => {
+    setHealthBusy(true)
+    setHealthMsg(null)
+    try {
+      const r = await call('shell:health:importApple', { days: 180 })
+      if (!r || r.ok === false) { setHealthMsg({ text: 'Apple Health could not be read on this device.', tone: 'muted' }); return }
+      if (!r.read) { setHealthMsg({ text: 'No temperatures or period days were found in Apple Health. If you expected some, check PearPetal is allowed to read them in Health, under Sharing.', tone: 'muted' }); return }
+      const wrote = (r.added || 0) + (r.updated || 0)
+      const kept = r.keptManual ? ' Your own entries were left as they are.' : ''
+      setSuccessModal({
+        title: wrote ? 'Imported' : 'Nothing new to add',
+        message: wrote
+          ? `Added ${wrote} ${wrote === 1 ? 'entry' : 'entries'} from Apple Health.${kept}`
+          : `Everything in Apple Health was already in your log.${kept}`,
+      })
+    } catch { setHealthMsg({ text: 'That import could not be completed.', tone: 'error' }) }
+    finally { setHealthBusy(false) }
   }
   const doHealthImport = async () => {
     setHealthBusy(true)
@@ -2143,6 +2170,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
           <div style={{ color: colors.text.secondary, fontSize: 14 }}>Bring in from another app</div>
           <div style={{ color: colors.text.muted, fontSize: 11 }}>Have temperatures or period days recorded in another app? Export them there, then pick that file here. It only fills gaps: anything you entered in PearPetal is never changed, and nothing is sent anywhere.</div>
           <Btn kind='ghost' onClick={doHealthImport} disabled={healthBusy}>{healthBusy ? 'Reading...' : 'Import from a file'}</Btn>
+          {appleHealth && <Btn kind='ghost' onClick={doAppleImport} disabled={healthBusy}>{healthBusy ? 'Reading...' : 'Import from Apple Health'}</Btn>}
           {healthMsg && (
             <div onClick={() => setHealthMsg(null)} style={{ display: 'flex', alignItems: 'flex-start', gap: spacing.sm, background: colors.surface.input, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `${spacing.sm}px ${spacing.md}px`, cursor: 'pointer' }}>
               <span style={{ flex: 1, color: healthMsg.tone === 'error' ? colors.error : colors.text.secondary, fontSize: 13 }}>{healthMsg.text}</span>

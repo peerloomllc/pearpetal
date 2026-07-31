@@ -85,21 +85,18 @@ someone else's policy.
   All of it is pure parsing over a user-chosen file: testable without a device, and it needs
   no new permission on either platform.
 
-- **iOS HealthKit read (slice 3), unaffected by any of the above.** HealthKit has no store
-  gate - a dev build, TestFlight build and App Store build all get the same access - so this
-  stands as originally designed. Small read-only Expo module following
-  `modules/backup-exclusion/`, request `toRead` ONLY and never `toShare`, hand the shell the
-  same normalised samples (local dates, Celsius, sorted ascending). Needs the HealthKit
-  entitlement plus `NSHealthShareUsageDescription`, both prebuild-time, so a config plugin.
-  HealthKit deliberately makes a DENIED read indistinguishable from "no data", so the UI can
-  never say "you denied access" - only "no data found". Verify on a real iPhone; the
-  Simulator has no meaningful HealthKit data.
-
-- **Decide what happens to PR #114 (the Android Health Connect plumbing).** It works up to
-  the permission gate, fixes three real bugs, and would benefit whoever installs from Play.
-  Either keep it as a documented Play-only bonus, or revert it and carry only the file path.
-  Optionally confirm the gate first with one upload to the existing Play closed-testing
-  track and a single tap - cheap certainty, but it does not change the direction either way.
+- **Any iOS build that needs HealthKit must prebuild with `PEARPETAL_HEALTHKIT=1`.** The
+  entitlement is gated and STRIPPED by default, because an unconditional one blocks every
+  iOS device build until the provisioning profile carries the capability. Same shape as
+  `PEARPETAL_ASSOCIATED_DOMAINS`, and for the same reason. The App ID now HAS the capability
+  (enabled 2026-07-30) and a matching profile exists, so this is a flag to remember rather
+  than a blocker.
+  IF A BUILD FAILS with both "doesn't include the HealthKit capability" AND "No Accounts:
+  Add a new account in Accounts settings", the cause is `xcodebuild` over SSH being unable
+  to regenerate a profile while the login keychain is locked in a non-GUI session. Opening
+  the workspace once in the Xcode GUI on the Mac mini creates it; SSH builds sign fine after
+  that. (The repo already works around the same class of problem for the signing CERT with
+  `buildkey.keychain`.)
 
 ## Nice-to-have / UX polish
 
