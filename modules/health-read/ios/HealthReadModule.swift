@@ -6,8 +6,16 @@ import HealthKit
 //
 // ONE WAY, STRUCTURALLY. `requestAuthorization` is called with `toShare: nil`, so
 // this app holds no write authorization at all - not "does not call write", cannot.
-// That is the iOS half of the guarantee in proposals/2026-07-30-health-import.md;
-// the file-import path (the primary one) needs no permission whatever.
+// There is also no save() or delete() anywhere in this file. That is the iOS half
+// of the guarantee in proposals/2026-07-30-health-import.md; the file-import path
+// (the primary one) needs no permission whatever.
+//
+// The Info.plist DOES carry `NSHealthUpdateUsageDescription` as of 2026-07-31, and
+// that is not a contradiction: Apple's asset validation requires the write string
+// whenever the HealthKit entitlement is present, since the entitlement itself
+// permits writing and has no read-only variant. A purpose string is prompt text,
+// not an authorization - it grants nothing, and no user can ever see that one,
+// because only a write request would display it. See DECISIONS.md 2026-07-31.
 //
 // A HEALTHKIT QUIRK THAT SHAPES THE UI: an app cannot tell whether a READ was
 // denied. Apple deliberately makes refusal indistinguishable from "there is no
