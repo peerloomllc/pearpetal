@@ -115,6 +115,32 @@ if [ "${SKIP_PREBUILD:-0}" != "1" ]; then
   ( cd "$REPO_ROOT" && rm -rf ios && CI=1 npx expo prebuild -p ios --no-install )
 fi
 
+# ── Purpose-string preflight ────────────────────────────────────────────────
+# Every capability here is env-gated at PREBUILD time and STRIPPED by default,
+# so a missing export produces a perfectly good archive that Apple rejects hours
+# later during processing. 1.0.4 shipped that way: app.conf exported
+# PEARPETAL_ASSOCIATED_DOMAINS but not PEARPETAL_HEALTHKIT, while
+# modules/health-read links HealthKit UNCONDITIONALLY, so the binary referenced
+# the APIs with no usage string to explain them:
+#
+#   ITMS-90683: Missing purpose string in Info.plist
+#
+# Apple's scan keys off the LINKED SYMBOLS, not off whether the feature is
+# reachable - so the test below is "is the module in the tree", not "is the flag
+# set". Fail here, in seconds, rather than after a 20-minute archive and an
+# upload that only bounces once a human reads the email.
+_plist="$REPO_ROOT/ios/$XCODE_SCHEME/Info.plist"
+if [ -d "$REPO_ROOT/modules/health-read" ] && [ -f "$_plist" ]; then
+  if ! /usr/libexec/PlistBuddy -c 'Print :NSHealthShareUsageDescription' "$_plist" >/dev/null 2>&1; then
+    echo "Error: modules/health-read is present but Info.plist has no NSHealthShareUsageDescription." >&2
+    echo "  The binary will link HealthKit and App Store Connect will reject it (ITMS-90683)." >&2
+    echo "  Cause: PEARPETAL_HEALTHKIT was not set when \`expo prebuild\` ran." >&2
+    echo "  Fix:   scripts/app.conf must \`export PEARPETAL_HEALTHKIT=1\`; then re-run." >&2
+    exit 1
+  fi
+  echo "    Preflight OK: NSHealthShareUsageDescription present"
+fi
+
 # ── Disk space preflight ────────────────────────────────────────────────────
 # pod install runs bare-link, which ad-hoc-signs each Bare addon framework. A
 # full disk makes codesign fail to write its staging file and report only

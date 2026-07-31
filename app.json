@@ -10,7 +10,7 @@
     "icon": "./assets/images/icon.png",
     "ios": {
       "bundleIdentifier": "com.pearpetal",
-      "buildNumber": "11",
+      "buildNumber": "12",
       "associatedDomains": [
         "applinks:peerloomllc.com"
       ],
