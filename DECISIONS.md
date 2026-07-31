@@ -2,6 +2,36 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-07-31 - The HealthKit read-only guarantee is `toShare: nil`, not a missing Info.plist key
+Tier: T2. Amends the iOS half of proposals/2026-07-30-health-import.md, which stated the
+guarantee the other way round.
+Context: 1.0.4 was rejected TWICE by App Store Connect asset validation, both ITMS-90683.
+Build 11 for a missing `NSHealthShareUsageDescription` (a build-flag bug, fixed in PR #119).
+Build 12 for a missing `NSHealthUpdateUsageDescription` - the WRITE string, which PR #117
+had deliberately withheld and recorded as "a structural guarantee, not an oversight".
+WHY APPLE IS UNMOVABLE HERE: their own trigger text is "references one or more APIs that
+access sensitive user data, OR the app has one or more entitlements that permit such
+access". `com.apple.developer.healthkit` permits reading AND writing, and Apple ships no
+read-only variant of it. So the write string is required for any app carrying the
+entitlement, whatever its code does. Confirmed by running `xcrun altool --validate-app`
+against the exact IPA that had already been uploaded, rather than inferring from the email.
+Choice: add `NSHealthUpdateUsageDescription`, and restate the guarantee to rest on what
+actually enforces it.
+WHAT ACTUALLY ENFORCES IT, unchanged by this: `HealthReadModule.requestAuthorization` is
+called with `toShare: nil`, so the app never REQUESTS write authorization and therefore
+never holds any - HealthKit refuses a write from an app without it. There is no `save()` or
+`delete()` anywhere in the module. A purpose string is prompt text, not an authorization:
+it grants nothing. And no user can ever read this particular string, because only a write
+request displays it and the app cannot make one.
+HONEST COST: the claim got weaker to state, even though the behaviour did not change. "The
+key is absent" was checkable in one grep by anyone auditing the IPA. "The app never asks to
+share" needs a reader to go look at the Swift. Anyone auditing should check
+`requestAuthorization(toShare:` in modules/health-read/ios/HealthReadModule.swift, and the
+absence of `HKHealthStore.save`.
+Also adopted, as the process half: `ios-appstore.sh` now runs `--validate-app` BEFORE
+uploading. Both rejections cost a 20-minute archive, an upload and a wait for an email a
+human had to read, when Apple would have answered the same question in two minutes.
+
 ## 2026-07-30 - Health import: reading exported FILES is the primary path, Health Connect is a bonus
 Tier: T2 (proposal 2026-07-30-health-import). Reverses the platform-first framing in that
 proposal, which assumed the OS health APIs were the way in.

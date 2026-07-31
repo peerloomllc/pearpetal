@@ -129,16 +129,24 @@ fi
 # reachable - so the test below is "is the module in the tree", not "is the flag
 # set". Fail here, in seconds, rather than after a 20-minute archive and an
 # upload that only bounces once a human reads the email.
+#
+# BOTH strings are required, not just the read one. Apple demands the WRITE string
+# too whenever the entitlement is present, because the entitlement permits writing
+# and has no read-only variant - build 11 was rejected for the read string's
+# absence and build 12 for the write string's. PearPetal still never writes; see
+# plugins/with-ios-healthkit.js and DECISIONS.md 2026-07-31.
 _plist="$REPO_ROOT/ios/$XCODE_SCHEME/Info.plist"
 if [ -d "$REPO_ROOT/modules/health-read" ] && [ -f "$_plist" ]; then
-  if ! /usr/libexec/PlistBuddy -c 'Print :NSHealthShareUsageDescription' "$_plist" >/dev/null 2>&1; then
-    echo "Error: modules/health-read is present but Info.plist has no NSHealthShareUsageDescription." >&2
-    echo "  The binary will link HealthKit and App Store Connect will reject it (ITMS-90683)." >&2
-    echo "  Cause: PEARPETAL_HEALTHKIT was not set when \`expo prebuild\` ran." >&2
-    echo "  Fix:   scripts/app.conf must \`export PEARPETAL_HEALTHKIT=1\`; then re-run." >&2
-    exit 1
-  fi
-  echo "    Preflight OK: NSHealthShareUsageDescription present"
+  for _key in NSHealthShareUsageDescription NSHealthUpdateUsageDescription; do
+    if ! /usr/libexec/PlistBuddy -c "Print :$_key" "$_plist" >/dev/null 2>&1; then
+      echo "Error: modules/health-read is present but Info.plist has no $_key." >&2
+      echo "  The binary will link HealthKit and App Store Connect will reject it (ITMS-90683)." >&2
+      echo "  Cause: PEARPETAL_HEALTHKIT was not set when \`expo prebuild\` ran." >&2
+      echo "  Fix:   scripts/app.conf must \`export PEARPETAL_HEALTHKIT=1\`; then re-run." >&2
+      exit 1
+    fi
+  done
+  echo "    Preflight OK: both HealthKit purpose strings present"
 fi
 
 # ── Disk space preflight ────────────────────────────────────────────────────
@@ -217,6 +225,35 @@ if [ -z "$IPA_PATH" ]; then
   exit 1
 fi
 echo "Export complete: $IPA_PATH"
+
+# ── Validate before uploading ───────────────────────────────────────────────
+# `--validate-app` asks Apple's asset pipeline the SAME questions the upload does
+# and answers in about two minutes. Without it, a rejection costs a full archive,
+# an upload, and then a wait for an email a human has to read - which is how
+# 1.0.4 burned two rounds in a row on ITMS-90683, first for the missing READ
+# purpose string and then for the WRITE one.
+#
+# Skipped on the legacy altool-password path only because this gate needs the API
+# key. Set SKIP_VALIDATE=1 to bypass deliberately.
+if [ "${SKIP_VALIDATE:-0}" != "1" ] && [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ]; then
+  # altool resolves --apiKey by SEARCHING fixed directories; it will not take a
+  # path. ~/.appstoreconnect/private_keys is one of them, and where the repo's
+  # key already lives one level up.
+  _alt_keys="$HOME/.appstoreconnect/private_keys"
+  mkdir -p "$_alt_keys"
+  cp -n "${ASC_PRIVATE_KEY_PATH:-$HOME/.appstoreconnect/AuthKey_${ASC_KEY_ID}.p8}" "$_alt_keys/" 2>/dev/null || true
+
+  echo "Validating with App Store Connect before upload..."
+  if ! xcrun altool --validate-app -f "$IPA_PATH" -t ios \
+        --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee /tmp/${APP_NAME}-validate.log; then
+    echo "" >&2
+    echo "Error: App Store Connect validation FAILED - not uploading." >&2
+    echo "  Full output: /tmp/${APP_NAME}-validate.log" >&2
+    grep -E 'code.*[0-9]{5}|ERROR|should contain' "/tmp/${APP_NAME}-validate.log" | head -5 >&2 || true
+    exit 1
+  fi
+  echo "    Validation passed."
+fi
 
 # ── Upload ──────────────────────────────────────────────────────────────────
 echo "Uploading to App Store Connect..."

@@ -6,10 +6,12 @@
 //   1. `com.apple.developer.healthkit` - without it HKHealthStore refuses at
 //      runtime, whatever the Swift says.
 //   2. `NSHealthShareUsageDescription` - iOS kills the app outright if it asks to
-//      READ health data with no usage string. Note there is deliberately NO
-//      `NSHealthUpdateUsageDescription`: that one is required only to WRITE, and
-//      PearPetal never writes to Apple Health. Its absence is a structural
-//      guarantee, not an oversight - see proposals/2026-07-30-health-import.md.
+//      READ health data with no usage string.
+//   3. `NSHealthUpdateUsageDescription` - the WRITE string, which Apple's asset
+//      validation demands whenever the entitlement is present even though this app
+//      never writes. Added 2026-07-31 after it rejected build 12; see the note on
+//      UPDATE_REASON below and DECISIONS.md. The read-only guarantee lives in
+//      `requestAuthorization(toShare: nil, ...)`, not in the absence of a string.
 //
 // OFF BY DEFAULT, and that is the whole point. Confirmed on 2026-07-30 by trying:
 //
@@ -39,6 +41,22 @@ const { withEntitlementsPlist, withInfoPlist } = require('expo/config-plugins')
 const SHARE_REASON =
   'PearPetal can bring your basal body temperature and period days across from Apple Health, so you do not have to type them in twice. It only reads, never writes, and everything stays on your device.'
 
+// Required by Apple's asset validation whenever the HealthKit ENTITLEMENT is
+// present, whatever the code does. Their own trigger text is "references one or
+// more APIs ... OR the app has one or more entitlements that permit such access",
+// and `com.apple.developer.healthkit` permits reading AND writing - Apple ships no
+// read-only variant of it. Omitting this key rejected build 12 of 1.0.4 with
+// ITMS-90683 naming NSHealthUpdateUsageDescription specifically.
+//
+// PRESENCE GRANTS NOTHING. A purpose string is text shown in a prompt, not an
+// authorization. `HealthReadModule` calls `requestAuthorization(toShare: nil, ...)`
+// and contains no save() or delete(), so the app never requests write access and
+// never holds any; HealthKit would reject a write even if one were attempted. No
+// user will ever read this string, because only a write request displays it and
+// the app cannot make one. See DECISIONS.md 2026-07-31.
+const UPDATE_REASON =
+  'PearPetal never writes anything to Apple Health. It only reads, to bring your own basal body temperature and period days into its log. Apple requires this text to be present even for apps that read only.'
+
 module.exports = function withIosHealthKit (config) {
   // It STRIPS when off rather than merely not adding, and that distinction is the
   // whole reason this works: `expo prebuild` without --clean leaves a previously
@@ -57,9 +75,13 @@ module.exports = function withIosHealthKit (config) {
     return cfg
   })
   return withInfoPlist(config, (cfg) => {
-    if (wanted) cfg.modResults.NSHealthShareUsageDescription = SHARE_REASON
-    else delete cfg.modResults.NSHealthShareUsageDescription
-    delete cfg.modResults.NSHealthUpdateUsageDescription // never write, either way
+    if (wanted) {
+      cfg.modResults.NSHealthShareUsageDescription = SHARE_REASON
+      cfg.modResults.NSHealthUpdateUsageDescription = UPDATE_REASON
+    } else {
+      delete cfg.modResults.NSHealthShareUsageDescription
+      delete cfg.modResults.NSHealthUpdateUsageDescription
+    }
     return cfg
   })
 }
