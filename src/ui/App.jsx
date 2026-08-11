@@ -49,6 +49,12 @@ const LIGHTNING_WALLETS = [
 // Shared height for every option box in the donation sheet (primary buttons,
 // copy fields, wallet rows) so the stack reads as one uniform column.
 const DONATE_OPTION_MIN_H = 56
+// iOS hides every donation surface: the About "Support development" section and
+// the two-week nudge. App Store Review Guideline 3.1.1 does not allow collecting
+// donations through a mechanism other than in-app purchase, so the whole path is
+// off on iOS rather than merely unlinked. Android keeps it. The shell injects
+// `window.__pearPlatform` into the page before the bundle runs (app/index.tsx).
+const IS_IOS = typeof window !== 'undefined' && window.__pearPlatform === 'ios'
 const openUrl = (url) => { try { const p = call('shell:openUrl', { url }); if (p && p.catch) p.catch(() => {}) } catch {} }
 
 const pad2 = (n) => String(n).padStart(2, '0')
@@ -2505,13 +2511,15 @@ function AboutScreen ({ onClose }) {
         <AboutLink onClick={() => openUrl('https://pears.com/')}>Learn about P2P ↗</AboutLink>
       </AboutSection>
 
-      <AboutSection title='Support development' icon={Heart} open={open === 'support'} onToggle={() => toggle('support')}>
-        <AboutText>PearPetal is free and open source. If it brings you value, consider sending a little back.</AboutText>
-        <div style={{ display: 'flex', gap: spacing.sm }}>
-          <AboutLink primary onClick={donateBTC}>⚡ Bitcoin ⚡</AboutLink>
-          <AboutLink onClick={() => openUrl(BUYMEACOFFEE_URL)}>$ USD $</AboutLink>
-        </div>
-      </AboutSection>
+      {!IS_IOS && (
+        <AboutSection title='Support development' icon={Heart} open={open === 'support'} onToggle={() => toggle('support')}>
+          <AboutText>PearPetal is free and open source. If it brings you value, consider sending a little back.</AboutText>
+          <div style={{ display: 'flex', gap: spacing.sm }}>
+            <AboutLink primary onClick={donateBTC}>⚡ Bitcoin ⚡</AboutLink>
+            <AboutLink onClick={() => openUrl(BUYMEACOFFEE_URL)}>$ USD $</AboutLink>
+          </div>
+        </AboutSection>
+      )}
 
       <AboutSection title='Learn about Bitcoin' icon={CurrencyBtc} open={open === 'btc'} onToggle={() => toggle('btc')}>
         <AboutText>New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course on how it works and why it matters.</AboutText>
@@ -2693,9 +2701,11 @@ export default function App () {
 
   // Two-week donation nudge: once the owner is set up, check the device-local due
   // flag once and show the modal a single time ever (mark shown as soon as it
-  // surfaces). Never crosses the wire.
+  // surfaces). Never crosses the wire. Off on iOS with the rest of the donation
+  // path (see IS_IOS) - it would otherwise point at an About section that is not
+  // there.
   useEffect(() => {
-    if (mode !== 'owner') return undefined
+    if (mode !== 'owner' || IS_IOS) return undefined
     let done = false
     call('donation:status', {}).then((s) => {
       if (!done && s?.due) { setDonateReminder(true); call('donation:dismiss', {}).catch(() => {}) }
