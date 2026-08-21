@@ -49,11 +49,18 @@ const LIGHTNING_WALLETS = [
 // Shared height for every option box in the donation sheet (primary buttons,
 // copy fields, wallet rows) so the stack reads as one uniform column.
 const DONATE_OPTION_MIN_H = 56
-// iOS hides every donation surface: the About "Support development" section and
-// the two-week nudge. App Store Review Guideline 3.1.1 does not allow collecting
-// donations through a mechanism other than in-app purchase, so the whole path is
-// off on iOS rather than merely unlinked. Android keeps it. The shell injects
-// `window.__pearPlatform` into the page before the bundle runs (app/index.tsx).
+// The About "Support development" section is BACK ON iOS as of 2026-08-21. It was
+// hidden for the 1.0.4 resubmission after Apple cited Guideline 3.1.1 (donations
+// outside in-app purchase) on build 13, which was the right call to get 1.0.4
+// through. It is a passive, collapsed section a person has to go looking for, not
+// a prompt, and that shape is what ships in the rest of the suite.
+//
+// What is still off on iOS is the two-week NUDGE, the modal that surfaces itself
+// uninvited. That is the surface a reviewer reads as soliciting, and it is not
+// worth another rejection cycle over. See the donation-nudge effect in App().
+//
+// The shell injects `window.__pearPlatform` into the page before the bundle runs
+// (app/index.tsx).
 const IS_IOS = typeof window !== 'undefined' && window.__pearPlatform === 'ios'
 const openUrl = (url) => { try { const p = call('shell:openUrl', { url }); if (p && p.catch) p.catch(() => {}) } catch {} }
 
@@ -2511,15 +2518,13 @@ function AboutScreen ({ onClose }) {
         <AboutLink onClick={() => openUrl('https://pears.com/')}>Learn about P2P ↗</AboutLink>
       </AboutSection>
 
-      {!IS_IOS && (
-        <AboutSection title='Support development' icon={Heart} open={open === 'support'} onToggle={() => toggle('support')}>
-          <AboutText>PearPetal is free and open source. If it brings you value, consider sending a little back.</AboutText>
-          <div style={{ display: 'flex', gap: spacing.sm }}>
-            <AboutLink primary onClick={donateBTC}>⚡ Bitcoin ⚡</AboutLink>
-            <AboutLink onClick={() => openUrl(BUYMEACOFFEE_URL)}>$ USD $</AboutLink>
-          </div>
-        </AboutSection>
-      )}
+      <AboutSection title='Support development' icon={Heart} open={open === 'support'} onToggle={() => toggle('support')}>
+        <AboutText>PearPetal is free and open source. If it brings you value, consider sending a little back.</AboutText>
+        <div style={{ display: 'flex', gap: spacing.sm }}>
+          <AboutLink primary onClick={donateBTC}>⚡ Bitcoin ⚡</AboutLink>
+          <AboutLink onClick={() => openUrl(BUYMEACOFFEE_URL)}>$ USD $</AboutLink>
+        </div>
+      </AboutSection>
 
       <AboutSection title='Learn about Bitcoin' icon={CurrencyBtc} open={open === 'btc'} onToggle={() => toggle('btc')}>
         <AboutText>New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course on how it works and why it matters.</AboutText>
@@ -2763,9 +2768,11 @@ export default function App () {
 
   // Two-week donation nudge: once the owner is set up, check the device-local due
   // flag once and show the modal a single time ever (mark shown as soon as it
-  // surfaces). Never crosses the wire. Off on iOS with the rest of the donation
-  // path (see IS_IOS) - it would otherwise point at an About section that is not
-  // there.
+  // surfaces). Never crosses the wire. STILL off on iOS, now on its own merits
+  // rather than because the About section was missing: this one shows itself
+  // uninvited, which is the shape a reviewer reads as soliciting under Guideline
+  // 3.1.1. The About section it points at is back (see IS_IOS), so an iOS user who
+  // wants to give can still find it.
   useEffect(() => {
     if (mode !== 'owner' || IS_IOS) return undefined
     let done = false
