@@ -557,3 +557,39 @@ test('health:importFile refuses a file it does not recognise, and an empty one',
   await assert.rejects(() => call('health:importFile', { text: '   ' }), /no file contents/)
   await engine.close()
 })
+
+// --- boot path (the blank-screen fix) ---------------------------------------
+// App.jsx renders nothing at all - no screen, no bottom nav - until cycle:status
+// comes back, so this one call decides whether the app is usable. It used to be
+// followed by partner:list to tell a viewer from a fresh install, and that does
+// base.update() per shared base, which waits on a peer. A viewer whose partner
+// was offline sat on a blank screen forever. The count moved here, where it is a
+// plain localDb read.
+test('cycle:status carries the partner count without touching any base', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  const s0 = await call('cycle:status', {})
+  assert.equal(s0.hasBase, false)
+  assert.equal(s0.partners, 0, 'a fresh install has no partners -> the UI shows onboarding')
+
+  // The membership rows partner:join leaves behind, seeded directly. Crucially
+  // NO base is mounted for either, which is the whole point: the boot decision
+  // must not depend on a base being open, replicated or reachable.
+  await engine.localDb.put('groups:joined:aaa', { groupId: 'aaa', groupKey: 'k1', kind: 'shared-in' })
+  await engine.localDb.put('groups:joined:bbb', { groupId: 'bbb', groupKey: 'k2', kind: 'shared-in' })
+
+  const s1 = await call('cycle:status', {})
+  assert.equal(s1.partners, 2, 'viewer -> the UI boots straight into the partner list')
+  assert.equal(s1.hasBase, false, 'a viewer with shares still has no private base of its own')
+  await engine.close()
+})
+
+test('cycle:status counts only shared-in groups, not the private base', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const s = await call('cycle:status', {})
+  assert.equal(s.hasBase, true)
+  assert.equal(s.partners, 0, 'a private base of your own is not a partner share')
+  await engine.close()
+})

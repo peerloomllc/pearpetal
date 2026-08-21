@@ -43,10 +43,43 @@ function scheduleNotifResync () {
   _resyncTimer = setTimeout(() => { _resyncTimer = null; realCall('shell:notifications:sync', {}).catch(() => {}) }, 400)
 }
 
+// Backstop timeout on the UI side of the bridge. The shell bounds every worklet
+// call already, but its reply comes back through injectJavaScript, so a call can
+// still be lost if the WebView reloads mid-flight or the shell's JS thread
+// stalls. Left unbounded, a lost reply means a screen that never finishes
+// loading - and on the boot path that is the whole app stuck on a blank
+// background. Longer than the shell's own bound so the shell's clearer message
+// wins whenever it is the one that gave up.
+const CALL_TIMEOUT_MS = 30_000
+// Mirrors SLOW_METHODS in app/index.tsx: calls that wait on another device
+// (pairing) or grind through a large import, plus the shell-side wrappers that
+// forward to them.
+const SLOW_CALLS = new Set([
+  'cycle:create', 'link:invite', 'link:join', 'partner:join', 'share:create',
+  'export:data', 'import:data', 'health:importFile', 'health:import', 'recovery:getPhrase',
+])
+const SLOW_CALL_TIMEOUT_MS = 200_000
+// Not bounded at all: these hand off to a system share sheet, document picker or
+// permission dialog and only come back when the person finishes with it, which
+// can be minutes. A timeout here would fail a flow that is working fine.
+const UNBOUNDED_CALLS = new Set(['shell:export', 'shell:import', 'shell:health:importFile', 'shell:health:importApple'])
+const timeoutFor = (method) =>
+  UNBOUNDED_CALLS.has(method) ? 0 : SLOW_CALLS.has(method) ? SLOW_CALL_TIMEOUT_MS : CALL_TIMEOUT_MS
+
 function realCall (method, args) {
   return new Promise((resolve, reject) => {
     const id = nextId++
-    pending.set(id, { resolve: (r) => { if (RESCHEDULE_AFTER.has(method)) scheduleNotifResync(); resolve(r) }, reject })
+    const ms = timeoutFor(method)
+    const timer = ms > 0
+      ? setTimeout(() => {
+          if (!pending.delete(id)) return
+          reject(new Error(`${method} timed out after ${Math.round(ms / 1000)}s`))
+        }, ms)
+      : null
+    pending.set(id, {
+      resolve: (r) => { clearTimeout(timer); if (RESCHEDULE_AFTER.has(method)) scheduleNotifResync(); resolve(r) },
+      reject: (e) => { clearTimeout(timer); reject(e) },
+    })
     window.ReactNativeWebView.postMessage(JSON.stringify({ id, method, args: args || {} }))
   })
 }
@@ -86,7 +119,7 @@ function ensureSelfDevice () { mock.devices.set(MOCK_SELF, { pubkey: MOCK_SELF, 
 const mockMethods = {
   init: async () => ({ ok: true }),
   'identity:get': async () => ({ pubkey: MOCK_SELF }),
-  'cycle:status': async () => ({ hasBase: !!mock.base, groupId: mock.base?.groupId ?? null, pubkey: MOCK_SELF }),
+  'cycle:status': async () => ({ hasBase: !!mock.base, groupId: mock.base?.groupId ?? null, pubkey: MOCK_SELF, partners: mock.partners.size }),
   'cycle:create': async () => {
     if (!mock.base) { mock.base = { groupId: rid(), inviteKey: 'mock-' + rid(12) }; ensureSelfDevice() }
     return { groupId: mock.base.groupId, inviteKey: mock.base.inviteKey, created: true }
