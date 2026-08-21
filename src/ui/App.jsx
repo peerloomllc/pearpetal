@@ -2589,6 +2589,45 @@ function BottomNav ({ active, onTab, tabs = NAV_TABS }) {
   )
 }
 
+// --- boot states ------------------------------------------------------------
+// What the app shows before it knows who this device is. It used to show a bare
+// empty div, which is indistinguishable from a broken app: no wordmark, no
+// spinner, no nav. The spinner is delayed so a normal fast boot still goes
+// straight to the real screen with no flash of loading chrome.
+function BootSplash () {
+  const [slow, setSlow] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setSlow(true), 700); return () => clearTimeout(t) }, [])
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: spacing.base, opacity: slow ? 1 : 0, transition: 'opacity 300ms ease' }}>
+      <span style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${colors.border}`, borderTopColor: colors.primary, animation: 'pearpetal-spin 0.8s linear infinite' }} />
+      <div style={{ color: colors.text.muted, fontSize: 13 }}>Opening your cycle…</div>
+    </div>
+  )
+}
+
+// The engine did not answer. Anything is better than the blank screen this
+// replaces: say what happened in plain words, offer a retry, and show the raw
+// reason underneath so a support message can quote it.
+function BootError ({ detail, onRetry }) {
+  const [busy, setBusy] = useState(false)
+  const retry = async () => { setBusy(true); try { await onRetry() } finally { setBusy(false) } }
+  return (
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.base }}>
+      <div style={{ fontSize: 20, fontWeight: 600, color: colors.text.primary }}>PearPetal could not start</div>
+      <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.6 }}>
+        Something went wrong while opening your cycle data, so there is nothing to show yet. Nothing has been lost: your data is still on this phone.
+      </div>
+      <Btn onClick={retry} disabled={busy}>{busy ? 'Trying…' : 'Try again'}</Btn>
+      <div style={{ color: colors.text.muted, fontSize: 13, lineHeight: 1.6 }}>
+        If it keeps happening, fully close the app and open it again. Still stuck? Send us the line below and we will fix it.
+      </div>
+      {detail && (
+        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: colors.surface.card, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, color: colors.text.muted, font: '12px/1.5 ui-monospace, monospace' }}>{detail}</pre>
+      )}
+    </div>
+  )
+}
+
 export default function App () {
   const [mode, setMode] = useState(null) // null (loading) | 'onboard' | 'setup' | 'owner' | 'viewer'
   const [screen, setScreen] = useState('main') // 'main' | 'devices' | 'share'
@@ -2598,6 +2637,7 @@ export default function App () {
   const [pred, setPred] = useState(null)
   const [flower, setFlower] = useState('rose')
   const [notice, setNotice] = useState('')
+  const [bootError, setBootError] = useState('')
   const [donateReminder, setDonateReminder] = useState(false)
   const [periodSheet, setPeriodSheet] = useState(false)
   const [daySheet, setDaySheet] = useState(false)
@@ -2656,15 +2696,37 @@ export default function App () {
     if (p && p.flower) setFlower(p.flower) // keep the dial's flower in sync when prefs change (incl. synced from another device)
   }, [])
 
+  // ONE call, and it decides everything the first paint needs.
+  //
+  // This used to swallow its own failure (`.catch(() => ({ hasBase: false }))`)
+  // and then await partner:list before it could tell a viewer from a fresh
+  // install. Both were fatal: mode stays null until boot() finishes, and mode null
+  // renders an empty background with no bottom nav, so a single call that never
+  // came back left the app blank with nothing to tap and no way to reach About.
+  // partner:list does base.update() per shared base, which waits on a peer, so a
+  // viewer whose partner was offline could sit there forever. cycle:status now
+  // carries the partner count and reads only local state, and a failure lands on a
+  // screen that says so and offers Retry.
   const boot = useCallback(async () => {
-    const s = await call('cycle:status').catch(() => ({ hasBase: false }))
+    let s
+    try {
+      s = await call('cycle:status')
+    } catch (e) {
+      setBootError(e?.message || String(e))
+      setMode('error')
+      return
+    }
+    setBootError('')
     if (s.hasBase) {
       setMode('owner')
       call('prefs:get').then((p) => setFlower(p.flower || 'rose')).catch(() => {})
-      await call('device:publish').catch(() => {}); refresh(); return
+      // Fire-and-forget: publishing this device's roster entry appends to the
+      // personal base and is not something the first paint should wait behind.
+      call('device:publish').catch(() => {})
+      refresh()
+      return
     }
-    const partners = await call('partner:list').catch(() => [])
-    setMode(partners.length ? 'viewer' : 'onboard')
+    setMode(s.partners > 0 ? 'viewer' : 'onboard')
   }, [refresh])
 
   useEffect(() => { boot() }, [boot])
@@ -2714,7 +2776,8 @@ export default function App () {
   }, [mode])
 
   let content
-  if (mode === null) content = <div style={{ height: '100%' }} />
+  if (mode === null) content = <BootSplash />
+  else if (mode === 'error') content = <BootError detail={bootError} onRetry={() => { setMode(null); boot() }} />
   else if (mode === 'onboard') content = <Onboarding onReady={boot} onViewerReady={boot} onStartSetup={() => setMode('setup')} />
   else if (mode === 'setup') content = <SetupWizard onDone={boot} />
   else if (partnerGroup) content = <PartnerView groupId={partnerGroup} onClose={() => setPartnerGroup(null)} onLeft={() => { setPartnerGroup(null); boot() }} />

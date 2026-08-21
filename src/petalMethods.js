@@ -543,10 +543,25 @@ const methods = {
 
   // --- cycle lifecycle + device linking ----------------------------------
   // Is this device already tracking a cycle (has a private base)?
+  //
+  // THE WHOLE UI IS GATED ON THIS CALL. App.jsx renders nothing at all until
+  // cycle:status comes back (mode stays null, which is a bare background with no
+  // nav), so anything that can block here blanks the app with no way out. Keep it
+  // to LOCAL reads only:
+  //  - `ps.exists` would route through getDeviceLink -> dl.start() -> Autobase
+  //    ready(), which can wait on a peer. `personalMeta:bootstrap` is the same
+  //    signal start() itself gates on and is a plain localDb row.
+  //  - `partners` is counted here from localDb too, so the viewer boot path no
+  //    longer needs partner:list (which does base.update() per shared base).
+  // See the blank-screen post-mortem in DECISIONS.md.
   'cycle:status': async (_args, ctx) => {
-    if (isDeviceLinkEnabled()) return { hasBase: await ps.exists(ctx), groupId: null, pubkey: pubkeyHex(ctx) }
+    const partners = (await membershipsByKind(ctx, 'shared-in')).length
+    if (isDeviceLinkEnabled()) {
+      const boot = (await ctx.localDb.get('personalMeta:bootstrap').catch(() => null))?.value
+      return { hasBase: !!(boot && boot.key), groupId: null, pubkey: pubkeyHex(ctx), partners }
+    }
     const m = await privateMembership(ctx)
-    return { hasBase: !!m, groupId: m?.groupId ?? null, pubkey: pubkeyHex(ctx) }
+    return { hasBase: !!m, groupId: m?.groupId ?? null, pubkey: pubkeyHex(ctx), partners }
   },
 
   // The owner's own on-device projection (phase + predicted dates). Computed
@@ -1257,10 +1272,20 @@ const methods = {
 // access. migrateIfNeeded is a cheap no-op after the first call (and instant when
 // the flag is off), so wrapping every handler is free and needs no post-init hook
 // (which onEvent would otherwise cost us its IPC event forwarding).
+// maybeSeedOwnerState is deliberately NOT awaited. It is a best-effort publish of
+// this device's profile/prefs onto the personal base, nothing reads its result
+// back in the same call, and it routes through getDeviceLink -> dl.start(), which
+// opens an Autobase and can wait on a peer. Awaiting it put that wait in front of
+// EVERY method including cycle:status, which the whole UI is gated on - one stall
+// there and the app is a blank screen forever. migrateIfNeeded stays awaited: it
+// moves the cycle log, so a read must not run before it finishes.
 const wrapped = {}
 for (const name of Object.keys(methods)) {
   const fn = methods[name]
-  wrapped[name] = (args, ctx) => migrateIfNeeded(ctx).then(() => maybeSeedOwnerState(ctx)).then(() => fn(args, ctx))
+  wrapped[name] = (args, ctx) => migrateIfNeeded(ctx).then(() => {
+    maybeSeedOwnerState(ctx).catch(() => {})
+    return fn(args, ctx)
+  })
 }
 wrapped._resetMigrationForTest = _resetMigrationForTest
 

@@ -207,3 +207,25 @@ test('with the flag OFF, methods still use the core-group base (no regression)',
     await engine.close().catch(() => {})
   }
 })
+
+// The device-link twin of the boot-path test in petalMethods.test.js. With the
+// flag on, cycle:status answers `hasBase` from the `personalMeta:bootstrap` row
+// rather than from ps.exists(), which would route through getDeviceLink ->
+// dl.start() -> Autobase ready() and can wait on a peer. The whole UI is gated on
+// this call, so it has to stay local.
+test('cycle:status answers from the bootstrap row and carries the partner count', async () => {
+  await withDeviceLink(async ({ call, engine }) => {
+    const s0 = await call('cycle:status', {})
+    assert.equal(s0.hasBase, false)
+    assert.equal(s0.partners, 0)
+
+    await call('cycle:create', {})
+    const boot = await engine.localDb.get('personalMeta:bootstrap')
+    assert.ok(boot && boot.value && boot.value.key, 'cycle:create wrote the bootstrap row')
+
+    await engine.localDb.put('groups:joined:zzz', { groupId: 'zzz', groupKey: 'k3', kind: 'shared-in' })
+    const s1 = await call('cycle:status', {})
+    assert.equal(s1.hasBase, true, 'read straight off the row cycle:create just wrote')
+    assert.equal(s1.partners, 1, 'an owner can also be viewing a partner')
+  })
+})

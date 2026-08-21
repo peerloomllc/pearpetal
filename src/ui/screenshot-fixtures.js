@@ -99,7 +99,7 @@ const clone = (v) => JSON.parse(JSON.stringify(v))
 // data; mutations/shell calls are inert (resolve to a benign value).
 function screenshotCall (method, args = {}) {
   switch (method) {
-    case 'cycle:status': return P({ hasBase: true, groupId: 'me', pubkey: SELF })
+    case 'cycle:status': return P({ hasBase: true, groupId: 'me', pubkey: SELF, partners: 0 })
     case 'cycle:prediction': return P(clone(PRED))
     case 'prefs:get': return P({ ...PREFS })
     case 'profile:get': return P({ ...PROFILE })
