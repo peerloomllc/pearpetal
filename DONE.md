@@ -6,6 +6,13 @@ work lives in `TODO.md`.
 
 ## 2026-09-09
 
+- **The viewer's shared list now matches the owner's** (PR #128). Two touches the owner's
+  Sharing screen already had and `ViewerHome` never picked up: "Shared with you" is centred
+  rather than nudged left, and the share type in each row is capitalised, so a row reads
+  "Ada's cycle  Full". The capitalisation is scoped to the share type; "Sharing ended" and
+  "Will not open" are left alone so they do not come out title-cased. Seen on the iPhone SE,
+  a real paired viewer of a `full` share.
+
 - **The partner-viewer blank screen: found, reproduced and fixed** (PR #127, peerloom-core
   PR #20). Reported since August, survived PR #123's six defences, and hit again on 1.0.5.
   It was a loop we wrote: `partner:view` published the viewer's member row on every call,
