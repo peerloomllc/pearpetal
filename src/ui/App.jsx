@@ -10,7 +10,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh, Target, Bell, Palette } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh, Target, Bell, Palette, Drop } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -1956,6 +1956,86 @@ function DevicesCard () {
   )
 }
 
+// The logged periods, with a way to correct or remove one. Until this existed
+// nothing in the app called period:getAll, so a period logged on the wrong date
+// was permanent: every start feeds the cycle-length median, and there was no
+// screen that could even show you the mistake, let alone undo it.
+function PeriodHistory ({ onChanged }) {
+  const [rows, setRows] = useState(null)
+  const [editing, setEditing] = useState(null)   // the row being edited
+  const [confirm, setConfirm] = useState(null)   // the row awaiting a delete confirmation
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const load = useCallback(async () => { try { setRows(await call('period:getAll')) } catch { setRows([]) } }, [])
+  useSynced(load)
+
+  const remove = async (row) => {
+    setBusy(true); setErr('')
+    try {
+      await call('period:delete', { start: row.start })
+      haptic('success'); setConfirm(null); await load(); onChanged && onChanged()
+    } catch (e) { setErr(e.message || 'Could not remove it.') } finally { setBusy(false) }
+  }
+
+  const span = (row) => {
+    const from = fmtDate(row.start)
+    if (!row.end) return `${from} · ongoing`
+    if (row.end === row.start) return from
+    return `${from} - ${fmtDate(row.end)}`
+  }
+  const lengthOf = (row) => {
+    if (!row.end) return ''
+    const n = isoDiff(row.start, row.end) + 1
+    return `${n} day${n === 1 ? '' : 's'}`
+  }
+
+  return (
+    <>
+      {rows && rows.length === 0 && (
+        <div style={{ color: colors.text.muted, fontSize: 13 }}>No periods yet. Log one and it appears here, ready to correct or remove.</div>
+      )}
+      {rows && rows.map((row) => (
+        <div key={row.start} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, padding: `${spacing.sm}px 0`, borderBottom: `1px solid ${colors.divider}` }}>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', color: colors.text.primary, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{span(row)}</span>
+            <span style={{ display: 'block', color: colors.text.muted, fontSize: 12 }}>
+              {[lengthOf(row), row.inferred ? 'from the days you logged' : ''].filter(Boolean).join(' · ')}
+            </span>
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, flexShrink: 0 }}>
+            <button aria-label={`Edit the period starting ${fmtDate(row.start)}`} onClick={() => { haptic('light'); setEditing(row) }} style={{ background: 'none', border: 'none', padding: spacing.xs, cursor: 'pointer', color: colors.text.muted }}><PencilSimple size={18} weight='regular' /></button>
+            <button aria-label={`Remove the period starting ${fmtDate(row.start)}`} onClick={() => { haptic('light'); setErr(''); setConfirm(row) }} style={{ background: 'none', border: 'none', padding: spacing.xs, cursor: 'pointer', color: colors.error }}><Trash size={18} weight='regular' /></button>
+          </span>
+        </div>
+      ))}
+      {err && <div style={{ color: colors.warn, fontSize: 13 }}>{err}</div>}
+      <div style={{ color: colors.text.muted, fontSize: 12 }}>Removing a period also clears the bleeding logged on its days. Symptoms, mood, notes and temperatures on those days are kept. Ones marked "from the days you logged" were worked out from your calendar rather than added here, and they count towards your cycle just the same.</div>
+
+      {editing && (
+        <PeriodSheet
+          editing={{ start: editing.start, end: editing.end || '' }}
+          onClose={() => setEditing(null)}
+          onSaved={async () => { setEditing(null); await load(); onChanged && onChanged() }}
+        />
+      )}
+      {confirm && (
+        <BottomSheet onClose={() => setConfirm(null)}>
+          {(close) => (
+            <>
+              <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Remove this period?</div>
+              <div style={{ color: colors.text.secondary, fontSize: 13, textAlign: 'center', lineHeight: 1.5 }}>
+                {span(confirm)}. The bleeding logged on those days is cleared too, so your predictions stop counting this as a cycle. Anything else you noted on them stays.
+              </div>
+              <Btn onClick={async () => { await remove(confirm); close() }} disabled={busy} style={{ background: colors.error, opacity: busy ? 0.6 : 1 }}>{busy ? 'Removing…' : 'Remove'}</Btn>
+              <Btn kind='ghost' onClick={close}>Keep it</Btn>
+            </>
+          )}
+        </BottomSheet>
+      )}
+    </>
+  )
+}
+
 function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState(null) // { text, tone: 'success'|'error'|'muted' }
@@ -2149,6 +2229,10 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
         <Stepper label='Average period length' value={prefs.avgPeriodLength} def={5} min={2} max={10} field='avgPeriodLength' />
         <Stepper label='Luteal phase length' value={prefs.lutealLength} def={14} min={9} max={18} field='lutealLength' />
         <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
+      </CollapsibleCard>
+      <CollapsibleCard title='Your periods' icon={Drop} open={openSection.periods} onToggle={() => toggleSection('periods')}>
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>Every period you have logged. These anchor your cycle, so a wrong date changes what PearPetal predicts - correct or remove one here.</div>
+        <PeriodHistory onChanged={() => { loadPrefs(); onSaved && onSaved() }} />
       </CollapsibleCard>
       <CollapsibleCard id='health-section' title='Health & birth control' icon={Pill} open={openSection.health} onToggle={() => toggleSection('health')}>
         <div style={{ color: colors.text.muted, fontSize: 12 }}>Conditions that affect your cycle. These stay on your device and are never shared. They widen prediction estimates and tailor the guidance you see. Tap one to see how it changes your estimates.</div>
@@ -2353,11 +2437,16 @@ function DialInfoSheet ({ onClose }) {
 // Calls the existing period:set; the projection (dial, next-period, calendar) then
 // recomputes on refresh. A period start also anchors the cycle, so setting the last
 // period here is the direct way to correct "day N" without logging flow day-by-day.
-function PeriodSheet ({ defaultStart, onClose, onSaved }) {
-  const [start, setStart] = useState(defaultStart || todayIso())
-  const [end, setEnd] = useState('')
+// Adds a period, or edits one that is already logged. `editing` carries the row
+// being changed; its start is sent as `from` so the worklet MOVES that row rather
+// than writing a second one - the row is keyed by its start date, which is how a
+// mistyped start used to become permanent.
+function PeriodSheet ({ defaultStart, editing, onClose, onSaved }) {
+  const [start, setStart] = useState(editing?.start || defaultStart || todayIso())
+  const [end, setEnd] = useState(editing?.end || '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const movedStart = !!editing && start !== editing.start
   const field = { background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: `8px 10px`, fontSize: 15 }
   return (
     <BottomSheet onClose={onClose}>
@@ -2367,13 +2456,13 @@ function PeriodSheet ({ defaultStart, onClose, onSaved }) {
           if (end && end < start) { setErr('End date is before the start date.'); return }
           setBusy(true); setErr('')
           try {
-            await call('period:log', { start, end: end || null, today: todayIso() })
+            await call('period:log', { start, end: end || null, from: editing?.start, today: todayIso() })
             haptic('success'); onSaved && onSaved(start); close()
           } catch (e) { setErr(e.message || 'Could not save.'); setBusy(false) }
         }
         return (
           <>
-            <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Period dates</div>
+            <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>{editing ? 'Edit period' : 'Period dates'}</div>
             <div style={{ color: colors.text.muted, fontSize: 13, textAlign: 'center' }}>When did your last period start? Leave the end blank if it is ongoing. Those days are logged with a medium flow - tap any day afterward to adjust the amount.</div>
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
               <span style={{ color: colors.text.secondary, fontSize: 14 }}>Start</span>
@@ -2383,6 +2472,11 @@ function PeriodSheet ({ defaultStart, onClose, onSaved }) {
               <span style={{ color: colors.text.secondary, fontSize: 14 }}>End <span style={{ color: colors.text.muted }}>(optional)</span></span>
               <input type='date' value={end} min={start} max={todayIso()} onChange={(e) => setEnd(e.target.value)} style={field} />
             </label>
+            {movedStart && (
+              <div style={{ color: colors.text.muted, fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
+                Moving the start date re-logs this period on the new dates. Days inside it go back to a medium flow, so any amounts you set by hand will need setting again.
+              </div>
+            )}
             {err && <div style={{ color: colors.warn, fontSize: 13, textAlign: 'center' }}>{err}</div>}
             <Btn onClick={save} disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save'}</Btn>
             <Btn kind='ghost' onClick={close}>Cancel</Btn>

@@ -6,6 +6,33 @@ work lives in `TODO.md`.
 
 ## 2026-09-09
 
+- **A period logged on the wrong date can be corrected now** (PR pending). The last of the
+  three bugs from the review. `period:getAll` and `period:set` existed and NOTHING called
+  them, and no delete existed at any layer, so a mistyped start skewed the cycle-length
+  median forever with no way back short of reinstalling.
+  New: `period:delete`, a `from` argument on `period:log` that MOVES a period rather than
+  writing a second row (the row is keyed by its start, which is why a typo was permanent),
+  and a "Your periods" section in Cycle Settings listing every period with edit and remove.
+  THE SUBTLE PART: deleting the span row alone changes nothing a person can see, because
+  `cycleStarts()` derives a start from a run of BLEEDING DAYS as well as from a period row,
+  and `period:log` stamps a medium flow across the span. So a delete clears the flow on
+  those days too; symptoms, mood, notes and temperatures are kept.
+  TWO DEFECTS FOUND BY DRIVING THE TCL, not by the tests, both fixed and now covered:
+  1. The list showed only explicit period rows, so it read "No periods logged yet" on a
+     phone with a full log and a live prediction on the screen behind it. Starts inferred
+     from logged days are now listed, flagged "from the days you logged", and removable
+     (which clears the whole run, since clearing only the first day promotes the second).
+  2. A one-day inferred bleed rendered as "Jul 16 - ongoing", because a null end means
+     ongoing on an explicit row. Inferred runs always carry an end now.
+  VERIFIED ON THE TCL (`com.pearpetal.debug`, arm64), driven through uiautomator: the
+  section lists the starts, the confirmation names the date and says what it clears, and
+  removing one moved the dial from "Luteal day 28, next period Sep 10" to "Menstrual day 2,
+  next period Oct 6". `npm run verify` green, 230 tests (10 new).
+  NOTE the emulator could not be used: `android/gradle.properties` pins
+  `reactNativeArchitectures=arm64-v8a`, so the debug APK carries no x86_64 libraries and
+  crashes on an x86_64 AVD with `SoLoaderDSONotFoundError: libreactnative.so`. Rule 15's
+  virtual-first needs `-PreactNativeArchitectures=arm64-v8a,x86_64` for an emulator run.
+
 - **A backup now restores everything it saved** (PR pending). Found in the same review pass.
   `export:data` wrote five prefs and no profile, and `import:data` carried a SECOND, shorter
   whitelist of its own, so moving to a new phone silently dropped everything shaping the
