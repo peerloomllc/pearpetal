@@ -237,6 +237,22 @@ async function startWorklet (): Promise<string | null> {
 }
 export async function ensureBackendStarted () { await startWorklet() }
 
+// Throw the worklet away and start a clean one. Used after an erase: the engine
+// has closed its corestore and the files underneath it are gone, so the running
+// worklet is finished - but the APP does not have to be. Restarting it here and
+// remounting the WebView afterwards is what makes an erase land on onboarding,
+// the way wiping an app's data from system settings would, instead of asking
+// somebody to close and reopen it themselves.
+async function restartWorklet (): Promise<string | null> {
+  try { _worklet?.terminate() } catch {}
+  _worklet = null
+  _workletStarted = false
+  _initError = null
+  // Nothing in flight can be answered by a worklet that no longer exists.
+  _pending.clear()
+  return startWorklet()
+}
+
 // Full-screen init-failure page (so a broken engine is visible, not a UI that
 // silently no-ops every method, and not the bare background the app used to sit
 // on forever). Written for the person holding the phone: a plain sentence and
@@ -733,6 +749,35 @@ export default function Shell () {
           // the fresh prediction without waiting for a foreground.
           await syncNotifications({ request: false })
           return reply(id, { ok: true })
+        }
+        case 'shell:erase': {
+          // The worklet clears the device-local database and closes the engine
+          // first, so the store is not being written to while we delete it, and
+          // so a failed delete still leaves a phone that boots as a fresh
+          // install rather than one that thinks it has a cycle it cannot open.
+          const w = await callRaw('data:erase', {})
+          const erased = !(w && w.error)
+          // Best effort, and deliberately after the fact. Reclaims the disk and
+          // is what makes "erased" true on the filesystem as well as in the app.
+          let filesGone = false
+          try {
+            await FileSystem.deleteAsync(FileSystem.documentDirectory + APP_STORE_DIR, { idempotent: true })
+            filesGone = true
+          } catch {}
+          // Our own shell preferences: the theme and the app lock.
+          try { await AsyncStorage.clear() } catch {}
+          lockOnRef.current = false; setLockOn(false); setLocked(false)
+          reply(id, { ok: erased, filesGone, reason: w?.error || null })
+          if (erased) {
+            // Answer FIRST, so the UI can show that it worked, then rebuild
+            // underneath it. The worklet must be up before the WebView remounts,
+            // or the fresh UI's very first call goes to nothing and sits there
+            // until it times out.
+            await restartWorklet()
+            webViewLoaded.current = false
+            setWebViewGen((g) => g + 1)
+          }
+          return
         }
         case 'shell:lock:get': {
           // `available` says whether this phone can authenticate at all, so the

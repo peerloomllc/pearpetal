@@ -2218,7 +2218,78 @@ function AppLockCard () {
   )
 }
 
-function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
+// Erase everything on this phone. Irreversible: no account, no server, so a
+// backup file is the only way anything comes back. Two deliberate steps, the
+// destructive one is not the default, and the sheet says plainly what happens to
+// a partner's copy - because it does NOT come back either, and a person deleting
+// their cycle data deserves to know that before rather than after.
+// The moment between erasing and the app restarting itself. It takes the WHOLE
+// screen deliberately: swapping only the card left the Settings page around it
+// still rendering the name, the goal and the cycle lengths that had just been
+// deleted, which reads as though nothing happened. The shell rebuilds the worklet
+// and remounts the WebView a second or two later, which drops the app on
+// onboarding, so this is a hand-over rather than a dead end.
+function ErasedScreen ({ filesGone }) {
+  return (
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg, alignItems: 'center', justifyContent: 'center', minHeight: '70vh', textAlign: 'center' }}>
+      <Wordmark size={26} />
+      <div style={{ fontSize: 20, fontWeight: 600 }}>Everything is erased</div>
+      <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.6 }}>
+        Your cycle, your settings and this phone's identity are gone{filesGone ? ', and the files have been deleted from this phone' : ''}.
+      </div>
+      <div style={{ color: colors.text.muted, fontSize: 13, lineHeight: 1.6 }}>
+        Starting fresh… Anyone you shared with keeps whatever already reached their phone.
+      </div>
+    </div>
+  )
+}
+
+function EraseEverythingCard ({ onBackup, onErased }) {
+  const [open, setOpen] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const erase = async () => {
+    setBusy(true); setErr('')
+    try {
+      const r = await call('shell:erase', {})
+      if (!r?.ok) { setErr(r?.reason || 'Could not erase everything. Nothing has been changed.'); return }
+      haptic('success')
+      onErased(r)
+    } catch (e) { setErr(e.message || 'Could not erase everything.') } finally { setBusy(false) }
+  }
+
+  return (
+    <CollapsibleCard title='Erase everything' icon={Trash} open={open} onToggle={() => setOpen((o) => !o)}>
+      <div style={{ color: colors.text.muted, fontSize: 12, lineHeight: 1.5 }}>
+        Deletes your whole cycle log, your settings and this phone's identity. There is no account behind PearPetal and nothing is stored anywhere else, so this cannot be undone and we cannot recover it for you.
+      </div>
+      <Btn kind='ghost' onClick={onBackup}>Save a backup first</Btn>
+      <Btn onClick={() => { haptic('light'); setErr(''); setConfirming(true) }} style={{ background: colors.error }}>Erase everything</Btn>
+      {err && <div style={{ color: colors.warn, fontSize: 13 }}>{err}</div>}
+
+      {confirming && (
+        <BottomSheet onClose={() => setConfirming(false)}>
+          {(close) => (
+            <>
+              <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Erase everything?</div>
+              <div style={{ color: colors.text.secondary, fontSize: 13, textAlign: 'center', lineHeight: 1.6 }}>
+                Every day you have logged, every period, your settings and your name go from this phone. Anyone you linked or shared with keeps whatever already reached their phone, and you will not be able to reach it or change it afterwards.
+                <br /><br />
+                Without a backup file this cannot be undone by anyone, including us.
+              </div>
+              <Btn onClick={async () => { await erase(); close() }} disabled={busy} style={{ background: colors.error, opacity: busy ? 0.6 : 1 }}>{busy ? 'Erasing…' : 'Yes, erase everything'}</Btn>
+              <Btn kind='ghost' onClick={close}>Keep my data</Btn>
+            </>
+          )}
+        </BottomSheet>
+      )}
+    </CollapsibleCard>
+  )
+}
+
+function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, themePref = 'dark', onTheme, onErased }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState(null) // { text, tone: 'success'|'error'|'muted' }
   const [exportPw, setExportPw] = useState('') // optional backup password (blank = plaintext)
@@ -2479,6 +2550,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
           )}
         </div>
       </CollapsibleCard>
+      <EraseEverythingCard onBackup={() => setOpenSection((o) => ({ ...o, data: true }))} onErased={onErased} />
       {pendingImport && <ImportPasswordSheet onSubmit={submitEncryptedImport} onClose={() => setPendingImport(null)} />}
       {successModal && <BackupSuccessModal title={successModal.title} message={successModal.message} onClose={() => setSuccessModal(null)} />}
     </div>
@@ -2991,6 +3063,7 @@ export default function App () {
   // screen said 57 - the two surfaces disagreeing about her own cycles, which is
   // the one thing this feature must never do.
   const [history, setHistory] = useState(null)
+  const [erased, setErased] = useState(null) // set once, terminal: the app has no data left
   const [calMonth, setCalMonth] = useState(() => monthStart(todayIso()))
   const [calDir, setCalDir] = useState(1) // slide direction for the month transition
   const goMonth = (n) => { setCalDir(n); setCalMonth((cur) => shiftMonthIso(cur, n)) }
@@ -3086,7 +3159,9 @@ export default function App () {
   }, [mode])
 
   let content
-  if (mode === null) content = <BootSplash />
+  // Before everything else: there is nothing left to render from.
+  if (erased) content = <ErasedScreen filesGone={erased.filesGone} />
+  else if (mode === null) content = <BootSplash />
   else if (mode === 'error') content = <BootError detail={bootError} onRetry={() => { setMode(null); boot() }} />
   else if (mode === 'onboard') content = <Onboarding onReady={boot} onViewerReady={boot} onStartSetup={() => setMode('setup')} />
   else if (mode === 'setup') content = <SetupWizard onDone={boot} />
@@ -3097,7 +3172,7 @@ export default function App () {
     else content = <ViewerHome onOpenPartner={setPartnerGroup} onBecomeOwner={async () => { setScreen('main'); await call('cycle:create').catch(() => {}); setMode('setup') }} />
   }
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
-  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} themePref={themePref} onTheme={changeTheme} />
+  else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} themePref={themePref} onTheme={changeTheme} onErased={setErased} />
   else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
   else if (screen === 'history') content = <CycleHistory onClose={() => setScreen('main')} onEditPeriods={() => { setSettingsAnchor('periods'); setScreen('settings') }} />
   else content = (
@@ -3137,7 +3212,10 @@ export default function App () {
     </div>
   )
 
-  const showNav = !partnerGroup && (mode === 'owner' || mode === 'viewer')
+  // No nav once the data is gone: every tab it offers reads from a store that no
+  // longer exists, so tapping one would show an empty Settings page or a dial with
+  // nothing in it, right after telling the person everything was erased.
+  const showNav = !erased && !partnerGroup && (mode === 'owner' || mode === 'viewer')
   const navTabs = mode === 'viewer' ? VIEWER_NAV_TABS : NAV_TABS
   const navActive = (mode === 'viewer' ? ['settings', 'about'] : ['share', 'settings', 'about']).includes(screen) ? screen : 'main'
   return (
