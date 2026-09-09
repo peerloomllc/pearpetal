@@ -8,7 +8,7 @@
 // the wire proposal and TODO).
 
 import { useEffect, useRef, useState } from 'react'
-import { View, Platform, Share, StatusBar, BackHandler, AppState, Appearance, NativeModules } from 'react-native'
+import { View, Text, Platform, Share, StatusBar, BackHandler, AppState, Appearance, NativeModules } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Worklet } from 'react-native-bare-kit'
@@ -303,11 +303,42 @@ const { WebViewRecovery } = NativeModules
 const WEBVIEW_RECOVERY_MIN_BG_MS = 20_000
 let _backgroundedAt = 0
 
-// How long the shell will wait for the engine before it stops showing a bare
-// background and shows a message instead. Deliberately generous: a cold start on
-// an old phone with a large store is slow, and a false alarm here is worse than a
-// few extra seconds of splash.
+// How long the shell will wait for the engine before it gives up and shows the
+// failure page. Generous: a cold start on an old phone with a large store is
+// slow, and a false alarm here is worse than a few extra seconds of splash. What
+// changed is what fills those seconds - see BootSplash. It used to be a bare
+// background with no words at all, which is why the person who reported the
+// blank screen said he got no message: he was looking at the wait, not at the
+// failure page, and nobody stares at nothing for 45 seconds.
 const BOOT_WATCHDOG_MS = 45_000
+// When the splash stops being silent and starts explaining itself.
+const SPLASH_SLOW_MS = 6_000
+
+// What the app shows while the engine is starting. Not a bare background: the
+// wordmark from the first frame, a line of text once the wait stops being
+// normal, and the reason it might be waiting - which for this app is usually the
+// other person's phone not being nearby.
+function BootSplash ({ theme }: { theme: string }) {
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), SPLASH_SLOW_MS)
+    return () => clearTimeout(t)
+  }, [])
+  const fg = theme === 'light' ? '#5c4650' : '#f6eef0'
+  const muted = theme === 'light' ? '#8a7480' : '#c6b8bd'
+  return (
+    <View style={{ flex: 1, backgroundColor: bgFor(theme), alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+      <Text style={{ color: fg, fontSize: 24, fontWeight: '600', letterSpacing: 0.3 }}>PearPetal</Text>
+      <Text style={{ color: muted, fontSize: 14, marginTop: 10 }}>Opening your cycle…</Text>
+      {slow && (
+        <Text style={{ color: muted, fontSize: 13, marginTop: 24, textAlign: 'center', lineHeight: 20 }}>
+          This is taking longer than usual. Nothing is lost - your data is on this phone.
+          {'\n'}If it does not open, close the app fully and try again.
+        </Text>
+      )}
+    </View>
+  )
+}
 
 export default function Shell () {
   const webViewRef = useRef<any>(null)
@@ -609,7 +640,7 @@ export default function Shell () {
     }
   }
 
-  if (!html) return <View style={{ flex: 1, backgroundColor: bgFor(shellTheme) }} />
+  if (!html) return <BootSplash theme={shellTheme} />
   return (
     <>
       <StatusBar barStyle={shellTheme === 'light' ? 'dark-content' : 'light-content'} translucent backgroundColor='transparent' />

@@ -4,7 +4,268 @@ Chronological log of shipped work, newest first. One line (or few) per item with
 its date + PR. Deep rationale for T2/T3 changes lives in `DECISIONS.md`; open
 work lives in `TODO.md`.
 
+## 2026-08-21
+
+- **Support development is back on the iOS About page** (PR #126). PR #121 hid every donation
+  surface on iOS after Apple cited Guideline 3.1.1 on 1.0.4 build 13; this brings back the
+  passive half. BACK: the About accordion row, which a person has to go looking for and then
+  open. STILL OFF: the two-week nudge, the modal that surfaces itself uninvited, which is the
+  surface a reviewer reads as soliciting. Its gate now carries that reason instead of the old
+  one (that it pointed at a section which was not there).
+  VERIFIED ON THE iOS SIMULATOR (iPhone 17 Pro, iOS 26.5, Release), driven through
+  WebDriverAgent rather than read off the source: fresh install, full onboarding, About ->
+  "Support development" present and expanding, and the Bitcoin button opens the Lightning
+  sheet with the address, the QR option, the on-chain address and the wallet list. Note the
+  a11y dump does NOT show that sheet (a WebView overlay), so the screenshot is what proved it -
+  a dump alone would have read as "nothing happened".
+  Rides a later build; 1.0.4 build 14 is with Apple and shipped with donations hidden.
+
+- **`app/index.tsx` was a BINARY file to git** (PR #125). `sanitizeFilename`'s character class
+  held a raw NUL byte rather than an escape, so every diff on the shell read
+  `Bin 35998 -> 36840 bytes` with no content, and `grep` skipped the file entirely while
+  returning exit code 0 - a search that should hit just looked like a miss. Found while trying
+  to review PRs #123 and #124, both of which are unreadable diffs because of it. Escaped to
+  `\x00`; the regex is identical, checked against the raw-byte form on path separators,
+  padding, an embedded NUL and a plain name. It was the only tracked source file with a NUL.
+
+- **The iOS WebView recovery from PR #123 did not actually recover** (PR #124). Caught by
+  testing it rather than trusting it. `onContentProcessDidTerminate` fired correctly, but its
+  `reload()` is wrong for this app: the source is an html STRING with
+  `baseUrl https://localhost/`, and WKWebView's reload re-requests that URL, which nothing
+  serves, so the view sat on the loading spinner forever - one permanent dead end swapped for
+  another. Remounting the WebView (bump its `key`) drops the dead view and loads the html
+  string again from scratch. Android keeps `reload()`, which works there and is proven in the
+  field.
+  VERIFIED ON THE iOS SIMULATOR (iPhone 17 Pro, iOS 26.5, Release build) by killing
+  `com.apple.WebKit.WebContent` under a running app: with `reload()` it span indefinitely,
+  with the remount the app is back on its screen within seconds. That is a real end-to-end
+  exercise of the jettison path, not a config read.
+
+## 2026-08-20
+
+- **The blank screen is gone: a stalled engine now says so instead of showing nothing**
+  (PR #123). Reported by an iOS partner-viewer: the app opened to a bare dark screen with
+  no bottom nav, so About was unreachable; it worked for a few days after each pair, then
+  stopped, and only a reinstall plus re-pair brought it back. The screenshot was
+  `#140f11` in every pixel, which is our own `--color-surface-base`, so the app was running
+  and had painted its background and nothing else. Two places render exactly that: the
+  shell while `html` is null, and `App.jsx` while `mode` is null (which also hides the nav).
+  Neither could ever recover, because nothing in the chain had a timeout: `callRaw`,
+  `realCall`, `boot()` and hypercore itself (`timeout` defaults to 0) all wait forever, and
+  a `.catch()` does nothing for a promise that never settles.
+  Six changes, each closing one way to end up staring at a background:
+  1. `cycle:status` is now LOCAL-ONLY and carries the partner count, so `boot()` makes one
+     call that cannot block. It used to follow up with `partner:list`, which does
+     `base.update()` per shared base and waits on a peer - a viewer whose partner was
+     offline sat there forever. It also read `ps.exists()`, which opens the personal
+     Autobase; it reads the `personalMeta:bootstrap` row instead, the same signal
+     device-link's own `start()` gates on.
+  2. `maybeSeedOwnerState` is no longer awaited in the method wrapper. It is a best-effort
+     publish that nothing reads back, and awaiting it put `getDeviceLink -> dl.start()` in
+     front of EVERY method including `cycle:status`. `migrateIfNeeded` stays awaited.
+  3. Every worklet call is bounded (20s, 180s for pairing/import, and a UI-side backstop),
+     so a stall becomes a visible error rather than silence.
+  4. A boot watchdog in the shell (45s) covers the rest of the chain - asset reads,
+     `Worklet.start`, init - none of which went through `callRaw`.
+  5. `onContentProcessDidTerminate` on the WebView. We recovered the Android renderer
+     (`onRenderProcessGone`) but had no iOS equivalent, so a WKWebView content process
+     jettisoned under memory pressure left a permanently blank view showing the container
+     colour - our colour, hence the same symptom.
+  6. An `ErrorBoundary` plus window `error`/`unhandledrejection` handlers, so a UI crash
+     shows words instead of unmounting to an empty `#root`.
+  The failure page and the in-app error screen are written for the person holding the phone
+  and quote the raw reason, so the next report arrives with the cause attached.
+  Verified: `npm run verify` green, 208 tests (3 new). VERIFIED ON THE ANDROID EMULATOR
+  (Pixel_9 AVD, x86_64 - the debug script defaults to arm64-v8a, so an emulator run needs
+  `ABIS=x86_64`): clean build boots to onboarding, and a build with `cycle:status`
+  deliberately pointed at a non-existent method renders "PearPetal could not start" with a
+  Try again button and `unknown method: ...` quoted underneath, where the old code showed
+  nothing at all. Not yet exercised on an iOS Simulator or the iPhone SE, and the reporter's
+  ROOT CAUSE IS STILL UNCONFIRMED - see the open item in `TODO.md`.
+  VERIFIED ON HARDWARE AND ON iOS the same day: the TCL (existing populated install,
+  cycle day 9, 10 recent days) upgrades and boots straight into the owner view, which is
+  the case that matters - `cycle:status` reading the `personalMeta:bootstrap` row on a
+  store that already has data. The iOS Simulator (iPhone 17 Pro, Release) boots to
+  onboarding, so the worklet answers on iOS too. Also installed to the Pixel 9 and the
+  iPhone SE; neither was driven (rule 6 keeps the Pixel observe-only, and the SE cannot be
+  launched headlessly without a mounted DDI), so those two are INSTALLED, NOT VERIFIED.
+
+## 2026-08-11
+
+- **1.0.4 build 14 resubmitted to the App Store after the 3.1.1 rejection** (PR #122 for the
+  build-number bump; the fix itself is PR #121). Apple rejected build 13 under Guideline
+  3.1.1 - donations collected outside in-app purchase. No version bump: the 1.0.4 record was
+  REJECTED, which is editable, and 1.0.1 is still live, so the same record got a fresh
+  binary. Sequence: `expo.ios.buildNumber` 13 -> 14, `npm run verify` green, archive +
+  altool validate + upload on the Mac mini via `scripts/ios-appstore.sh`, wait for build 14
+  to reach VALID, attach to the version record, declare no non-exempt encryption (Tim's
+  call, matching every prior build), add an App Review note naming the removed donation
+  surfaces, then submit.
+  ONE GOTCHA WORTH KEEPING: a new review submission cannot take the version while the
+  REJECTED one still holds it - `items-add` fails with "already added to another
+  reviewSubmission". Cancel the old submission first
+  (`asc review submissions-update --id <old> --canceled=true`), let it reach COMPLETE, then
+  add and submit. Now WAITING_FOR_REVIEW, submission 43d74827, submitted 2026-08-11.
+
+- **Donation path hidden on iOS** (PR #121). App Store Review Guideline 3.1.1 does not
+  allow collecting donations outside in-app purchase, so on iOS the About page drops the
+  "Support development" section and the two-week donation nudge never fires. Android is
+  unchanged. One `IS_IOS` gate in `src/ui/App.jsx` reading `window.__pearPlatform`, which
+  the shell already injects before the UI bundle runs. "Learn about Bitcoin" stays - it is
+  educational, not a solicitation. Verified by `node --test test/*.test.js` (205/205 pass)
+  and `npm run build:ui`; not yet exercised on an iOS Simulator.
+
+## 2026-07-31
+
+- **1.0.4 submitted to the App Store, superseding the stuck 1.0.3** (no PR - App Store
+  Connect state, not code). 1.0.3 had sat in WAITING_FOR_REVIEW since 2026-07-24 with build
+  9 attached, seven days against Apple's usual 24-48h, and Apple allows only one version in
+  flight - so nothing could ship until it moved. Checked BEFORE cancelling that it was not
+  blocked on anything of ours: the submission item read READY_FOR_REVIEW with `canceled`
+  unset, so it was queued, not stalled on a missing answer.
+  Done via the App Store Connect REST API, following the rules `release.sh` already encodes
+  in its own version-record step: cancel the review submission, wait for the version to land
+  in an EDITABLE state (it became DEVELOPER_REJECTED), then RENAME that record 1.0.3 -> 1.0.4
+  rather than creating a new one - Apple's supported way to supersede an unreleased version,
+  and it preserves the screenshots and listing already on it. Then attached build 13,
+  replaced `whatsNew` with the 1.0.4 notes (1907 chars, all ASCII), created a review
+  submission, added the version as its item and submitted.
+  Final state: 1.0.4 WAITING_FOR_REVIEW, build 13, releaseType AFTER_APPROVAL, so it goes
+  live by itself once approved. 1.0.1 remains READY_FOR_SALE until then.
+  WHY THE RELEASE SCRIPT COULD NOT DO THIS ITSELF, and it was right not to: `release.sh`
+  classifies WAITING_FOR_REVIEW as BLOCKING - "Apple owns it, nothing local can fix it" - and
+  skips its metadata and submission steps with one message instead of a cascade of warnings.
+  That is why the 1.0.4 run left no version record. The script was not broken; cancelling a
+  queued submission is a human decision it deliberately will not make.
+  THEN RESUBMITTED with combined notes, same evening, because the first submission's notes
+  covered only v1.0.3..v1.0.4 - right for Play, wrong for a store whose live version is
+  1.0.1. Cancelled again (the version returns to DEVELOPER_REJECTED within a minute or two),
+  replaced `whatsNew` with a 3274-char version spanning both releases, resubmitted.
+  Final: 1.0.4 WAITING_FOR_REVIEW, build 13, 3274 chars of notes, AFTER_APPROVAL.
+  `metadata/ios/version/1.0.4/en-US.json` updated to match what was actually sent, so the
+  repo and App Store Connect do not disagree.
+  THE SPAN WAS DECIDED ON CONTENT, not version numbers. The store has published only 1.0 and
+  1.0.1; 1.0.2's record was itself renamed to 1.0.3 back on 2026-07-23 for the same
+  queue-stall reason, so neither shipped. But 1.0.2's only user-visible change was the
+  GrapheneOS WebView resume-freeze, which is Android-only - nothing an iPhone user could
+  notice - so spanning 1.0.3..1.0.4 loses nothing. The notes open "This one covers two
+  releases" rather than naming versions, which sidesteps the question for the reader.
+  Combined notes add Connect anywhere, Connection details, the tidier Settings screen and
+  the dial/month-switcher overlap fix to the 1.0.4 entries.
+
+- **The HealthKit WRITE purpose string, and a validate-before-upload gate** (PR #120).
+  Build 12 was rejected too, same ITMS-90683, this time naming
+  `NSHealthUpdateUsageDescription` - the WRITE string that PR #117 deliberately withheld and
+  recorded as "a structural guarantee, not an oversight".
+  APPLE IS UNMOVABLE, and their own trigger text says why: "references one or more APIs ...
+  OR the app has one or more entitlements that permit such access". The
+  `com.apple.developer.healthkit` entitlement permits reading AND writing and has no
+  read-only variant, so both strings are required for any app carrying it, whatever the code
+  does. `HealthReadModule.swift` calls `requestAuthorization(toShare: nil, read:)` and has no
+  `save()` or `delete()` at all - it made no difference.
+  HOW IT WAS DIAGNOSED, worth reusing: the build never appeared in App Store Connect - no
+  1.0.4 train, nothing in `PROCESSING` after 40 minutes - which is exactly what a validation
+  rejection looks like from outside, and is why build 11 was invisible too. Rather than wait
+  for the email, `xcrun altool --validate-app` was run against the IPA already uploaded and
+  reproduced the rejection in two minutes, naming the key.
+  THE GUARANTEE DID NOT CHANGE, only how it is stated - see `DECISIONS.md` 2026-07-31. It
+  never rested on the missing key: a purpose string is prompt text, not an authorization,
+  and no user can ever see this one because only a write request displays it. Honest cost
+  recorded there too - "the key is absent" was checkable in one grep against the IPA, while
+  "the app never asks to share" makes an auditor open the Swift.
+  PROCESS FIX shipped with it: `ios-appstore.sh` now runs `--validate-app` BEFORE uploading
+  and refuses to upload on failure, and the PR #119 preflight now checks both keys. Two
+  rejections each cost a 20-minute archive, an upload and a wait for an email a human had to
+  read, for an answer Apple gives in two minutes.
+  VERIFIED, and the gate proved itself on its first real run: preflight passed with both
+  keys, ARCHIVE and EXPORT succeeded, then Apple's validator returned "No errors validating
+  archive" - the same check that had rejected 11 and 12 - and only then did the upload
+  commit. Build 13 processed to state VALID in App Store Connect and the 1.0.4 train now
+  exists, so the ITMS-90683 loop is closed. `npm run verify` green at 205 tests.
+  FOUND WHILE CONFIRMING IT, logged in `TODO.md`: iOS is two releases behind. 1.0.1 is what
+  App Store users can install; 1.0.3 has been WAITING_FOR_REVIEW since 2026-07-21. No 1.0.4
+  version record can be created until that one moves.
+
 ## 2026-07-30
+
+- **The App Store build was missing the HealthKit purpose string** (PR #119). The 1.0.4 iOS
+  upload bounced with `ITMS-90683: Missing purpose string in Info.plist ... should contain a
+  NSHealthShareUsageDescription key`. Android, GitHub and Zapstore all shipped fine; only
+  the iOS binary was rejected, during ASC processing rather than review.
+  CAUSE: `with-ios-healthkit` gates BOTH the entitlement and the usage string on
+  `PEARPETAL_HEALTHKIT` at prebuild time and strips them when unset - correct and
+  deliberate, since an unconditional entitlement fails to sign against a profile without the
+  capability. But `scripts/app.conf` exported `PEARPETAL_ASSOCIATED_DOMAINS` and never
+  `PEARPETAL_HEALTHKIT`, and `ios-appstore.sh` prebuilds from that config on the Mac.
+  Confirmed after the fact on the Mac mini: `PlistBuddy` reported the key "Does Not Exist"
+  and the entitlements file carried associated-domains alone.
+  THE REJECTION IS THE SMALLER HALF, and this is the part worth remembering. Apple's scan
+  keys off LINKED SYMBOLS, and `modules/health-read` links HealthKit unconditionally, so the
+  binary referenced the APIs whichever way the flag was set. Had review passed it, the iOS
+  Health import shipped in #117 would have been DEAD in the App Store build - HKHealthStore
+  refuses at runtime without the entitlement the same missing flag stripped. A green archive
+  was hiding a broken feature; the ITMS code is what made it visible.
+  Fixed three ways: `app.conf` exports the flag; `ios-appstore.sh` now preflights the
+  Info.plist straight after prebuild and refuses to archive when `modules/health-read` is in
+  the tree with no usage string (the test is "is the module present", not "is the flag set",
+  matching what Apple actually scans); iOS buildNumber 11 -> 12, since 11 was uploaded and
+  discarded during processing and never became a build record in ASC.
+  Verified: a real `expo prebuild -p ios` with the fixed config yields the usage string plus
+  entitlements [associated-domains, healthkit], and STILL no `NSHealthUpdateUsageDescription`
+  and no `healthkit.access`, so #117's structural read-only guarantee is intact. The ASC API
+  confirms App ID `com.pearpetal` (876K75ZSMS) carries the HEALTHKIT capability.
+  `npm run verify` green at 205 tests.
+  THE PROFILE HALF, done the same evening: the "PearPetal App Store" distribution profile
+  (353HK3RAQ7, created 2026-07-10) predated the capability and the API reported it INVALID -
+  enabling a capability invalidates existing profiles server-side while a cached local copy
+  keeps signing archives, which is why 1.0.4 archived at all. Tim regenerated it in the
+  portal; installed on the Mac as `e5eb05eb-ac3a-438a-a585-109533dca388` and the stale file
+  deleted, since manual signing matches by NAME and two files claiming one name is how the
+  wrong one gets picked. Checked before archiving rather than after: the new profile carries
+  `com.apple.developer.healthkit`, has no ProvisionedDevices (a real distribution profile)
+  and trusts cert `0A9CD425...`, which is present in the Mac's keychain.
+  RESUBMITTED as build 12 (1.0.4). The preflight added above passed on the Mac - its first
+  real run - then ARCHIVE and EXPORT succeeded and `asc` committed the upload. Verified on
+  the exported IPA itself, not on the intermediate archive: `NSHealthShareUsageDescription`
+  present, `NSHealthUpdateUsageDescription` ABSENT, CFBundleVersion 12 / 1.0.4, entitlements
+  [associated-domains, healthkit] with `get-task-allow=false`, and the embedded profile is
+  the new UUID. Note the .xcarchive still shows `get-task-allow=true`; the export step
+  re-signs for distribution, so the archive is the wrong thing to check.
+  MAC BUILD-HOST NOTE, cost a wrong instruction first time: `~/peerloomllc/pearpetal` on the
+  Mac mini is NOT a git checkout. `release.sh` rsyncs the tree there and then runs
+  `ios-appstore.sh` over SSH, despite that script's header saying "not via SSH" - the header
+  is stale relative to how the release pipeline actually drives it.
+
+- **The release version-bump commit no longer aborts on a gitignored path** (PR #118).
+  Found the hard way mid-release: `scripts/release.sh 1.0.4` died at step 6 with "The
+  following paths are ignored by one of your .gitignore files: ios". The step commits the
+  version bumps before tagging from an explicit allowlist, and that allowlist carries
+  `$XCODE_PROJECT` - tracked in the sibling app the step was ported from, GITIGNORED here
+  because `/ios/` is regenerated by `expo prebuild`. `git add` exits 1 on an ignored path
+  and `set -euo pipefail` turned that into an abort of the whole release.
+  THE COST IS THE POSITION, not the bug: the abort lands after verify, after the bundle
+  builds, after the signed APK and AAB, and after the final "ready to publish?" confirm,
+  but before the commit, tag and push. So nothing irreversible ran and nothing was
+  salvageable either - there is no resume flag, so the run restarts from the top.
+  Fixed by filtering the allowlist through `git check-ignore`, logging what was skipped.
+  Verified: `bash -n` clean; the loop in isolation under `set -euo pipefail` skips the
+  Xcode project, keeps `app.json` and makes `git add --dry-run` succeed where it had
+  exited 1; `npm run verify` green at 205 tests. NOT verified by a full release run - the
+  next `scripts/release.sh 1.0.4` is that test.
+
+- **1.0.4 release notes written** (no PR - `release_notes.md` is edited in-place by the
+  release script and not part of the bump commit). Covers everything since v1.0.3
+  (2026-07-23): file import, Apple Health read on iOS, the daily flower note, the cloud
+  backup exclusion plus its Settings message, and the two fixes (#107, #108). Deliberately
+  omits the release-pipeline work (#102-#104), the merge-rules groundwork (#113) and the
+  built-then-dropped Health Connect route (#114) - none of it is visible to a user.
+  TWO SHAPE CONSTRAINTS worth remembering, both learned on this pass. Bullets indented 4
+  spaces become a CODE BLOCK on the GitHub release, which takes `--notes-file
+  release_notes.md` verbatim; 2-space bullets under flush-left section words are the shape
+  that renders. And Play truncates at 500 chars on a LINE boundary, so the running order
+  and the LENGTH of the first bullet decide what a Play user reads - trimmed the intro and
+  bullet one until the cut lands at 482 chars on a complete sentence rather than leaving a
+  dangling "New" heading with nothing under it, which is what the shipped 1.0.3 copy did.
 
 - **Apple Health read on iOS** (PR #117). The iOS half, unaffected by the Android story:
   HealthKit has no store gate, so a dev build, TestFlight build and App Store build all get

@@ -2,6 +2,65 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-09-09 - The partner-viewer blank screen: our write loop, not a P2P limit
+Tier: T2. Root cause for the live bug tracked in TODO.md since 2026-08-20, and the reason
+PR #123's six defences did not stop it.
+Context: an iOS partner-viewer reported the app opening to a bare dark screen, days after
+each pairing, with no message on it, unfixed by restarting the phone, and cleared only by a
+reinstall plus a re-pair. PR #123 removed every blank screen it could find and made the
+failures visible; PR #124 fixed the iOS half of the WebView recovery. He hit it again on
+1.0.5, with the shared cycle two days stale before it went blank. The symptom had been
+attributed to one of three possible stalls, none of them confirmed.
+IT IS A LOOP WE WROTE, and it was reproduced end to end at the engine level with two real
+Hyperswarm peers, PearPetal's own method table, and the shipped retention settings:
+1. `partner:view` calls `publishMember`, best-effort, on every invocation.
+2. `publishMember` appended the member row unconditionally. `signRow` stamps a fresh
+   `updatedAt`, so an identical row is still a new row.
+3. The append changes the linearized view, which emits `group:updated`.
+4. `PartnerView` in App.jsx reloads on `group:updated` by calling `partner:view`, closing
+   the circle at about eight appends a second, with nobody touching either phone.
+   Measured: 888 rows in 45 seconds, none of them requested by a person.
+5. Past 512 rows, `@peerloom/core`'s 30-minute retention sweep started clearing this
+   device's OWN input core, whose blocks no other device is obliged to hold.
+6. The next cold start hung in `init()` mounting that base, forever, because hypercore's
+   read timeout is 0. The shell paints a bare background until `init` returns, so that is
+   the blank screen, and the reason it carried no message is that its watchdog was 45
+   seconds and nobody stares at nothing for 45 seconds.
+Every detail of his report falls out of this, including why a reinstall was the only cure
+and why re-pairing bought a few more days: a re-pair mints a NEW shared base whose row
+counter starts at zero.
+Choice, four changes across two repos:
+- PearPetal: `publishMember` writes only when the member row's content actually changed.
+  That alone breaks the loop (888 rows becomes 4 over the same 45 seconds).
+- peerloom-core: `retain()` never clears the LOCAL input core at any keepRecent. Another
+  writer's blocks can be re-fetched from that writer; ours cannot, so pruning them is not
+  pruning, it is deletion, and it leaves a base that opens only while some peer that
+  replicated them is present.
+- peerloom-core: `init()` bounds each mount and joins the topic either way, so one group
+  that will not open no longer hangs the engine, the groups behind it, or the dial to the
+  one peer that could repair it.
+- PearPetal: reading a partner's cycle bounds its `base.update()` and falls through to the
+  stored view. Their phone not being nearby is the ordinary state of a two-phone app, so a
+  cycle from yesterday is the right answer, not a spinner. This is also the honest fix for
+  the "showing status from 2 days ago" half of his report: the data really was two days
+  old, because sync needs both apps open at once, and now the app says what it has instead
+  of hanging while it hopes for more.
+REPAIR, because none of the above heals a phone already in this state, and his is. A
+shared-in base holds nothing of the viewer's own - it is a read-only copy of the owner's
+projection - so `partner:repair` throws the local copy away and rebuilds the group in a
+fresh corestore namespace (new in core: `joinGroup({ namespace })`, since cores under a
+namespace are deterministic and re-joining the same invite would reopen the same damaged
+ones). The invite is re-derived from the membership record, so the partner does not have to
+send anything. Surfaced as a "Rebuild it" button on the shared-cycle screen.
+HONEST COST: the repaired group's old cores stay on disk as dead weight until the store is
+rebuilt, and `partner:list` / `partner:view` can now take up to 5 seconds before answering
+from stored data when the other phone is absent.
+WHY THE TESTS DID NOT CATCH IT: all three retention tests read the view with the base still
+open, which the persisted view answers whether or not the input blocks still exist. None
+closed and reopened the store. They now assert the local core is untouched, and two new
+tests close and reopen: one after a sweep with no peer anywhere, one on a store damaged the
+old way.
+
 ## 2026-07-31 - The HealthKit read-only guarantee is `toShare: nil`, not a missing Info.plist key
 Tier: T2. Amends the iOS half of proposals/2026-07-30-health-import.md, which stated the
 guarantee the other way round.
