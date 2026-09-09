@@ -117,7 +117,13 @@
       "./plugins/with-android-abis",
       "./plugins/with-android-webview-recovery",
       "./plugins/with-android-backup-exclusion",
-      "./plugins/with-ios-healthkit"
+      "./plugins/with-ios-healthkit",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock PearPetal with Face ID, so your cycle is not open to anyone who picks up your phone."
+        }
+      ]
     ],
     "assets": [
       "./assets/bare-universal.bundle",

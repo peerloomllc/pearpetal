@@ -57,15 +57,8 @@ pending) are all fixed. What is left is confirmed with tests that were run.
 
 ## Feature gaps from the same review
 
-Logged for ranking, not started. The feature set is already rich; these are what a
+The app lock is built (PR pending). The rest are logged for ranking, not started. The feature set is already rich; these are what a
 walk through the code and the method table showed to be missing.
-
-- **No lock on the app.** No PIN, no Face ID, nothing biometric anywhere in
-  `src/`, `app/` or `app.json`. Anyone holding the unlocked phone opens straight
-  into her cycle. For a menstrual tracker sold on privacy this is the most
-  conspicuous omission, and the competitors all have it. Needs a decision on what
-  it actually protects: the app on open, or also the partner view, and what
-  happens to notifications on the lock screen (discreet mode already exists).
 
 - **No cycle history or statistics.** No list of past cycles, no average length,
   no symptom or mood patterns over time. The data is all stored and `period:getAll`
@@ -76,6 +69,17 @@ walk through the code and the method table showed to be missing.
 - **No way to erase everything.** A privacy-first app with no in-app delete-all.
   Uninstalling does it, but nothing says so and there is no control. Cheap to add
   and it matches the promise the onboarding makes.
+
+## App lock - one thing not to re-litigate
+
+- **The "Use PIN" button is Android's, not ours.** It looks left-aligned under a centred
+  title and it cannot be moved: the accessibility tree names it
+  `com.android.systemui:id/button_use_credential`, package `com.android.systemui`, so the
+  whole unlock dialog is drawn by the system and every app on the phone that asks for a
+  fingerprint gets the same layout. We control the wording inside it and our own cover
+  behind it, nothing else. The only route to real control is our own PIN screen, which was
+  turned down deliberately (no account, no reset, forgetting it means deleting the app).
+  Raised and closed 2026-09-09.
 
 ## Verification still owed
 
