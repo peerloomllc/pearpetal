@@ -1371,8 +1371,17 @@ function CycleHistory ({ onClose, onEditPeriods }) {
               </span>
             )}
             {stats.regular
-              ? `Your cycles vary by ${dayWord(stats.variation)}, which is steady. Predictions from this are as good as they get.`
-              : stats.variation != null
+              ? (stats.variation === 0
+                  ? 'Every cycle you have logged has been exactly the same length. Predictions from this are as good as they get.'
+                  : `Your cycles vary by ${dayWord(stats.variation)}, which is steady. Predictions from this are as good as they get.`)
+              // Nought is the GOOD case, and the caution below reads as nonsense
+              // against it: "Your cycles vary by 0 days. The more they vary, the
+              // rougher the predictions are." Seen on the TCL with two identical
+              // cycles, which is not yet enough to call somebody regular but is
+              // certainly not a warning sign.
+              : stats.variation === 0
+                ? 'Your cycles have been the same length so far. A couple more and PearPetal will know how steady they really are.'
+                : stats.variation != null
                 ? `Your cycles vary by ${dayWord(stats.variation)}. The more they vary, the rougher the predictions are, and that is normal for plenty of people.`
                 // One usable cycle IS an average, just a thin one. Saying "an
                 // average will appear here" under a number that is already
@@ -2095,9 +2104,13 @@ function PeriodHistory ({ onChanged }) {
 
   const span = (row) => {
     const from = fmtDate(row.start)
-    if (!row.end) return `${from} · ongoing`
     if (row.end === row.start) return from
-    return `${from} - ${fmtDate(row.end)}`
+    if (row.end) return `${from} - ${fmtDate(row.end)}`
+    // No end was recorded. Only call it ONGOING while it could still be running:
+    // period:log deliberately stores end:null when the end is unknown, so a
+    // period entered two months ago was reading "Jul 7 · ongoing" - seen on the
+    // TCL with three past periods all claiming to be in progress at once.
+    return isoDiff(row.start, todayIso()) <= 15 ? `${from} · ongoing` : `${from} · end not recorded`
   }
   const lengthOf = (row) => {
     if (!row.end) return ''

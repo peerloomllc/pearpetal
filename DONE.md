@@ -6,6 +6,17 @@ work lives in `TODO.md`.
 
 ## 2026-09-09
 
+- **Two wording bugs on the new cycle screens** (PR pending). Both found by putting real
+  data on the TCL rather than by reading the code, and both nonsense to a reader.
+  1. Three periods logged a month apart ALL read "· ongoing". `period:log` deliberately
+     stores `end: null` when the end is unknown, so the list called a period from two months
+     ago ongoing. It now only says ongoing while the start is recent enough for that to be
+     possible, and otherwise "· end not recorded".
+  2. Two identical cycles produced "Your cycles vary by 0 days. The more they vary, the
+     rougher the predictions are." Nought variation is the GOOD case, and it fell into the
+     caution branch because "regular" needs three cycles and there were two.
+  VERIFIED ON THE TCL with three real periods 28 days apart.
+
 - **Erase everything** (PR pending). The last of the three feature gaps from the review: a
   privacy-first app with no in-app delete-all. Uninstalling did it, but nothing said so and
   there was no control.
