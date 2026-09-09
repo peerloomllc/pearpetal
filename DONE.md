@@ -31,8 +31,11 @@ work lives in `TODO.md`.
   VERIFIED ON THE TCL (Android 15). By script: the card renders, the prompt appears with
   "Use PIN" offered as the fallback, and cancelling refuses to arm and explains itself
   ("your phone did not accept the unlock (user_cancel)"). By hand, since no script can
-  present a fingerprint: Tim armed it and confirmed the lock works. `npm run verify` green,
-  230 tests.
+  present a fingerprint: armed with a real fingerprint and all three behaviours confirmed -
+  the app switcher shows the cover rather than the cycle, a quick trip out to a share sheet
+  does NOT re-prompt, and a minute away does. The switcher one was worth proving rather than
+  reasoning about: it is a race between our cover going up on 'inactive' and the system
+  taking its snapshot. `npm run verify` green, 230 tests.
   ALSO SETTLED: the "Use PIN" button looks left-aligned under a centred title and cannot be
   moved - it is `com.android.systemui:id/button_use_credential`, drawn by the system, the
   same in every app on the phone. See `TODO.md` so it is not raised again.
