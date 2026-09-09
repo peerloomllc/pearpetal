@@ -49,17 +49,8 @@ peerloom-core PR #20. What is left:
 
 ## Found in the 2026-09-09 review, not yet fixed
 
-The timezone bug (PR #129) and the backup gap (PR pending) are fixed. What is left
-is confirmed with tests that were run, not inferred.
-
-- **A period logged on the wrong date is permanent.** `period:getAll` and
-  `period:set` exist and NOTHING in the UI calls them, and no delete exists at any
-  layer (`period:set` always writes `deleted: false`). So there is no way to see
-  your logged periods, correct a start date or remove one. Every period start
-  feeds `cycleStarts()` and the cycle-length median, so one mistyped date skews
-  predictions forever; export-then-import cannot clear it either, because import
-  merges rather than replaces. Needs a `period:delete` in the worklet plus a
-  history screen. The largest of the three and the only one needing UI design.
+The timezone bug (PR #129), the backup gap (PR #130) and the period history (PR
+pending) are all fixed. What is left is confirmed with tests that were run.
 
 - **`day:delete` has no UI either.** Milder: a day can be blanked field by field,
   so the row survives but says nothing. Worth folding into the same screen.

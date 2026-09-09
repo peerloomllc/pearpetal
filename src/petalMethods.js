@@ -15,7 +15,7 @@ const b4a = require('b4a')
 const sodium = require('sodium-universal')
 
 const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, memberKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE, MEMBER_RANGE } = require('./petalWire')
-const { projectionFromRows, pregnancyProjection, addDays, diffDays, todayIso, FLOW_VALUES, DEFAULT_PERIOD_LEN } = require('./prediction')
+const { projectionFromRows, pregnancyProjection, cycleStarts, addDays, diffDays, todayIso, FLOW_VALUES, BLEEDING_FLOWS, DEFAULT_PERIOD_LEN } = require('./prediction')
 const { notificationEvents } = require('./notifications')
 const { planImport } = require('./healthImport')
 const { parseHealthFile } = require('./healthFiles')
@@ -394,6 +394,43 @@ function normDate (s) {
 }
 
 // --- projection -------------------------------------------------------------
+// Is this date a cycle start that exists only because those days are marked as
+// bleeding, with no period row behind it? Uses the projection's own derivation.
+async function isInferredStart (ctx, startIso) {
+  const days = (await privRows(ctx, DAY_RANGE)).filter((v) => v && !v.deleted)
+  const rows = (await privRows(ctx, PERIOD_RANGE)).filter((v) => v && !v.deleted)
+  return cycleStarts(days, rows).includes(startIso)
+}
+
+// How far a period fill ever reaches, shared by period:log and period:delete so
+// the one clears exactly what the other stamped.
+const MAX_PERIOD_SPAN = 15
+async function periodSpanEnd (ctx, startIso, endIso) {
+  if (endIso) return endIso
+  const prefs = await getPrefs(ctx)
+  const periodLen = Math.max(2, Math.min(10, Number(prefs.avgPeriodLength) || DEFAULT_PERIOD_LEN))
+  return addDays(startIso, periodLen - 1)
+}
+
+// Clear the FLOW on every day across a period span, leaving symptoms, mood, notes
+// and BBT in place - those are observations that still happened, and only the
+// bleeding is being retracted. Returns how many days changed.
+async function clearFlowAcross (ctx, startIso, endIso) {
+  const last = await periodSpanEnd(ctx, startIso, endIso)
+  let cleared = 0
+  let d = startIso
+  for (let i = 0; i < MAX_PERIOD_SPAN && d <= last; i++) {
+    const nd = normDate(d)
+    const row = await privReadRow(ctx, dayKey(nd.key))
+    if (row && !row.deleted && FLOW_VALUES.has(row.flow)) {
+      await privPut(ctx, dayKey(nd.key), { ...row, flow: null })
+      cleared++
+    }
+    d = addDays(d, 1)
+  }
+  return cleared
+}
+
 // Read the PRIVATE base's day/period log and derive the shared-base projection
 // (phase + predicted dates) via the pure prediction module.
 async function getPrefs (ctx) {
@@ -1107,6 +1144,49 @@ const methods = {
   },
 
   // --- period spans (explicit start/end markers) --------------------------
+
+  // Remove a period that did not happen, or was logged on the wrong date.
+  //
+  // The span row alone is not enough. `cycleStarts()` derives a start from EITHER
+  // a period row or a run of bleeding days, and period:log stamps a medium flow
+  // across the span, so deleting only the row leaves the inferred start behind and
+  // the prediction unchanged - which is the whole reason someone is deleting it.
+  // So the flow on those days is cleared too, and only the flow: symptoms, mood,
+  // notes and BBT are separate observations that still happened. Pass
+  // keepDays: true to leave the day rows alone.
+  //
+  // The span cleared matches what period:log fills: start..end, and for a span
+  // with no end, start..start+avgPeriodLength-1, both capped at MAX_PERIOD_SPAN.
+  'period:delete': async ({ start, keepDays }, ctx) => {
+    const ns = normDate(start)
+    if (!ns) throw new Error('start must be YYYY-MM-DD')
+    await requirePrivate(ctx)
+    const existing = await privReadRow(ctx, periodKey(ns.key))
+    const live = existing && !existing.deleted
+    // An INFERRED start has no row to tombstone: it exists only because those days
+    // are marked as bleeding, so clearing them IS the removal. Refusing here would
+    // leave exactly the starts a person most wants to correct untouchable.
+    if (!live && !(await isInferredStart(ctx, ns.iso))) throw new Error('period not found')
+    if (live) await privPut(ctx, periodKey(ns.key), { ...existing, deleted: true })
+    let cleared = 0
+    if (!keepDays) cleared = await clearFlowAcross(ctx, ns.iso, live ? existing.end : null)
+    // Clearing the first day of an inferred run is not enough on its own: the day
+    // after it then becomes the start. Walk the whole run.
+    if (!keepDays && !live) {
+      let d = ns.iso
+      for (let i = 0; i < MAX_PERIOD_SPAN; i++) {
+        const nd = normDate(d)
+        const row = await privReadRow(ctx, dayKey(nd.key))
+        if (!row || row.deleted || !FLOW_VALUES.has(row.flow)) break
+        await privPut(ctx, dayKey(nd.key), { ...row, flow: null })
+        cleared++
+        d = addDays(d, 1)
+      }
+    }
+    await refreshShares(ctx).catch(() => {})
+    return { ok: true, cleared }
+  },
+
   'period:set': async ({ start, end }, ctx) => {
     const ns = normDate(start)
     if (!ns) throw new Error('start must be YYYY-MM-DD')
@@ -1131,7 +1211,13 @@ const methods = {
   // never clobbers a day that already has a flow, so per-day intensities the user
   // picked are preserved; the span is capped so a bad range can't write forever, and
   // an ONGOING period fills no further than the user's own average period length.
-  'period:log': async ({ start, end, today: todayArg }, ctx) => {
+  // `from` moves a period that was logged on the wrong start date. The row is
+  // keyed BY its start, so without this an edited start writes a second row and
+  // leaves the first one anchoring the cycle exactly as before. The old span is
+  // retracted flow and all, then the new one is stamped, so the days end up
+  // consistent with the corrected dates - at the cost of any per-day intensity
+  // inside the old span, which goes back to medium. The UI says so before saving.
+  'period:log': async ({ start, end, from, today: todayArg }, ctx) => {
     const ns = normDate(start)
     if (!ns) throw new Error('start must be YYYY-MM-DD')
     // The caller may state which day it is for them, and the UI does. Both sides
@@ -1161,6 +1247,16 @@ const methods = {
       endIso = today < capped ? today : capped
     }
     await requirePrivate(ctx)
+    // Moving an existing period: retract the old span first, so the start it
+    // anchored stops counting as a cycle start.
+    const nf = from ? normDate(from) : null
+    if (nf && nf.iso !== ns.iso) {
+      const oldRow = await privReadRow(ctx, periodKey(nf.key))
+      if (oldRow && !oldRow.deleted) {
+        await privPut(ctx, periodKey(nf.key), { ...oldRow, deleted: true })
+        await clearFlowAcross(ctx, nf.iso, oldRow.end)
+      }
+    }
     // Record the explicit span (start anchors the cycle; end marks its length).
     const existingP = await privReadRow(ctx, periodKey(ns.key))
     const p0 = (existingP && !existingP.deleted) ? existingP : { start: ns.iso, createdBy: pubkeyHex(ctx), createdAt: Date.now() }
@@ -1183,8 +1279,33 @@ const methods = {
     return { ok: true, start: ns.iso, end: endIso, marked }
   },
 
+  // Every cycle start, explicit or not.
+  //
+  // A period row is only one of the two ways a cycle start comes about:
+  // cycleStarts() ALSO reads a run of bleeding days, so somebody who logs flow day
+  // by day on the calendar has starts anchoring their predictions with no period
+  // row behind them. Returning only the rows made this list claim "no periods
+  // logged yet" on a phone with a full log and a live prediction on the screen
+  // behind it - it showed none of what it said it showed. Inferred starts come
+  // back flagged, and the UI says which is which.
   'period:getAll': async (_args, ctx) => {
-    const out = (await privRows(ctx, PERIOD_RANGE)).filter((v) => v && !v.deleted)
+    const rows = (await privRows(ctx, PERIOD_RANGE)).filter((v) => v && !v.deleted)
+    const days = (await privRows(ctx, DAY_RANGE)).filter((v) => v && !v.deleted)
+    const explicit = new Set(rows.map((r) => r.start))
+    const out = rows.map((r) => ({ ...r, inferred: false }))
+    // The same derivation the projection runs, so this list and the prediction
+    // cannot disagree about what counts as a start.
+    for (const start of cycleStarts(days, rows)) {
+      if (explicit.has(start)) continue
+      // How far the bleeding actually runs, so the row can show a real span.
+      const bleeding = new Set(days.filter((d) => BLEEDING_FLOWS.has(d.flow)).map((d) => d.date))
+      let end = start
+      while (bleeding.has(addDays(end, 1))) end = addDays(end, 1)
+      // `end` is always set for an inferred run, including a one-day one. A null end
+      // means ONGOING on an explicit row, and a single logged bleeding day is not
+      // an ongoing period - it read "Jul 16 - ongoing" on the TCL.
+      out.push({ start, end, inferred: true })
+    }
     out.sort((a, b) => String(b.start).localeCompare(String(a.start)))
     return out
   },
