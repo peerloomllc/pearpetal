@@ -595,7 +595,7 @@ function SetupWizard ({ onDone }) {
 
   const savePrefs = async (patch) => { setPrefs((p) => ({ ...p, ...patch })); await call('prefs:set', patch).catch(() => {}) }
   const logPeriod = async () => {
-    if (periodStart) { setBusy(true); try { await call('period:log', { start: periodStart, end: null }) } catch {} setBusy(false) }
+    if (periodStart) { setBusy(true); try { await call('period:log', { start: periodStart, end: null, today: todayIso() }) } catch {} setBusy(false) }
     go(1)
   }
   const enableReminders = async () => {
@@ -2367,7 +2367,7 @@ function PeriodSheet ({ defaultStart, onClose, onSaved }) {
           if (end && end < start) { setErr('End date is before the start date.'); return }
           setBusy(true); setErr('')
           try {
-            await call('period:log', { start, end: end || null })
+            await call('period:log', { start, end: end || null, today: todayIso() })
             haptic('success'); onSaved && onSaved(start); close()
           } catch (e) { setErr(e.message || 'Could not save.'); setBusy(false) }
         }

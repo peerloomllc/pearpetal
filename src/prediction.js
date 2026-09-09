@@ -26,7 +26,15 @@ function isoToDays (iso) { const [y, m, d] = iso.split('-').map(Number); return 
 function daysToIso (n) { const dt = new Date(n * 86400000); const p = (x) => String(x).padStart(2, '0'); return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}` }
 function addDays (iso, n) { return daysToIso(isoToDays(iso) + n) }
 function diffDays (a, b) { return isoToDays(b) - isoToDays(a) }
-function todayIso () { const d = new Date(); const p = (x) => String(x).padStart(2, '0'); return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}` }
+// "Today" is the date on the WALL, in the timezone the phone is set to. It used
+// to read the UTC date, which disagreed with the UI (src/ui/App.jsx todayIso,
+// local) for part of every day anywhere but UTC. East of UTC that made logging a
+// period between local midnight and mid-morning fail outright with "start is in
+// the future"; west of UTC the dial counted a day further into the cycle than the
+// calendar did all evening, and an ongoing period stamped tomorrow as a bleeding
+// day. The ARITHMETIC above stays UTC-based on purpose: it is date-only, so UTC
+// keeps it free of DST, and only the reading of the clock had to change.
+function todayIso () { const d = new Date(); const p = (x) => String(x).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` }
 
 function median (nums) {
   if (!nums.length) return null
