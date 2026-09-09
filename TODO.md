@@ -47,6 +47,56 @@ peerloom-core PR #20. What is left:
   and the same `group:updated` pattern. The core half is fixed for all of them; the write
   loop is per-app.
 
+## Found in the 2026-09-09 review, not yet fixed
+
+The timezone half is fixed (PR pending). These two are confirmed with tests that
+were run, not inferred, and both are ordinary bugs rather than anything subtle.
+
+- **A backup does not restore the health settings it was told to save.** Export
+  writes `days`, `periods` and five prefs; `conditions`, `birthControl`,
+  `pregnancy` and the `profile` (display name, avatar) are never written, and
+  `import:data`'s goal whitelist omits `pregnant`. Round-tripped onto a fresh
+  device: goal `pregnant` -> `track`, pregnancy dates -> null, conditions
+  `["pcos","thyroid"]` -> `[]`, birthControl true -> false, name "Ada" -> "".
+  Days and periods survive. Everything shaping the PREDICTION does not, silently,
+  and pregnancy mode switches itself off. This is the move-to-a-new-phone path the
+  App Store description sells. Fields are additive so old backups keep importing.
+  Repro: `export:data` then `import:data` on a second engine, diff `prefs:get`.
+
+- **A period logged on the wrong date is permanent.** `period:getAll` and
+  `period:set` exist and NOTHING in the UI calls them, and no delete exists at any
+  layer (`period:set` always writes `deleted: false`). So there is no way to see
+  your logged periods, correct a start date or remove one. Every period start
+  feeds `cycleStarts()` and the cycle-length median, so one mistyped date skews
+  predictions forever; export-then-import cannot clear it either, because import
+  merges rather than replaces. Needs a `period:delete` in the worklet plus a
+  history screen. The largest of the three and the only one needing UI design.
+
+- **`day:delete` has no UI either.** Milder: a day can be blanked field by field,
+  so the row survives but says nothing. Worth folding into the same screen.
+
+## Feature gaps from the same review
+
+Logged for ranking, not started. The feature set is already rich; these are what a
+walk through the code and the method table showed to be missing.
+
+- **No lock on the app.** No PIN, no Face ID, nothing biometric anywhere in
+  `src/`, `app/` or `app.json`. Anyone holding the unlocked phone opens straight
+  into her cycle. For a menstrual tracker sold on privacy this is the most
+  conspicuous omission, and the competitors all have it. Needs a decision on what
+  it actually protects: the app on open, or also the partner view, and what
+  happens to notifications on the lock screen (discreet mode already exists).
+
+- **No cycle history or statistics.** No list of past cycles, no average length,
+  no symptom or mood patterns over time. The data is all stored and `period:getAll`
+  already returns it; this is a screen, not engine work. It is also what people
+  open a tracker to look at after a few months, and it pairs naturally with the
+  period edit/delete item above.
+
+- **No way to erase everything.** A privacy-first app with no in-app delete-all.
+  Uninstalling does it, but nothing says so and there is no control. Cheap to add
+  and it matches the promise the onboarding makes.
+
 ## Verification still owed
 
 - **Hardware-gate the blind relay: the POSITIVE case (owed by PR #95, 2026-07-23).**

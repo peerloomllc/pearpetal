@@ -1092,10 +1092,15 @@ const methods = {
   // never clobbers a day that already has a flow, so per-day intensities the user
   // picked are preserved; the span is capped so a bad range can't write forever, and
   // an ONGOING period fills no further than the user's own average period length.
-  'period:log': async ({ start, end }, ctx) => {
+  'period:log': async ({ start, end, today: todayArg }, ctx) => {
     const ns = normDate(start)
     if (!ns) throw new Error('start must be YYYY-MM-DD')
-    const today = todayIso()
+    // The caller may state which day it is for them, and the UI does. Both sides
+    // read the device clock and now agree, so this is a belt and braces against a
+    // worklet that comes up without the phone's timezone: the screen is the side
+    // that definitely knows what day the person thinks it is, and being wrong here
+    // rejects a real period as "in the future".
+    const today = (todayArg && normDate(todayArg)?.iso) || todayIso()
     if (ns.iso > today) throw new Error('start is in the future')
     const ongoing = (end === undefined || end === null || end === '')
     let endIso = ns.iso

@@ -6,6 +6,21 @@ work lives in `TODO.md`.
 
 ## 2026-09-09
 
+- **"Today" is the phone's day now, not UTC's** (PR pending). Found in a review pass. The
+  screen read the LOCAL calendar date and the engine read the UTC one, so the two disagreed
+  for part of every day anywhere but UTC. East of UTC that refused a core action outright:
+  logging a period between local midnight and mid-morning failed with "start is in the
+  future", for every user in Japan, Korea, China, Australia and New Zealand, every morning.
+  West of UTC the dial counted a day further into the cycle than the calendar did all
+  evening, and an ongoing period stamped tomorrow as a bleeding day.
+  `todayIso()` in `src/prediction.js` now reads the local calendar date; the date ARITHMETIC
+  stays UTC-based on purpose, since it is date-only and UTC keeps it free of DST. The UI also
+  states its own day on `period:log`, as a guard against a worklet that comes up without the
+  phone's timezone. Confirmed the Bare runtime honours TZ before relying on it.
+  VERIFIED: `npm run verify` green, 215 tests (3 new, across five timezones from UTC+14 to
+  UTC-11), and the new tests were run against the OLD code to confirm they fail on it, 2 of 3
+  failing. The third passes on the old code, which is the UI-supplied date carrying it alone.
+
 - **The viewer's shared list now matches the owner's** (PR #128). Two touches the owner's
   Sharing screen already had and `ViewerHome` never picked up: "Shared with you" is centred
   rather than nudged left, and the share type in each row is capitalised, so a row reads
