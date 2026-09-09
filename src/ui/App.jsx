@@ -940,7 +940,7 @@ function PartnerView ({ groupId, onClose, onLeft }) {
   const leaving = useRef(false)
   const load = async () => {
     if (leaving.current) return
-    try { setData(await call('partner:view', { groupId })) } catch (e) { if (!leaving.current) setErr(e.message) }
+    try { setData(await call('partner:view', { groupId })); setErr('') } catch (e) { if (!leaving.current) setErr(e.message) }
   }
   useEffect(() => { load() }, [groupId])
   useEffect(() => on('group:updated', (d) => { if (d?.groupId === groupId) load() }), [groupId])
@@ -964,6 +964,16 @@ function PartnerView ({ groupId, onClose, onLeft }) {
     leaving.current = true; setErr('')
     try { await call('partner:leave', { groupId }) } catch {}
     onLeft()
+  }
+  // Rebuild a shared cycle whose copy on this phone will not open. Safe by
+  // construction: a shared cycle is a read-only copy of the other person's
+  // projection, so there is nothing of this person's own to lose, and the invite
+  // is re-derived from what this device already stored - their partner does not
+  // have to send anything.
+  const [repairing, setRepairing] = useState(false)
+  const repair = async () => {
+    setRepairing(true); setErr('')
+    try { await call('partner:repair', { groupId }); await load() } catch (e) { setErr(e.message) } finally { setRepairing(false) }
   }
 
   const phase = data?.phase
@@ -993,6 +1003,16 @@ function PartnerView ({ groupId, onClose, onLeft }) {
         <Btn kind='ghost' onClick={onClose}>Back</Btn>
       </div>
       {!data && !err && <div style={{ color: colors.text.muted, textAlign: 'center', padding: spacing.lg }}>Waiting for their device to sync...</div>}
+      {!data && err && (
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>This shared cycle would not open</div>
+          <div style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 1.5 }}>
+            Nothing of yours is affected - what is stored here is a copy of your partner's cycle, so it can simply be fetched again. Rebuild it and it will fill back in the next time you are both online.
+          </div>
+          <Btn onClick={repair} disabled={repairing}>{repairing ? 'Rebuilding…' : 'Rebuild it'}</Btn>
+          <div style={{ color: colors.text.muted, fontSize: 12, wordBreak: 'break-word' }}>{err}</div>
+        </div>
+      )}
       {data?.revoked && (
         <div style={{ ...card, borderLeft: `3px solid ${colors.primary}`, display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
           <div style={{ fontSize: 15, fontWeight: 600 }}>Sharing ended</div>
@@ -1203,7 +1223,7 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
             <Avatar src={p.ownerAvatar} name={p.ownerName} size={32} />
             <span style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.ownerName ? `${p.ownerName}'s cycle` : "A partner's cycle"}</span>
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: p.revoked ? colors.text.secondary : colors.text.muted, fontSize: 12, flexShrink: 0 }}>{p.revoked ? 'Sharing ended' : (p.scope || '...')}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: p.available === false ? colors.error : p.revoked ? colors.text.secondary : colors.text.muted, fontSize: 12, flexShrink: 0 }}>{p.available === false ? 'Will not open' : p.revoked ? 'Sharing ended' : (p.scope || '...')}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
         </button>
       ))}
       {/* Accept a NEW invite (paste link / scan QR) - a viewer can be shared with by

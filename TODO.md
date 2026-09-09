@@ -11,6 +11,42 @@ deeper coach-mark onboarding tour, the remaining "cut the scrolling" trims (step
 accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
 "keep the code as is".
 
+## iOS donations - one open call
+
+- **Does the two-week donation NUDGE come back on iOS too?** PR #126 brought back the About
+  page's "Support development" section but deliberately left the nudge gated, because it is
+  the surface that surfaces ITSELF and so is the one a reviewer is most likely to read as
+  soliciting under Guideline 3.1.1. Android is unaffected either way. One line to flip if the
+  answer is yes (the `IS_IOS` check in the donation-nudge effect in `src/ui/App.jsx`).
+
+## Live bug - blank screen on a partner-viewer (CAUSE FOUND, fix on PR #127)
+
+Root cause found 2026-09-09 and reproduced end to end: `partner:view` -> `publishMember`
+-> `group:updated` -> `partner:view` was a write loop appending ~8 rows a second to the
+shared base while the partner screen sat open, which pushed the viewer's own input core
+past the retention threshold, after which the sweep cleared its own blocks and the app
+never opened again. See `DECISIONS.md` 2026-09-09. Fixed in PR #127 (PearPetal) and
+peerloom-core PR #20. What is left:
+
+- **Get it onto the reporter's phone.** He is on iOS 1.0.5 and his install is already in
+  the broken state, so he needs a build carrying both PRs plus the "Rebuild it" button, or
+  a reinstall. Decide whether this rides a version bump or a TestFlight build.
+
+- **Confirm the fix on hardware.** The reproduction is a Node harness on a DHT testnet, so
+  it proves the engine behaviour and not the phone. Owed: the partner screen left open on
+  a real pair for a few minutes, with the shared base's row count read afterwards, and one
+  cold start with the other phone switched off. The iPhone SE is the reporter's platform.
+
+- **Open PearPetal once on the iPhone SE and confirm it boots.** Still open from before:
+  the build with PRs #123/#124 is INSTALLED on the SE but was never launched
+  (`ios-dev-install.sh` cannot launch headlessly without a mounted Developer Disk Image).
+  Fold this into the run above.
+
+- **Audit the other apps for the same loop shape.** The bug is a read path that writes,
+  feeding a listener that re-reads. PearList, PearCal and PearGuard sit on the same engine
+  and the same `group:updated` pattern. The core half is fixed for all of them; the write
+  loop is per-app.
+
 ## Verification still owed
 
 - **Hardware-gate the blind relay: the POSITIVE case (owed by PR #95, 2026-07-23).**
@@ -63,40 +99,85 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   ANDROID IS STILL UNCHECKED end to end - `assetlinks.json` has not been re-verified
   this session.
 
-## Health import - file import is now the primary path
+- **The iOS donation hide (PR #121) has not been seen running.** The gate is a plain
+  `window.__pearPlatform === 'ios'` conditional in `src/ui/App.jsx`, covered only by the
+  test suite and a clean UI build. Confirm on an iPhone Simulator that About shows no
+  "Support development" section and that Android still does, next time either platform is
+  built anyway - not worth a dedicated build.
 
-See `DECISIONS.md` 2026-07-30. Health Connect's permission is not askable to a sideloaded
-build, and PearPetal ships on Zapstore and GitHub to users who are deliberately avoiding
-Google - so a Play-only import is a Google-only feature for an anti-Google audience.
-Reading exported FILES works everywhere, needs no permissions and cannot be switched off by
-someone else's policy.
+## Health import - shipped, one thing to remember
 
-- **Build file import (the primary path).** The merge rules already exist and are unchanged
-  by this - `src/healthImport.js` (PR #113) is gaps-only, per-field provenance, idempotent
-  by date key, and serves any source. What is needed is PARSERS plus a file picker entry:
-  - Apple Health export (`export.xml` inside the zip Apple's Health app produces): pull
-    `HKCategoryTypeIdentifierMenstrualFlow` and
-    `HKQuantityTypeIdentifierBasalBodyTemperature` records. Note Apple's export is large,
-    so stream or pre-filter rather than parsing the whole document into memory.
-  - Generic CSV with a column mapping step, which covers Samsung Health, Fitbit, Oura and
-    anything else that exports a table.
-  - Reuse the existing document picker (`import:data` already goes through the shell's
-    share-sheet / picker path) and the existing "only fills gaps" copy.
-  All of it is pure parsing over a user-chosen file: testable without a device, and it needs
-  no new permission on either platform.
+File import (PR #116) and the iOS Apple Health read (PR #117) are both DONE and verified on
+hardware; see `DONE.md` 2026-07-30 and `DECISIONS.md` for why Health Connect was dropped.
+What is left here is a build-time trap, not open work.
 
-- **Any iOS build that needs HealthKit must prebuild with `PEARPETAL_HEALTHKIT=1`.** The
-  entitlement is gated and STRIPPED by default, because an unconditional one blocks every
-  iOS device build until the provisioning profile carries the capability. Same shape as
-  `PEARPETAL_ASSOCIATED_DOMAINS`, and for the same reason. The App ID now HAS the capability
-  (enabled 2026-07-30) and a matching profile exists, so this is a flag to remember rather
-  than a blocker.
+- **A capability change invalidates every existing provisioning profile for that App ID.**
+  Enabling HealthKit on `com.pearpetal` (2026-07-30) silently flipped the "PearPetal App
+  Store" profile to `INVALID` server-side while the Mac's cached `.mobileprovision` kept
+  signing archives happily. Regenerated 2026-07-31 (new UUID `e5eb05eb-...`) and the stale
+  cached copy deleted. NEXT TIME a capability is added, regenerate the DISTRIBUTION profile
+  in the same sitting, not just the dev one Xcode auto-creates.
+  Check it in one line:
+  `security cms -D -i <profile> | plutil -extract Entitlements xml1 -o - - | grep healthkit`
+  Distribution cert if one has to be created fresh: `QKKNNXRRK4` (Apple Distribution:
+  Timothy Hudgins, expires 2027-03-18). Keep the NAME exact -
+  `IOS_PROVISIONING_PROFILE` in `scripts/app.conf` matches on it, and two installed files
+  claiming one name is how the wrong one gets picked.
+
+- **`PEARPETAL_HEALTHKIT=1` is now automatic for the RELEASE path only.** `scripts/app.conf`
+  exports it (PR #119), so `release.sh` and `ios-appstore.sh` get it for free and
+  `ios-appstore.sh` now refuses to archive without the resulting usage string. A hand-run
+  `expo prebuild` or `ios-dev-install.sh` that does NOT source `app.conf` still strips the
+  entitlement, which is correct default-off behaviour but will make a dev build's Health
+  import fail at runtime with no obvious cause. Pass the flag explicitly for those.
   IF A BUILD FAILS with both "doesn't include the HealthKit capability" AND "No Accounts:
   Add a new account in Accounts settings", the cause is `xcodebuild` over SSH being unable
   to regenerate a profile while the login keychain is locked in a non-GUI session. Opening
   the workspace once in the Xcode GUI on the Mac mini creates it; SSH builds sign fine after
   that. (The repo already works around the same class of problem for the signing CERT with
   `buildkey.keychain`.)
+
+## App Store - three releases in a row have stalled in Apple's queue
+
+- **The store's notes must span every version it MISSED, not the newest tag range.** Bitten
+  on 1.0.4: the notes were written v1.0.3..v1.0.4, correct for Play, wrong for the App Store
+  where the live version is 1.0.1. Fixed by resubmitting with combined notes. The habit to
+  keep: `release_notes.md` serves the channel that is current, and any channel that is
+  behind needs its own span. Check what the store actually has before writing them, do not
+  assume it matches the tag.
+
+- **One App Store version record has now been renamed FORWARD TWICE: 1.0.2 -> 1.0.3 ->
+  1.0.4.** Each time because the previous submission sat in WAITING_FOR_REVIEW long enough
+  to block the next release (1.0.2 stalled 2026-07-23, 1.0.3 stalled seven days to
+  2026-07-31). Neither ever reached a user. Renaming is Apple's supported move and
+  `release.sh` automates it, but three in a row is a pattern, not luck.
+  WORTH INVESTIGATING if 1.0.4 also stalls: whether something about this app's review
+  profile is causing the delay (a health app with HealthKit access is a plausible trigger
+  for extra scrutiny) rather than generic queue time. Two data points would separate "our
+  app is flagged" from "Apple is slow": how long 1.0 and 1.0.1 took to clear, both of which
+  DID get approved.
+  UPDATE 2026-08-11: 1.0.4 did NOT stall this time, it was REVIEWED and REJECTED under
+  Guideline 3.1.1 (donations outside in-app purchase). So the queue theory is now only about
+  1.0.2/1.0.3. Fixed by hiding the donation path on iOS (PR #121) and resubmitting build 14
+  on the same record (PR #122); WAITING_FOR_REVIEW since 2026-08-11.
+
+- **`release.sh` cannot drive a rejected-version resubmission.** It assumes a NEW version
+  and bumps `expo.version` + tags, so the 2026-08-11 build-14 resubmit was driven by hand
+  (bump buildNumber, verify, rsync, `ios-appstore.sh` on the Mac, attach, encryption
+  declaration, cancel the stale submission, submit). The one step it does not encode at all
+  is the cancel: `items-add` refuses while the rejected submission still holds the version.
+  Worth adding a `--resubmit` path that skips the version bump and cancels first, since a
+  3.1.1-style rejection will not be the last one.
+
+## Dev infra - release script
+
+- **`release.sh` clobbers hand-written release notes on every run.** Step "Assemble final
+  notes" does `printf "%b" "$NOTES" > release_notes.md` unconditionally, then opens `vi`.
+  So notes written BEFORE the run (or written during a run that later aborted, as the 1.0.4
+  run did) are overwritten by the auto-generated commit-log version and have to be pasted
+  back in by hand. Cheap fix: if `release_notes.md` is already newer than the last tag, or
+  a `release_notes.next.md` exists, seed the editor with THAT instead of the generated
+  text. Low priority, but it bites on exactly the runs that were already going badly.
 
 ## Nice-to-have / UX polish
 

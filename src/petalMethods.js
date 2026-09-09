@@ -157,10 +157,34 @@ async function putRow (ctx, groupId, key, value) {
   await ctx.append(groupId, { type: 'put', key, value: signRow(ctx, value) })
 }
 
+// Why a group's base is not open, when the engine recorded one.
+function unmountedReason (ctx, groupId) {
+  try { return ctx.engine?.unmounted?.get(groupId) || null } catch { return null }
+}
+
 function viewFor (ctx, groupId) {
   const base = ctx.bases.get(groupId)
   if (!base) throw new Error('unknown group: ' + groupId)
   return base
+}
+
+// Reading a partner's shared cycle must never wait on their phone. base.update()
+// takes in whatever has replicated, and it blocks when the linearizer wants a
+// block that has not arrived - which for a viewer usually just means the other
+// person's phone is not nearby and awake. That is the normal state of a two-phone
+// app, not an error, so bound the wait and read whatever we already hold: a cycle
+// from yesterday beats a spinner, and the fresh version lands on the next
+// group:updated anyway. Resolves rather than rejects on the bound, so the read
+// falls through to the stored view.
+const PARTNER_UPDATE_MS = 5000
+async function updateOrCarryOn (base, ms = PARTNER_UPDATE_MS) {
+  let timer = null
+  try {
+    await Promise.race([
+      base.update(),
+      new Promise((resolve) => { timer = setTimeout(resolve, ms) }),
+    ])
+  } catch {} finally { if (timer) clearTimeout(timer) }
 }
 
 // Linearize before reading so a mutate sees the latest committed state.
@@ -469,13 +493,33 @@ async function revokeShareMeta (ctx, groupId) {
 // member:{ownPubkey} row, so the OWNER's Sharing screen can show who joined. Only
 // when the base is writable (we were admitted as a writer); best-effort otherwise.
 // Name only for now - the joiner avatar is a follow-up (proposal 2026-07-09).
+// The content fields a member row carries. Everything else on a stored row is
+// envelope that signRow stamps fresh every time (pubkey, updatedAt, signature),
+// so comparing whole rows would never match.
+const MEMBER_FIELDS = ['displayName']
+function memberRowUnchanged (existing, val) {
+  if (!existing) return false
+  return MEMBER_FIELDS.every((k) => (existing[k] ?? null) === (val[k] ?? null))
+}
 async function publishMember (ctx, groupId) {
   const base = ctx.bases.get(groupId)
   if (!base || !base.writable) return false
   const prof = await getProfile(ctx)
   const val = {}
   if (prof?.displayName) val.displayName = String(prof.displayName).slice(0, 64)
-  await putRow(ctx, groupId, memberKey(pubkeyHex(ctx)), val)
+  // Only write when something actually changed. Re-appending an identical row is
+  // not free: it changes the linearized view, the view change fires
+  // group:updated, the partner screen answers group:updated by calling
+  // partner:view, and partner:view lands back here. That loop appended to the
+  // shared base about eight times a second for as long as the screen was open,
+  // with nobody touching either phone - 888 rows in 45 seconds, none of which a
+  // person asked for. Past 512 rows the retention sweep then started clearing
+  // this device's own blocks, and the app never opened again (peerloom-core
+  // 2026-09-09 fixes that half).
+  const key = memberKey(pubkeyHex(ctx))
+  const existing = (await base.view.get(key))?.value
+  if (memberRowUnchanged(existing, val)) return false
+  await putRow(ctx, groupId, key, val)
   return true
 }
 // Re-publish our member identity into every shared-in base (after a profile change,
@@ -1231,8 +1275,11 @@ const methods = {
     for (const m of await membershipsByKind(ctx, 'shared-in')) {
       const base = ctx.bases.get(m.groupId)
       let meta = null
-      if (base) { try { await base.update(); meta = (await base.view.get('share:meta'))?.value } catch {} }
-      out.push({ groupId: m.groupId, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar: resolveAvatarCached(ctx, meta), scope: meta?.scope || null, joinedAt: m.joinedAt || 0, revoked: !!meta?.revoked, revokedAt: meta?.revokedAt || null })
+      if (base) { try { await updateOrCarryOn(base); meta = (await base.view.get('share:meta'))?.value } catch {} }
+      // A shared cycle whose base did not open is a real state a person can be
+      // in, not a missing row: say so, so the UI can offer to reconnect instead
+      // of showing an empty card or failing later with 'unknown group'.
+      out.push({ groupId: m.groupId, available: !!base, unavailableReason: base ? null : (unmountedReason(ctx, m.groupId) || 'this shared cycle could not be opened'), ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar: resolveAvatarCached(ctx, meta), scope: meta?.scope || null, joinedAt: m.joinedAt || 0, revoked: !!meta?.revoked, revokedAt: meta?.revokedAt || null })
     }
     out.sort((a, b) => a.joinedAt - b.joinedAt)
     return out
@@ -1243,10 +1290,16 @@ const methods = {
     const m = (await membershipsByKind(ctx, 'shared-in')).find((x) => x.groupId === groupId)
     if (!m) throw new Error('partner share not found')
     // Opportunistically (re)publish our identity now that we are likely writable, so
-    // the owner sees who joined. Non-blocking - never gate the view on it.
+    // the owner sees who joined. Non-blocking - never gate the view on it, and it
+    // no-ops unless the name actually changed (see publishMember).
     publishMember(ctx, groupId).catch(() => {})
-    const base = viewFor(ctx, groupId)
-    await base.update()
+    const base = ctx.bases.get(groupId)
+    if (!base) {
+      const e = new Error(unmountedReason(ctx, groupId) || 'this shared cycle could not be opened')
+      e.repairable = true
+      throw e
+    }
+    await updateOrCarryOn(base)
     const meta = (await base.view.get('share:meta'))?.value || null
     const phase = (await base.view.get(phaseKey()))?.value || null
     const predict = (await base.view.get(predictKey()))?.value || null
@@ -1259,6 +1312,22 @@ const methods = {
     const ownerAvatar = resolveAvatarCached(ctx, meta)
     const ownerHasAvatar = !!(meta?.avatarBlob || meta?.avatar)
     return { scope: meta?.scope || null, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar, ownerHasAvatar, phase, predict, summary, revoked: !!meta?.revoked, revokedAt: meta?.revokedAt || null }
+  },
+
+  // Rebuild a shared cycle whose base will not open. Nothing of the person's own
+  // lives in a shared-in base - it is a read-only copy of their partner's
+  // projection - so throwing the local copy away and re-syncing costs nothing but
+  // the download, and needs no new invite from the partner: everything the invite
+  // carried is still in the membership record. See @peerloom/core `namespace`.
+  'partner:repair': async ({ groupId }, ctx) => {
+    const m = (await membershipsByKind(ctx, 'shared-in')).find((x) => x.groupId === groupId)
+    if (!m) throw new Error('partner share not found')
+    const attempt = Number(String(m.namespace || '').split(':r')[1] || 0) + 1
+    await ctx.destroyGroup(groupId).catch(() => {})
+    const r = await ctx.joinGroup({ inviteKey: reencodeInvite(m), announce: false, namespace: groupId + ':r' + attempt })
+    await tagKind(ctx, r.groupId, 'shared-in')
+    await publishMember(ctx, r.groupId).catch(() => {})
+    return { groupId: r.groupId, attempt }
   },
 
   'partner:leave': async ({ groupId }, ctx) => {
