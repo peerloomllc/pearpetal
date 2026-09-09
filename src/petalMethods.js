@@ -436,9 +436,83 @@ async function getNetworkPrefs (ctx) {
 // The owner's device-local profile (name + avatar pointer). Distinct from
 // `deviceProfile` (which names this DEVICE for the roster) - this names the
 // PERSON. Never replicated except via the owner-written share:meta projection.
+// The single whitelist for user prefs. `prefs:set` and `import:data` both go
+// through it, because they used to carry SEPARATE lists and the lists drifted:
+// import's goal list was missing 'pregnant' and it knew nothing about conditions,
+// birthControl or pregnancy, so restoring a backup silently switched pregnancy
+// mode off and dropped the health context the projection is widened by. Anything
+// added here is accepted by both paths, by construction.
+//
+// `patch` is a partial: a key that is absent is left alone, so this merges rather
+// than replaces. Returns the next prefs object; it does not write.
+const GOALS = new Set(['track', 'conceive', 'avoid', 'pregnant'])
+const isIsoDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
+function applyPrefsPatch (cur, patch = {}) {
+  const next = { ...cur }
+  const has = (k) => Object.prototype.hasOwnProperty.call(patch, k)
+  const num = (v, lo, hi) => (v === null ? null : (Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : undefined))
+  if (has('avgCycleLength')) { const v = num(patch.avgCycleLength, 21, 45); if (v !== undefined) next.avgCycleLength = v }
+  if (has('avgPeriodLength')) { const v = num(patch.avgPeriodLength, 2, 10); if (v !== undefined) next.avgPeriodLength = v }
+  if (has('lutealLength')) { const v = num(patch.lutealLength, 9, 18); if (v !== undefined) next.lutealLength = v }
+  if (has('goal') && GOALS.has(patch.goal)) next.goal = patch.goal
+  if (has('flower') && FLOWERS.has(patch.flower)) next.flower = patch.flower
+  // Health conditions (deduped, whitelisted) + hormonal-birth-control flag.
+  if (has('conditions') && Array.isArray(patch.conditions)) next.conditions = [...new Set(patch.conditions.filter((c) => CONDITIONS.has(c)))]
+  if (has('birthControl')) next.birthControl = !!patch.birthControl
+  // Pregnancy dates (device-local; never projected to a partner). null clears.
+  if (has('pregnancy')) {
+    const pg = patch.pregnancy
+    if (pg === null) delete next.pregnancy
+    else if (pg && typeof pg === 'object') {
+      const clean = {}
+      if (isIsoDate(pg.lmp)) clean.lmp = pg.lmp
+      if (isIsoDate(pg.dueDate)) clean.dueDate = pg.dueDate
+      if (clean.lmp || clean.dueDate) next.pregnancy = clean
+    }
+  }
+  next.updatedAt = Date.now()
+  return next
+}
+
+// Every pref a backup carries. Same list both ways, so a field added to
+// applyPrefsPatch and to this array survives a round trip.
+const BACKUP_PREFS = ['avgCycleLength', 'avgPeriodLength', 'lutealLength', 'goal', 'flower', 'conditions', 'birthControl', 'pregnancy']
+
 async function getProfile (ctx) {
   return (await ctx.localDb.get('profile'))?.value || {}
 }
+// Store a profile patch: name and/or avatar. Shared by `profile:set` and
+// `import:data`, so a restore goes through exactly the validation an edit does
+// (including the avatar size cap and the content-hash dedupe). Semantics match
+// profile:set - a key that is absent is preserved, an avatar of null clears it.
+// Returns true if anything was stored.
+async function applyProfile (ctx, patch = {}) {
+  const existing = await getProfile(ctx)
+  const profile = { ...existing, updatedAt: Date.now() }
+  let touched = false
+  if (typeof patch.displayName === 'string') { profile.displayName = patch.displayName.trim().slice(0, 64); touched = true }
+  if (Object.prototype.hasOwnProperty.call(patch, 'avatar')) {
+    touched = true
+    if (patch.avatar) {
+      const parsed = parseDataUrl(patch.avatar)
+      if (!parsed || !parsed.base64) throw new Error('avatar must be a base64 data URL')
+      const bytes = b4a.from(parsed.data, 'base64')
+      if (bytes.length > AVATAR_MAX_BYTES) throw new Error('That image is too large. Pick a smaller one.')
+      const hash = blobHash(bytes)
+      let ref = (await ctx.localDb.get('blobref:' + hash))?.value
+      if (!ref) { const put = await ctx.blobs.put(bytes); ref = { key: put.key, id: put.id, type: parsed.mime }; await ctx.localDb.put('blobref:' + hash, ref) }
+      profile.avatarBlob = { key: ref.key, id: ref.id }; profile.avatarHash = hash; profile.avatarType = ref.type
+      avatarCache.set(hash, String(patch.avatar)) // warm cache with the exact bytes we were handed
+    } else {
+      delete profile.avatarBlob; delete profile.avatarHash; delete profile.avatarType; delete profile.avatar
+    }
+  }
+  if (!touched) return false
+  await ctx.localDb.put('profile', profile)
+  if (isDeviceLinkEnabled()) await ps.putProfile(ctx, profile).catch(() => {}) // sync name/avatar to the owner's OWN devices
+  return profile
+}
+
 // The identity fields the owner projects into share:meta. Shared on ALL scopes
 // (identity is WHO is sharing, not cycle data - proposal 2026-07-08 open-Q2).
 function profileMetaFields (prof) {
@@ -625,30 +699,7 @@ const methods = {
     return { avgCycleLength: p.avgCycleLength ?? null, avgPeriodLength: p.avgPeriodLength ?? null, lutealLength: p.lutealLength ?? null, goal: p.goal || 'track', flower: p.flower || 'rose', pregnancy: p.pregnancy || null, conditions: Array.isArray(p.conditions) ? p.conditions : [], birthControl: !!p.birthControl }
   },
   'prefs:set': async (args = {}, ctx) => {
-    const cur = await getPrefs(ctx)
-    const next = { ...cur }
-    const num = (v, lo, hi) => (v === null ? null : (Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : undefined))
-    const isIso = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
-    if ('avgCycleLength' in args) { const v = num(args.avgCycleLength, 21, 45); if (v !== undefined) next.avgCycleLength = v }
-    if ('avgPeriodLength' in args) { const v = num(args.avgPeriodLength, 2, 10); if (v !== undefined) next.avgPeriodLength = v }
-    if ('lutealLength' in args) { const v = num(args.lutealLength, 9, 18); if (v !== undefined) next.lutealLength = v }
-    if ('goal' in args && ['track', 'conceive', 'avoid', 'pregnant'].includes(args.goal)) next.goal = args.goal
-    if ('flower' in args && FLOWERS.has(args.flower)) next.flower = args.flower
-    // Health conditions (deduped, whitelisted) + hormonal-birth-control flag.
-    if ('conditions' in args && Array.isArray(args.conditions)) next.conditions = [...new Set(args.conditions.filter((c) => CONDITIONS.has(c)))]
-    if ('birthControl' in args) next.birthControl = !!args.birthControl
-    // Pregnancy dates (device-local; never projected to a partner). null clears.
-    if ('pregnancy' in args) {
-      const pg = args.pregnancy
-      if (pg === null) delete next.pregnancy
-      else if (pg && typeof pg === 'object') {
-        const clean = {}
-        if (isIso(pg.lmp)) clean.lmp = pg.lmp
-        if (isIso(pg.dueDate)) clean.dueDate = pg.dueDate
-        if (clean.lmp || clean.dueDate) next.pregnancy = clean
-      }
-    }
-    next.updatedAt = Date.now()
+    const next = applyPrefsPatch(await getPrefs(ctx), args)
     await ctx.localDb.put('prefs', next)
     if (isDeviceLinkEnabled()) await ps.putPrefs(ctx, next).catch(() => {}) // sync settings to the owner's OWN devices
     await refreshShares(ctx).catch(() => {}) // prefs change the projection partners see
@@ -757,31 +808,10 @@ const methods = {
     return out
   },
   'profile:set': async (args = {}, ctx) => {
-    const existing = await getProfile(ctx)
-    const profile = { ...existing, updatedAt: Date.now() }
-    if (typeof args.displayName === 'string') profile.displayName = args.displayName.trim().slice(0, 64)
-    // avatar: key absent -> preserve; null -> clear; data URL -> store in the blob
-    // store (deduped by content hash so a name-only edit re-appends nothing).
-    if (Object.prototype.hasOwnProperty.call(args, 'avatar')) {
-      if (args.avatar) {
-        const parsed = parseDataUrl(args.avatar)
-        if (!parsed || !parsed.base64) throw new Error('avatar must be a base64 data URL')
-        const bytes = b4a.from(parsed.data, 'base64')
-        if (bytes.length > AVATAR_MAX_BYTES) throw new Error('That image is too large. Pick a smaller one.')
-        const hash = blobHash(bytes)
-        let ref = (await ctx.localDb.get('blobref:' + hash))?.value
-        if (!ref) { const put = await ctx.blobs.put(bytes); ref = { key: put.key, id: put.id, type: parsed.mime }; await ctx.localDb.put('blobref:' + hash, ref) }
-        profile.avatarBlob = { key: ref.key, id: ref.id }; profile.avatarHash = hash; profile.avatarType = ref.type
-        avatarCache.set(hash, String(args.avatar)) // warm cache with the exact bytes we were handed
-      } else {
-        delete profile.avatarBlob; delete profile.avatarHash; delete profile.avatarType; delete profile.avatar
-      }
-    }
-    await ctx.localDb.put('profile', profile)
-    if (isDeviceLinkEnabled()) await ps.putProfile(ctx, profile).catch(() => {}) // sync name/avatar to the owner's OWN devices
+    const profile = (await applyProfile(ctx, args)) || (await getProfile(ctx))
     await refreshShareMeta(ctx).catch(() => {}) // push the new name/avatar to partners we share WITH
     await refreshMemberIdentity(ctx).catch(() => {}) // update our name on shares we JOINED
-    const out = { displayName: profile.displayName || '', updatedAt: profile.updatedAt }
+    const out = { displayName: profile.displayName || '', updatedAt: profile.updatedAt || 0 }
     const avatar = await resolveAvatarAwait(ctx, profile)
     if (avatar) out.avatar = avatar
     return out
@@ -828,8 +858,17 @@ const methods = {
     }
     const p = await getPrefs(ctx)
     const prefs = {}
-    for (const k of ['avgCycleLength', 'avgPeriodLength', 'lutealLength', 'goal', 'flower']) if (p[k] != null) prefs[k] = p[k]
-    const payload = { app: 'pearpetal', version: 1, exportedAt: Date.now(), days, periods, prefs }
+    for (const k of BACKUP_PREFS) if (p[k] != null) prefs[k] = p[k]
+    // The profile travels too. It is what a partner sees, and a restore that drops
+    // it leaves the person nameless to everyone they share with. The avatar goes as
+    // a data URL rather than its blob reference: the bytes live in THIS device's
+    // blob store, so the reference means nothing on the phone being restored onto.
+    const prof = await getProfile(ctx)
+    const profile = {}
+    if (prof?.displayName) profile.displayName = prof.displayName
+    const ownAvatar = await resolveAvatarAwait(ctx, prof).catch(() => null)
+    if (ownAvatar) profile.avatar = ownAvatar
+    const payload = { app: 'pearpetal', version: 1, exportedAt: Date.now(), days, periods, prefs, profile }
     // A non-empty password seals the payload; blank keeps the plaintext file.
     return (password != null && String(password).length) ? encryptBackup(payload, password) : payload
   },
@@ -869,19 +908,19 @@ const methods = {
       pCount++
     }
     if (data.prefs && typeof data.prefs === 'object') {
-      const cur = await getPrefs(ctx); const next = { ...cur }
-      const num = (v, lo, hi) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : undefined)
-      const a = data.prefs
-      if (num(a.avgCycleLength, 21, 45) !== undefined) next.avgCycleLength = num(a.avgCycleLength, 21, 45)
-      if (num(a.avgPeriodLength, 2, 10) !== undefined) next.avgPeriodLength = num(a.avgPeriodLength, 2, 10)
-      if (num(a.lutealLength, 9, 18) !== undefined) next.lutealLength = num(a.lutealLength, 9, 18)
-      if (['track', 'conceive', 'avoid'].includes(a.goal)) next.goal = a.goal
-      if (FLOWERS.has(a.flower)) next.flower = a.flower
-      next.updatedAt = Date.now()
+      // Same whitelist prefs:set uses, so nothing the app can set is dropped here.
+      const next = applyPrefsPatch(await getPrefs(ctx), data.prefs)
       await ctx.localDb.put('prefs', next)
+      if (isDeviceLinkEnabled()) await ps.putPrefs(ctx, next).catch(() => {})
+    }
+    let profileRestored = false
+    if (data.profile && typeof data.profile === 'object') {
+      profileRestored = await applyProfile(ctx, data.profile).catch(() => false)
     }
     await refreshShares(ctx).catch(() => {})
-    return { ok: true, days: dCount, periods: pCount }
+    await refreshShareMeta(ctx).catch(() => {})   // a restored name reaches partners
+    await refreshMemberIdentity(ctx).catch(() => {})
+    return { ok: true, days: dCount, periods: pCount, profile: profileRestored }
   },
 
   // Start tracking: create the private base (idempotent - returns the existing

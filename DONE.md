@@ -6,6 +6,24 @@ work lives in `TODO.md`.
 
 ## 2026-09-09
 
+- **A backup now restores everything it saved** (PR pending). Found in the same review pass.
+  `export:data` wrote five prefs and no profile, and `import:data` carried a SECOND, shorter
+  whitelist of its own, so moving to a new phone silently dropped everything shaping the
+  prediction: goal `pregnant` -> `track`, pregnancy dates -> null, conditions
+  `["pcos","thyroid"]` -> `[]`, birthControl true -> false, display name "Ada" -> "".
+  Days and periods survived, so nothing looked wrong. The App Store text sells backups as
+  the way to move phones.
+  Fixed at the cause rather than by lengthening two lists: `applyPrefsPatch` is now the
+  ONE prefs whitelist that `prefs:set` and `import:data` both go through, `BACKUP_PREFS`
+  is the one export list, and `applyProfile` is shared by `profile:set` and the restore, so
+  a restore gets the same validation an edit does (avatar size cap and content-hash dedupe
+  included). The avatar travels as a data URL, since its blob reference means nothing on the
+  phone being restored onto.
+  VERIFIED: `npm run verify` green, 220 tests (5 new, covering plain and encrypted backups,
+  the profile, the cycle log and a guard that fails if a pref is ever shown to the user but
+  left out of the backup). Run against the OLD code to confirm they catch it: 4 of 5 fail.
+  An old-format backup still imports, with the new fields simply absent.
+
 - **"Today" is the phone's day now, not UTC's** (PR pending). Found in a review pass. The
   screen read the LOCAL calendar date and the engine read the UTC one, so the two disagreed
   for part of every day anywhere but UTC. East of UTC that refused a core action outright:

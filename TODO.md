@@ -49,19 +49,8 @@ peerloom-core PR #20. What is left:
 
 ## Found in the 2026-09-09 review, not yet fixed
 
-The timezone half is fixed (PR pending). These two are confirmed with tests that
-were run, not inferred, and both are ordinary bugs rather than anything subtle.
-
-- **A backup does not restore the health settings it was told to save.** Export
-  writes `days`, `periods` and five prefs; `conditions`, `birthControl`,
-  `pregnancy` and the `profile` (display name, avatar) are never written, and
-  `import:data`'s goal whitelist omits `pregnant`. Round-tripped onto a fresh
-  device: goal `pregnant` -> `track`, pregnancy dates -> null, conditions
-  `["pcos","thyroid"]` -> `[]`, birthControl true -> false, name "Ada" -> "".
-  Days and periods survive. Everything shaping the PREDICTION does not, silently,
-  and pregnancy mode switches itself off. This is the move-to-a-new-phone path the
-  App Store description sells. Fields are additive so old backups keep importing.
-  Repro: `export:data` then `import:data` on a second engine, diff `prefs:get`.
+The timezone bug (PR #129) and the backup gap (PR pending) are fixed. What is left
+is confirmed with tests that were run, not inferred.
 
 - **A period logged on the wrong date is permanent.** `period:getAll` and
   `period:set` exist and NOTHING in the UI calls them, and no delete exists at any
