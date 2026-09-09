@@ -70,15 +70,16 @@ walk through the code and the method table showed to be missing.
   Uninstalling does it, but nothing says so and there is no control. Cheap to add
   and it matches the promise the onboarding makes.
 
-## Owed on the app lock
+## App lock - one thing not to re-litigate
 
-- **Arm it with a real finger and confirm it actually locks.** Everything up to the
-  arming is verified on the TCL by hand: the card renders, the prompt appears with
-  the "Use PIN" fallback offered, and CANCELLING correctly refuses to arm and says
-  why. What no script can do is present a fingerprint, so the armed behaviour is
-  unproven: that the cover goes up after a minute in the background, that a short
-  trip to a share sheet does NOT re-prompt, and that the app switcher shows the
-  cover rather than the cycle. Ten seconds by hand on the TCL or the Pixel.
+- **The "Use PIN" button is Android's, not ours.** It looks left-aligned under a centred
+  title and it cannot be moved: the accessibility tree names it
+  `com.android.systemui:id/button_use_credential`, package `com.android.systemui`, so the
+  whole unlock dialog is drawn by the system and every app on the phone that asks for a
+  fingerprint gets the same layout. We control the wording inside it and our own cover
+  behind it, nothing else. The only route to real control is our own PIN screen, which was
+  turned down deliberately (no account, no reset, forgetting it means deleting the app).
+  Raised and closed 2026-09-09.
 
 ## Verification still owed
 

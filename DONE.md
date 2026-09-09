@@ -28,11 +28,14 @@ work lives in `TODO.md`.
   2. The refusal note rendered inside the COLLAPSED card, so a toggle that refused looked
      like a dead control. Anything worth saying now opens the card, and the note quotes
      the phone's own reason instead of swallowing it into a boolean.
-  VERIFIED ON THE TCL (Android 15) by hand: the card renders, the prompt appears with
+  VERIFIED ON THE TCL (Android 15). By script: the card renders, the prompt appears with
   "Use PIN" offered as the fallback, and cancelling refuses to arm and explains itself
-  ("your phone did not accept the unlock (user_cancel)"). `npm run verify` green, 230
-  tests. The ARMED behaviour is still owed - see `TODO.md`, since no script can present a
-  fingerprint.
+  ("your phone did not accept the unlock (user_cancel)"). By hand, since no script can
+  present a fingerprint: Tim armed it and confirmed the lock works. `npm run verify` green,
+  230 tests.
+  ALSO SETTLED: the "Use PIN" button looks left-aligned under a centred title and cannot be
+  moved - it is `com.android.systemui:id/button_use_credential`, drawn by the system, the
+  same in every app on the phone. See `TODO.md` so it is not raised again.
 
 - **A period logged on the wrong date can be corrected now** (PR pending). The last of the
   three bugs from the review. `period:getAll` and `period:set` existed and NOTHING called
