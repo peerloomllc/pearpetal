@@ -1216,14 +1216,14 @@ function ViewerHome ({ onOpenPartner, onBecomeOwner }) {
   return (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       <Wordmark size={24} />
-      <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Shared with you</div>
+      <div style={{ fontSize: 13, color: colors.text.muted, textAlign: 'center' }}>Shared with you</div>
       {partners.map((p) => (
         <button key={p.groupId} onClick={() => onOpenPartner(p.groupId)} style={{ ...card, padding: spacing.md, textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: spacing.md, minWidth: 0 }}>
             <Avatar src={p.ownerAvatar} name={p.ownerName} size={32} />
             <span style={{ color: colors.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.ownerName ? `${p.ownerName}'s cycle` : "A partner's cycle"}</span>
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: p.available === false ? colors.error : p.revoked ? colors.text.secondary : colors.text.muted, fontSize: 12, flexShrink: 0 }}>{p.available === false ? 'Will not open' : p.revoked ? 'Sharing ended' : (p.scope || '...')}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: p.available === false ? colors.error : p.revoked ? colors.text.secondary : colors.text.muted, fontSize: 12, flexShrink: 0, textTransform: (p.available === false || p.revoked) ? 'none' : 'capitalize' }}>{p.available === false ? 'Will not open' : p.revoked ? 'Sharing ended' : (p.scope || '...')}<CaretRight size={14} color={colors.text.muted} weight='regular' /></span>
         </button>
       ))}
       {/* Accept a NEW invite (paste link / scan QR) - a viewer can be shared with by
