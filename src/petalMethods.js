@@ -15,7 +15,7 @@ const b4a = require('b4a')
 const sodium = require('sodium-universal')
 
 const { deviceKey, dayKey, periodKey, phaseKey, predictKey, summaryKey, memberKey, DEVICE_RANGE, DAY_RANGE, PERIOD_RANGE, SUMMARY_RANGE, MEMBER_RANGE } = require('./petalWire')
-const { projectionFromRows, pregnancyProjection, cycleStarts, addDays, diffDays, todayIso, FLOW_VALUES, BLEEDING_FLOWS, DEFAULT_PERIOD_LEN } = require('./prediction')
+const { projectionFromRows, pregnancyProjection, cycleStarts, median, addDays, diffDays, todayIso, FLOW_VALUES, BLEEDING_FLOWS, DEFAULT_PERIOD_LEN } = require('./prediction')
 const { notificationEvents } = require('./notifications')
 const { planImport } = require('./healthImport')
 const { parseHealthFile } = require('./healthFiles')
@@ -1141,6 +1141,73 @@ const methods = {
     await privPut(ctx, dayKey(nd.key), { ...existing, deleted: true })
     await refreshShares(ctx).catch(() => {})
     return { ok: true }
+  },
+
+  // The cycles this log actually contains, and what they add up to.
+  //
+  // Derived from cycleStarts(), the SAME function the projection uses, so the
+  // history screen and the dial can never tell a person two different stories
+  // about how long her cycles are. The 15..60 day filter and the median are the
+  // projection's too (projectionFromRows), for the same reason: a screen that
+  // said "usually 31 days" while the dial predicted from 28 would be worse than
+  // no screen.
+  //
+  // Nothing here is written anywhere. It is computed on demand from the log, like
+  // every other prediction, and never crosses the wire.
+  'cycle:history': async (_args, ctx) => {
+    const dayRows = (await privRows(ctx, DAY_RANGE)).filter((v) => v && !v.deleted)
+    const periodRows = (await privRows(ctx, PERIOD_RANGE)).filter((v) => v && !v.deleted)
+    const starts = cycleStarts(dayRows, periodRows) // ascending
+    const bleeding = new Set(dayRows.filter((d) => BLEEDING_FLOWS.has(d.flow)).map((d) => d.date))
+    const explicitEnd = new Map(periodRows.filter((p) => p.end).map((p) => [p.start, p.end]))
+
+    const cycles = []
+    for (let i = 0; i < starts.length; i++) {
+      const start = starts[i]
+      const nextStart = starts[i + 1] || null
+      // The last start has no cycle length yet: it is the one she is in.
+      const length = nextStart ? diffDays(start, nextStart) : null
+      // Period length: the explicit end when there is one, else the run of
+      // bleeding days from the start.
+      let end = explicitEnd.get(start) || start
+      if (!explicitEnd.has(start)) while (bleeding.has(addDays(end, 1))) end = addDays(end, 1)
+      cycles.push({
+        start,
+        nextStart,
+        length,
+        periodLength: bleeding.has(start) || explicitEnd.has(start) ? diffDays(start, end) + 1 : null,
+        current: !nextStart,
+      })
+    }
+    cycles.reverse() // newest first, which is the order the screen reads in
+
+    // Same band the projection trusts. A 3-day or 90-day "cycle" is a logging
+    // slip, and averaging it in would move the number the app predicts from.
+    const usable = cycles.map((c) => c.length).filter((n) => n != null && n >= 15 && n <= 60)
+    const periodLens = cycles.map((c) => c.periodLength).filter((n) => n != null && n >= 1 && n <= 15)
+    const stats = {
+      cycles: cycles.length,
+      completed: cycles.filter((c) => c.length != null).length,
+      usable: usable.length,
+      medianLength: usable.length ? median(usable) : null,
+      shortest: usable.length ? Math.min(...usable) : null,
+      longest: usable.length ? Math.max(...usable) : null,
+      // How much they vary. The projection calls high confidence at a spread of
+      // 4 days or less over 3+ cycles, so the screen uses the same threshold
+      // rather than inventing its own idea of "regular".
+      variation: usable.length >= 2 ? Math.max(...usable) - Math.min(...usable) : null,
+      regular: usable.length >= 3 && (Math.max(...usable) - Math.min(...usable)) <= 4,
+      medianPeriodLength: periodLens.length ? median(periodLens) : null,
+    }
+    // What the DIAL actually predicts from, which is not always the same number.
+    // projectionFromRows clamps the cycle length to 21..45 before using it, so a
+    // median outside that band is capped. Both numbers are true and they mean
+    // different things - her cycles really did run that long, and the app will not
+    // project that far from thin evidence - so the screen shows hers and says when
+    // the prediction is capped, rather than quietly showing one and implying the
+    // other.
+    stats.predictsFrom = stats.medianLength == null ? null : Math.max(21, Math.min(45, stats.medianLength))
+    return { cycles, stats }
   },
 
   // --- period spans (explicit start/end markers) --------------------------
