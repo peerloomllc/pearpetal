@@ -4,6 +4,30 @@ Chronological log of shipped work, newest first. One line (or few) per item with
 its date + PR. Deep rationale for T2/T3 changes lives in `DECISIONS.md`; open
 work lives in `TODO.md`.
 
+## 2026-09-09
+
+- **The partner-viewer blank screen: found, reproduced and fixed** (PR #127, peerloom-core
+  PR #20). Reported since August, survived PR #123's six defences, and hit again on 1.0.5.
+  It was a loop we wrote: `partner:view` published the viewer's member row on every call,
+  the append changed the view, the view change emitted `group:updated`, and the partner
+  screen answered `group:updated` by calling `partner:view`. About eight appends a second
+  with nobody touching either phone - 888 rows in 45 seconds. Past 512 rows the retention
+  sweep began clearing the viewer's OWN input core, blocks no other device is obliged to
+  hold, and the next cold start hung in `init()` forever behind a bare background. Every
+  detail of the report falls out of that, including why only a reinstall cured it and why
+  a re-pair bought a few more days.
+  Six changes across two repos: the row is published only when it changes; `retain()` never
+  clears the local input core; `init()` bounds each mount and joins the topic either way;
+  reading a partner's cycle falls through to stored data rather than waiting on their phone;
+  `partner:repair` rebuilds a broken shared cycle on-device with no new invite; and the boot
+  splash says something instead of showing a wordless screen for 45 seconds.
+  VERIFIED at the engine level with two real Hyperswarm peers on a DHT testnet, PearPetal's
+  own method table and the shipped retention settings, by re-running the reproduction
+  against the fix: 888 rows becomes 4, the sweep clears nothing, and a cold start with the
+  partner offline goes from hanging forever to `init` in 23ms with the cycle on screen in
+  5ms. `npm run verify` green, 212 tests (4 new). NOT yet verified on hardware - see
+  `TODO.md`. Rationale in `DECISIONS.md`.
+
 ## 2026-08-21
 
 - **Support development is back on the iOS About page** (PR #126). PR #121 hid every donation

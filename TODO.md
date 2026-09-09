@@ -19,34 +19,33 @@ accumulation mitigations B/C. The diagnostics keep-or-revert review closed as
   soliciting under Guideline 3.1.1. Android is unaffected either way. One line to flip if the
   answer is yes (the `IS_IOS` check in the donation-nudge effect in `src/ui/App.jsx`).
 
-## Live bug - blank screen on a partner-viewer (root cause NOT yet confirmed)
+## Live bug - blank screen on a partner-viewer (CAUSE FOUND, fix on PR #127)
 
-- **Confirm what actually stalls on the reporter's phone.** PR #123 removed the blank
-  screen and made every failure visible, but it did NOT identify which stall he hit. The
-  symptom fits three causes and the app could not tell them apart:
-  1. a worklet call that never returns (most likely - his was the viewer side, and the
-     viewer boot path was the one with the unbounded `partner:list` wait; a shared base
-     needing a block the owner is offline to serve never resolves),
-  2. the worklet crashing or being killed, which the shell had no way to notice, or
-  3. iOS jettisoning the WKWebView content process.
-  NEXT STEP, no code needed: he was asked to have his partner keep her app open on the same
-  wifi while he opens his. If his screen fills in, it is cause 1. If it stays blank with her
-  online, it is 2 or 3. Also asked whether anything flashes before it goes blank (points at
-  3) or whether it is blank instantly (points at 1).
-  Once he is on a build with this PR in it, the screen itself will name the cause, so this
-  item may close on his next report.
+Root cause found 2026-09-09 and reproduced end to end: `partner:view` -> `publishMember`
+-> `group:updated` -> `partner:view` was a write loop appending ~8 rows a second to the
+shared base while the partner screen sat open, which pushed the viewer's own input core
+past the retention threshold, after which the sweep cleared its own blocks and the app
+never opened again. See `DECISIONS.md` 2026-09-09. Fixed in PR #127 (PearPetal) and
+peerloom-core PR #20. What is left:
 
-- **Ship this to the reporter.** The fix is only useful to him once it is in a build he can
-  install. iOS is the platform he is on and the current 1.0.4 record is with Apple, so
-  decide whether this rides the next version bump or a TestFlight build.
+- **Get it onto the reporter's phone.** He is on iOS 1.0.5 and his install is already in
+  the broken state, so he needs a build carrying both PRs plus the "Rebuild it" button, or
+  a reinstall. Decide whether this rides a version bump or a TestFlight build.
 
-- **Open PearPetal once on the iPhone SE and confirm it boots.** The build with both PRs
-  is INSTALLED on the SE but was never launched: `ios-dev-install.sh` cannot launch headlessly
-  without a mounted Developer Disk Image. Everything else is verified (TCL, Android emulator,
-  iOS Simulator including the WebView-jettison recovery), so this is the one gap left, and it
-  is a ten-second check by hand.
-  Same for the Pixel 9 if a second Android datapoint is wanted: installed, not launched,
-  since rule 6 keeps it observe-only.
+- **Confirm the fix on hardware.** The reproduction is a Node harness on a DHT testnet, so
+  it proves the engine behaviour and not the phone. Owed: the partner screen left open on
+  a real pair for a few minutes, with the shared base's row count read afterwards, and one
+  cold start with the other phone switched off. The iPhone SE is the reporter's platform.
+
+- **Open PearPetal once on the iPhone SE and confirm it boots.** Still open from before:
+  the build with PRs #123/#124 is INSTALLED on the SE but was never launched
+  (`ios-dev-install.sh` cannot launch headlessly without a mounted Developer Disk Image).
+  Fold this into the run above.
+
+- **Audit the other apps for the same loop shape.** The bug is a read path that writes,
+  feeding a listener that re-reads. PearList, PearCal and PearGuard sit on the same engine
+  and the same `group:updated` pattern. The core half is fixed for all of them; the write
+  loop is per-app.
 
 ## Verification still owed
 
