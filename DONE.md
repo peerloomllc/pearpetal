@@ -6,6 +6,34 @@ work lives in `TODO.md`.
 
 ## 2026-09-09
 
+- **Erase everything** (PR pending). The last of the three feature gaps from the review: a
+  privacy-first app with no in-app delete-all. Uninstalling did it, but nothing said so and
+  there was no control.
+  `data:erase` destroys every group, then clears the device-local database by WALKING it
+  rather than from a list of keys we remember writing - a hand-maintained list is exactly how
+  a forgotten key survives, and here the survivor could be the prefs, the profile or the
+  recovery mnemonic. ORDER MATTERS: the database is cleared first and the files deleted
+  after, because the database is what boot reads, so a delete that fails half way still
+  leaves a phone that starts as a fresh install rather than one that thinks it has a cycle it
+  cannot open. Two-step confirmation, the destructive option is never the default, and the
+  sheet says what a partner keeps.
+  IT RESTARTS ITSELF. Tim asked for it to land on onboarding "as if someone had wiped app
+  data" rather than telling the person to close and reopen. The engine closes its corestore
+  during the erase, and `engine.close()` does not null the store, so re-initialising in place
+  would reuse a closed one - the worklet has to go. So the shell terminates it
+  (`Worklet.terminate()`), starts a fresh one, waits for it to be UP, then remounts the
+  WebView. Order matters again: remounting first would send the new UI's opening call to a
+  worklet that no longer exists.
+  ONE DEFECT FOUND BY DRIVING THE TCL: the first version swapped only the CARD for a
+  "done" message, leaving the Settings page around it still rendering the name, goal and
+  cycle lengths that had just been deleted - it read as though nothing had happened. It takes
+  the whole screen now, and the bottom nav is hidden, since every tab would read from a store
+  that no longer exists.
+  VERIFIED ON THE TCL end to end: onboarded a fresh cycle, erased it, watched the app land on
+  onboarding by itself within 6 seconds with no force-stop, and confirmed the RESTARTED
+  engine answers by walking back into onboarding afterwards. `npm run verify` green, 243
+  tests (3 new, including one that re-opens the store raw and asserts nothing survived).
+
 - **Cycle history and statistics** (PR pending). The second feature gap from the review:
   the log held every cycle and nothing surfaced them, so there was no way to see how long
   your cycles run or how much they vary.

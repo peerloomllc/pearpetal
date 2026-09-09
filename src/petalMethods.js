@@ -1210,6 +1210,40 @@ const methods = {
     return { cycles, stats }
   },
 
+  // Erase everything this phone holds. Irreversible, and there is no account and
+  // no server, so nothing can bring it back but a backup file.
+  //
+  // ORDER MATTERS. The device-local database is cleared FIRST and the files are
+  // deleted afterwards (by the shell), because the database is what the app reads
+  // on boot: identity, memberships, prefs, the recovery mnemonic. Clear that and
+  // the app is a fresh install even if the file delete then fails half way. The
+  // other order would leave a phone that still thinks it has a cycle and can no
+  // longer open it.
+  //
+  // The engine is closed at the end so the shell can delete the store directory
+  // without RocksDB writing back into it. The worklet is finished after this: the
+  // shell shows a terminal screen and the person reopens the app.
+  'data:erase': async (_args, ctx) => {
+    let groups = 0
+    for (const m of await allMemberships(ctx)) {
+      // Leaves the swarm topic and closes the base as well as forgetting it.
+      await ctx.destroyGroup(m.groupId).catch(() => {})
+      groups++
+    }
+    // Every device-local key, not a list of the ones we remember writing. A
+    // hand-maintained list is how a forgotten key survives an erase, and on this
+    // app a survivor could be the cycle prefs or the recovery mnemonic.
+    const keys = []
+    try { for await (const { key } of ctx.localDb.createReadStream()) keys.push(key) } catch {}
+    for (const k of keys) await ctx.localDb.del(k).catch(() => {})
+    // Anything cached in this process, so nothing can be served from memory
+    // between the erase and the restart.
+    avatarCache.clear(); avatarPending.clear()
+    _resetOwnerSeedForTest(); _resetMigrationForTest()
+    await ctx.engine.close().catch(() => {})
+    return { ok: true, groups, keys: keys.length }
+  },
+
   // --- period spans (explicit start/end markers) --------------------------
 
   // Remove a period that did not happen, or was logged on the wrong date.

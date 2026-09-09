@@ -60,10 +60,6 @@ pending) are all fixed. What is left is confirmed with tests that were run.
 The app lock and the cycle history are built. What is left is logged for ranking. The feature set is already rich; these are what a
 walk through the code and the method table showed to be missing.
 
-- **No way to erase everything.** A privacy-first app with no in-app delete-all.
-  Uninstalling does it, but nothing says so and there is no control. Cheap to add
-  and it matches the promise the onboarding makes.
-
 ## App lock - one thing not to re-litigate
 
 - **The "Use PIN" button is Android's, not ours.** It looks left-aligned under a centred
