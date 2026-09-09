@@ -57,14 +57,8 @@ pending) are all fixed. What is left is confirmed with tests that were run.
 
 ## Feature gaps from the same review
 
-The app lock is built (PR pending). The rest are logged for ranking, not started. The feature set is already rich; these are what a
+The app lock and the cycle history are built. What is left is logged for ranking. The feature set is already rich; these are what a
 walk through the code and the method table showed to be missing.
-
-- **No cycle history or statistics.** No list of past cycles, no average length,
-  no symptom or mood patterns over time. The data is all stored and `period:getAll`
-  already returns it; this is a screen, not engine work. It is also what people
-  open a tracker to look at after a few months, and it pairs naturally with the
-  period edit/delete item above.
 
 - **No way to erase everything.** A privacy-first app with no in-app delete-all.
   Uninstalling does it, but nothing says so and there is no control. Cheap to add

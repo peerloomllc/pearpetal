@@ -1268,7 +1268,7 @@ function PregnancyView ({ preg, flower, onSettings }) {
   )
 }
 
-function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub, selected, onEditPeriod, onInfo, onFlowerTap }) {
+function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub, selected, onEditPeriod, onInfo, onFlowerTap, onHistory, historyStats }) {
   if (!pred) return null
   const days = pred.daysUntilNextPeriod
   const nextLabel = days <= 0 ? 'expected now' : days === 1 ? 'in 1 day' : `in ${days} days`
@@ -1301,6 +1301,19 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
             <Row label='Next period' value={`${fmtDate(pred.nextPeriodStart)} · ${nextLabel}`} />
             {!pred.birthControl && <Row label='Fertile window' value={`${fmtDate(pred.fertileStart)} - ${fmtDate(pred.fertileEnd)}`} accent={pred.goal === 'conceive'} />}
             {!pred.birthControl && <Row label={pred.ovulationSource === 'bbt' ? 'Ovulation (from BBT)' : 'Ovulation (est.)'} value={fmtDate(pred.ovulationEst)} />}
+            {onHistory && (
+              <button onClick={onHistory} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                <span style={{ color: colors.text.secondary, fontSize: 14 }}>Your cycles</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, color: colors.text.primary, fontWeight: 500 }}>
+                  {/* Straight from cycle:history, the same figure the history
+                      screen prints. Never pred.cycleLen: it is defaulted to 28
+                      when there is nothing to average, and clamped to 21..45
+                      before the dial uses it, so it would claim an average she
+                      does not have and then contradict the screen it links to. */}
+                  {historyStats?.medianLength != null ? `Usually ${historyStats.medianLength} days` : 'See them'}<CaretRight size={14} color={colors.text.muted} weight='regular' />
+                </span>
+              </button>
+            )}
           </div>
           {pred.birthControl
             ? <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center' }}>On hormonal birth control, ovulation is usually suppressed, so fertile-window estimates are hidden.</div>
@@ -1311,6 +1324,108 @@ function CycleSummary ({ pred, today, flower, onSettings, onConditions, onScrub,
               </div>}
         </>
       )}
+    </div>
+  )
+}
+
+// What the log adds up to. Everything here is derived on demand from the cycle
+// starts the dial already uses (cycle:history), so the two cannot tell different
+// stories about how long her cycles are - a screen claiming "usually 31 days"
+// beside a dial predicting from 28 would be worse than no screen.
+function CycleHistory ({ onClose, onEditPeriods }) {
+  const [data, setData] = useState(null)
+  const load = useCallback(async () => { try { setData(await call('cycle:history')) } catch { setData({ cycles: [], stats: {} }) } }, [])
+  useSynced(load)
+  if (!data) return null
+  const { cycles, stats } = data
+  const dayWord = (n) => `${n} day${n === 1 ? '' : 's'}`
+
+  return (
+    <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
+        <div style={{ fontSize: 20, fontWeight: 600 }}>Your cycles</div>
+        <Btn kind='ghost' onClick={onClose}>Back</Btn>
+      </div>
+
+      {!cycles.length && (
+        <div style={{ ...card, color: colors.text.secondary, fontSize: 14, lineHeight: 1.6 }}>
+          Nothing to show yet. Once you have logged a couple of periods, this is where you will see how long your cycles run and how much they vary.
+        </div>
+      )}
+
+      {stats.medianLength != null && (
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 32, fontWeight: 600, color: colors.primary }}>{dayWord(stats.medianLength)}</div>
+            <div style={{ color: colors.text.muted, fontSize: 13 }}>Your usual cycle</div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+            {stats.shortest != null && stats.shortest !== stats.longest && <Row label='Shortest to longest' value={`${stats.shortest} - ${stats.longest} days`} />}
+            {stats.medianPeriodLength != null && <Row label='Period usually lasts' value={dayWord(stats.medianPeriodLength)} />}
+            <Row label='Cycles counted' value={`${stats.usable} of ${stats.cycles}`} />
+          </div>
+          <div style={{ color: colors.text.muted, fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
+            {stats.predictsFrom != null && stats.predictsFrom !== stats.medianLength && (
+              <span style={{ display: 'block', marginBottom: spacing.sm }}>
+                Predictions are worked out from {dayWord(stats.predictsFrom)} rather than {dayWord(stats.medianLength)}, because PearPetal will not project a cycle shorter than 21 days or longer than 45 from the history it has.
+              </span>
+            )}
+            {stats.regular
+              ? `Your cycles vary by ${dayWord(stats.variation)}, which is steady. Predictions from this are as good as they get.`
+              : stats.variation != null
+                ? `Your cycles vary by ${dayWord(stats.variation)}. The more they vary, the rougher the predictions are, and that is normal for plenty of people.`
+                // One usable cycle IS an average, just a thin one. Saying "an
+                // average will appear here" under a number that is already
+                // showing contradicts the card above it.
+                : 'Based on a single cycle so far, so treat it as a rough guide. It sharpens with every period you log.'}
+          </div>
+        </div>
+      )}
+
+      {cycles.length > 0 && stats.medianLength == null && (
+        <div style={{ ...card, color: colors.text.secondary, fontSize: 14, lineHeight: 1.6 }}>
+          {stats.completed === 0
+            ? 'This is your first cycle, so there is nothing to average yet. Once your next period starts, its length appears here.'
+            : 'Not enough complete cycles to average yet. One more period and you will see your usual length.'}
+        </div>
+      )}
+
+      {cycles.length > 0 && (
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {cycles.map((c, i) => (
+            <div key={c.start} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, padding: `${spacing.sm}px 0`, borderTop: i === 0 ? 'none' : `1px solid ${colors.divider}` }}>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', color: colors.text.primary, fontSize: 14 }}>{fmtDate(c.start)}{c.nextStart ? ` - ${fmtDate(c.nextStart)}` : ''}</span>
+                <span style={{ display: 'block', color: colors.text.muted, fontSize: 12 }}>
+                  {c.periodLength != null ? `Period ${dayWord(c.periodLength)}` : 'No bleeding logged'}
+                </span>
+              </span>
+              <span style={{ flexShrink: 0, textAlign: 'right' }}>
+                {c.current
+                  ? <span style={{ color: colors.primary, fontSize: 13, fontWeight: 500 }}>You are here</span>
+                  : <>
+                      <span style={{ display: 'block', color: colors.text.primary, fontWeight: 500 }}>{dayWord(c.length)}</span>
+                      {/* Say WHY a cycle is not in the average, rather than quietly
+                          dropping it - an implausible gap is nearly always a
+                          mistyped date she can go and fix. */}
+                      {(c.length < 15 || c.length > 60) && <span style={{ display: 'block', color: colors.warn, fontSize: 11 }}>Not counted</span>}
+                    </>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {cycles.some((c) => c.length != null && (c.length < 15 || c.length > 60)) && (
+        <Explainer title='One of these does not look like a real cycle.'>
+          A gap under 15 days or over 60 is left out of your average, because it is usually a date logged by mistake. You can correct or remove it under Your periods in settings.
+        </Explainer>
+      )}
+
+      <Btn kind='ghost' onClick={onEditPeriods}>Correct a period</Btn>
+      <div style={{ color: colors.text.muted, fontSize: 11, textAlign: 'center', lineHeight: 1.5 }}>
+        Worked out on this phone from what you have logged. None of it is stored anywhere or sent to anyone.
+      </div>
     </div>
   )
 }
@@ -1963,6 +2078,7 @@ function DevicesCard () {
 function PeriodHistory ({ onChanged }) {
   const [rows, setRows] = useState(null)
   const [editing, setEditing] = useState(null)   // the row being edited
+  const [adding, setAdding] = useState(false)   // the add sheet
   const [confirm, setConfirm] = useState(null)   // the row awaiting a delete confirmation
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -1999,7 +2115,7 @@ function PeriodHistory ({ onChanged }) {
           <span style={{ minWidth: 0 }}>
             <span style={{ display: 'block', color: colors.text.primary, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{span(row)}</span>
             <span style={{ display: 'block', color: colors.text.muted, fontSize: 12 }}>
-              {[lengthOf(row), row.inferred ? 'from the days you logged' : ''].filter(Boolean).join(' · ')}
+              {[lengthOf(row), row.inferred ? 'From the days you logged' : ''].filter(Boolean).join(' · ')}
             </span>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, flexShrink: 0 }}>
@@ -2009,13 +2125,25 @@ function PeriodHistory ({ onChanged }) {
         </div>
       ))}
       {err && <div style={{ color: colors.warn, fontSize: 13 }}>{err}</div>}
-      <div style={{ color: colors.text.muted, fontSize: 12 }}>Removing a period also clears the bleeding logged on its days. Symptoms, mood, notes and temperatures on those days are kept. Ones marked "from the days you logged" were worked out from your calendar rather than added here, and they count towards your cycle just the same.</div>
+      {/* Adding belongs here too. The main screen only offers "Add period" while
+          the cycle is still unknown, and the day sheet's route is for the day you
+          are looking at, so once a cycle was known there was nowhere to enter an
+          OLD period - which is exactly what somebody does to sharpen predictions
+          when they start using the app. */}
+      <Btn kind='ghost' onClick={() => { haptic('light'); setAdding(true) }}>Add a past period</Btn>
+      <div style={{ color: colors.text.muted, fontSize: 12 }}>Removing a period also clears the bleeding logged on its days. Symptoms, mood, notes and temperatures on those days are kept. Ones marked "From the days you logged" were worked out from your calendar rather than added here, and they count towards your cycle just the same.</div>
 
       {editing && (
         <PeriodSheet
           editing={{ start: editing.start, end: editing.end || '' }}
           onClose={() => setEditing(null)}
           onSaved={async () => { setEditing(null); await load(); onChanged && onChanged() }}
+        />
+      )}
+      {adding && (
+        <PeriodSheet
+          onClose={() => setAdding(false)}
+          onSaved={async () => { setAdding(false); await load(); onChanged && onChanged() }}
         />
       )}
       {confirm && (
@@ -2119,9 +2247,9 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
   // scroll is delayed so the expand has committed first - scrolling mid-animation
   // (while the section grows from 0) lands short.
   useEffect(() => {
-    if (!prefs || scrollTo !== 'health') return
-    setOpenSection((s) => ({ ...s, health: true }))
-    const t = setTimeout(() => { document.getElementById('health-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); onScrolled && onScrolled() }, 140)
+    if (!prefs || !scrollTo) return
+    setOpenSection((s) => ({ ...s, [scrollTo]: true }))
+    const t = setTimeout(() => { document.getElementById(`${scrollTo}-section`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); onScrolled && onScrolled() }, 140)
     return () => clearTimeout(t)
   }, [prefs, scrollTo])
   if (!prefs) return null
@@ -2285,7 +2413,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
         <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
       </CollapsibleCard>
       <AppLockCard />
-      <CollapsibleCard title='Your periods' icon={Drop} open={openSection.periods} onToggle={() => toggleSection('periods')}>
+      <CollapsibleCard id='periods-section' title='Your periods' icon={Drop} open={openSection.periods} onToggle={() => toggleSection('periods')}>
         <div style={{ color: colors.text.muted, fontSize: 12 }}>Every period you have logged. These anchor your cycle, so a wrong date changes what PearPetal predicts - correct or remove one here.</div>
         <PeriodHistory onChanged={() => { loadPrefs(); onSaved && onSaved() }} />
       </CollapsibleCard>
@@ -2857,6 +2985,12 @@ export default function App () {
   const [settingsAnchor, setSettingsAnchor] = useState(null) // e.g. 'health' -> scroll there on open
   const [cycleView, setCycleView] = useState(() => { try { return localStorage.getItem('pearpetal:cycleView') === 'calendar' ? 'calendar' : 'dial' } catch { return 'dial' } })
   const setView = (v) => { setCycleView(v); try { localStorage.setItem('pearpetal:cycleView', v) } catch {} }
+  // The summary's "Your cycles" row reads its number from HERE, not from
+  // pred.cycleLen. pred.cycleLen is clamped to 21..45 before the dial predicts
+  // from it, so on a long cycle the row said "Usually 45 days" while the history
+  // screen said 57 - the two surfaces disagreeing about her own cycles, which is
+  // the one thing this feature must never do.
+  const [history, setHistory] = useState(null)
   const [calMonth, setCalMonth] = useState(() => monthStart(todayIso()))
   const [calDir, setCalDir] = useState(1) // slide direction for the month transition
   const goMonth = (n) => { setCalDir(n); setCalMonth((cur) => shiftMonthIso(cur, n)) }
@@ -2865,8 +2999,8 @@ export default function App () {
   const daysByIso = useMemo(() => Object.fromEntries(days.map((d) => [d.date, d])), [days])
 
   const refresh = useCallback(async () => {
-    const [d, pr, p] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null), call('prefs:get').catch(() => null)])
-    setDays(d); setPred(pr)
+    const [d, pr, p, h] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null), call('prefs:get').catch(() => null), call('cycle:history').catch(() => null)])
+    setDays(d); setPred(pr); setHistory(h)
     if (p && p.flower) setFlower(p.flower) // keep the dial's flower in sync when prefs change (incl. synced from another device)
   }, [])
 
@@ -2965,6 +3099,7 @@ export default function App () {
   else if (screen === 'share') content = <Sharing onClose={() => setScreen('main')} onOpenPartner={setPartnerGroup} />
   else if (screen === 'settings') content = <CycleSettings onClose={() => setScreen('main')} onSaved={refresh} onFlower={setFlower} scrollTo={settingsAnchor} onScrolled={() => setSettingsAnchor(null)} themePref={themePref} onTheme={changeTheme} />
   else if (screen === 'about') content = <AboutScreen onClose={() => setScreen('main')} />
+  else if (screen === 'history') content = <CycleHistory onClose={() => setScreen('main')} onEditPeriods={() => { setSettingsAnchor('periods'); setScreen('settings') }} />
   else content = (
     <div style={{ maxWidth: 460, margin: '0 auto', padding: spacing.xl, paddingTop: screenPadTop, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       {pred?.pregnancy?.active ? (
@@ -2988,7 +3123,7 @@ export default function App () {
             <div key={cycleView} style={{ animation: 'pearpetal-fade 220ms ease' }}>
               {cycleView === 'calendar'
                 ? <MonthCalendar monthIso={calMonth} dir={calDir} pred={pred} daysByIso={daysByIso} selected={date} today={todayIso()} onPick={setDate} onPrev={() => goMonth(-1)} onNext={() => goMonth(1)} onToday={goToday} />
-                : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} onEditPeriod={() => setPeriodSheet(true)} onInfo={() => setDialInfo(true)} onFlowerTap={() => setFlowerSheet(true)} />}
+                : <CycleSummary pred={pred} today={todayIso()} flower={flower} onSettings={() => setScreen('settings')} onConditions={() => { setSettingsAnchor('health'); setScreen('settings') }} onScrub={(date) => { if (date <= todayIso()) setDate(date) }} selected={date} onEditPeriod={() => setPeriodSheet(true)} onInfo={() => setDialInfo(true)} onFlowerTap={() => setFlowerSheet(true)} onHistory={() => setScreen('history')} historyStats={history?.stats} />}
             </div>
           </div>
         </>

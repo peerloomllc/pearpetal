@@ -6,6 +6,31 @@ work lives in `TODO.md`.
 
 ## 2026-09-09
 
+- **Cycle history and statistics** (PR pending). The second feature gap from the review:
+  the log held every cycle and nothing surfaced them, so there was no way to see how long
+  your cycles run or how much they vary.
+  New `cycle:history` derives the list from `cycleStarts()` - the SAME function the
+  projection uses - and averages with the same 15..60 day filter and the same median, so
+  the screen and the dial cannot tell two different stories. A "Your cycles" row on the
+  summary opens it. Also added an "Add a past period" button to Your periods, which had no
+  way to enter an old cycle at all once a cycle was known.
+  FOUR DEFECTS FOUND BY DRIVING THE TCL, none caught by the tests:
+  1. The summary row read "Usually 28 days" on a log with ONE start - that 28 is the
+     projection's DEFAULT, not her average, and the history screen correctly showed none.
+  2. The stats card showed "57 days, your usual cycle" above a footnote saying an average
+     would appear once she logged more. One usable cycle is a thin average, not no average.
+  3. No way to add a past period from the section that lists them.
+  4. THE BAD ONE: the row said "Usually 45 days" beside a screen saying 57.
+     `projectionFromRows` CLAMPS the cycle length to 21..45 before predicting, so the dial's
+     number is capped while the history reports the real median. The first test missed it
+     because 28 sits inside the clamp. Both surfaces now read one source (`cycle:history`),
+     and the screen says what the dial predicts from and why when they differ.
+  Also a capitalisation pass over the new screens after Tim pointed out that user-facing
+  strings were rendering as lowercase fragments ("you are here", "not counted").
+  VERIFIED ON THE TCL end to end: added a period through the new button, watched the stats
+  card populate, and confirmed the summary row and the screen now both read 57 with the cap
+  explained. `npm run verify` green, 240 tests (10 new).
+
 - **The app can be locked now** (PR pending). The biggest of the three feature gaps from
   the review: nothing biometric or PIN existed anywhere, so anyone holding an unlocked
   phone opened straight into her cycle.
