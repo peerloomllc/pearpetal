@@ -6,6 +6,34 @@ work lives in `TODO.md`.
 
 ## 2026-09-09
 
+- **The app can be locked now** (PR pending). The biggest of the three feature gaps from
+  the review: nothing biometric or PIN existed anywhere, so anyone holding an unlocked
+  phone opened straight into her cycle.
+  Face ID / fingerprint with the phone's own passcode as the fallback (`expo-local-
+  authentication`), off by default. It lives in the SHELL rather than the WebView UI,
+  because only the shell can cover the screen before the first frame is drawn and before
+  the OS takes the app-switcher snapshot. Re-locks after about a minute in the background,
+  so a share sheet or photo picker does not nag.
+  IT CANNOT LOCK ANYONE OUT, by three separate guards: it refuses to arm unless the phone
+  can authenticate; it makes you unlock once BEFORE arming, so it never arms on something
+  you cannot open; and if enrolment later disappears it switches itself off and lets you in
+  rather than stranding you with health data nobody can reach. The setting says plainly
+  that this rests on the phone's own unlock, so somebody who knows the passcode still gets
+  in - it stops a person picking up an unlocked phone, not one who can unlock it.
+  TWO DEFECTS FOUND BY DRIVING THE TCL, both mine, both fixed:
+  1. React error #310 - a `useEffect` added BELOW the component's early return, so the
+     hook count changed the moment state arrived and the whole Settings screen went down.
+     The ErrorBoundary from PR #123 caught it and showed a readable message rather than a
+     blank screen, which is that work paying off in the field.
+  2. The refusal note rendered inside the COLLAPSED card, so a toggle that refused looked
+     like a dead control. Anything worth saying now opens the card, and the note quotes
+     the phone's own reason instead of swallowing it into a boolean.
+  VERIFIED ON THE TCL (Android 15) by hand: the card renders, the prompt appears with
+  "Use PIN" offered as the fallback, and cancelling refuses to arm and explains itself
+  ("your phone did not accept the unlock (user_cancel)"). `npm run verify` green, 230
+  tests. The ARMED behaviour is still owed - see `TODO.md`, since no script can present a
+  fingerprint.
+
 - **A period logged on the wrong date can be corrected now** (PR pending). The last of the
   three bugs from the review. `period:getAll` and `period:set` existed and NOTHING called
   them, and no delete existed at any layer, so a mistyped start skewed the cycle-length

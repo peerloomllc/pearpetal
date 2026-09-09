@@ -10,7 +10,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh, Target, Bell, Palette, Drop } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh, Target, Bell, Palette, Drop, Lock } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -2036,6 +2036,60 @@ function PeriodHistory ({ onChanged }) {
   )
 }
 
+// Ask for the phone's own unlock before showing the cycle. Off by default; the
+// SHELL owns it (app/index.tsx), because only the shell can cover the screen
+// before the first frame and before the app-switcher snapshot is taken.
+function AppLockCard () {
+  const [state, setState] = useState(null) // { enabled, available }
+  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
+  useEffect(() => { call('shell:lock:get').then(setState).catch(() => setState({ enabled: false, available: false })) }, [])
+  // Anything worth saying opens the card. The note used to render inside the
+  // collapsed body, so tapping the toggle and having it refuse looked exactly like
+  // tapping a dead control - seen on the TCL.
+  //
+  // ABOVE the early return, with every other hook. Putting it below cost a React
+  // error #310 ("rendered more hooks than during the previous render") the moment
+  // `state` arrived, which took the whole Settings screen down.
+  useEffect(() => { if (note) setOpen(true) }, [note])
+  if (!state) return null
+
+  const toggle = async () => {
+    if (busy) return
+    setBusy(true); setNote('')
+    try {
+      const r = await call('shell:lock:set', { enabled: !state.enabled })
+      setState({ enabled: !!r.enabled, available: r.available !== false })
+      if (r.reason === 'no-auth') setNote('Set up Face ID, a fingerprint or a passcode on your phone first, then this can be turned on.')
+      else if (r.reason === 'refused') setNote(`Not turned on: your phone did not accept the unlock${r.why ? ` (${r.why})` : ''}. PearPetal only switches the lock on once it has seen you can get back in.`)
+      else if (r.enabled) haptic('success')
+    } catch (e) { setNote(e.message || 'Could not change the lock.') } finally { setBusy(false) }
+  }
+
+  return (
+    <CollapsibleCard
+      title='Lock the app' icon={Lock} open={open} onToggle={() => setOpen((o) => !o)}
+      right={<Toggle on={!!state.enabled} label='Lock the app' onClick={toggle} />}
+    >
+      <div style={{ color: colors.text.muted, fontSize: 12 }}>
+        Ask for Face ID, your fingerprint or your phone's passcode before showing your cycle. It also hides PearPetal in the app switcher, so a glance at your open apps shows nothing.
+      </div>
+      {!state.available && (
+        <Explainer title='Your phone has no unlock set up.'>Add Face ID, a fingerprint or a passcode in your phone's settings, then come back and turn this on.</Explainer>
+      )}
+      {state.enabled && (
+        <div style={{ color: colors.text.muted, fontSize: 12, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md, lineHeight: 1.5 }}>
+          It asks again once PearPetal has been closed for a minute or so, so nipping out to share a link or pick a photo will not keep prompting you.
+          <br /><br />
+          Worth knowing: this uses your phone's own unlock, so anyone who knows your passcode can still get in. It stops someone picking up an unlocked phone, not someone who can unlock it themselves.
+        </div>
+      )}
+      {note && <div style={{ color: colors.warn, fontSize: 13 }}>{note}</div>}
+    </CollapsibleCard>
+  )
+}
+
 function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, themePref = 'dark', onTheme }) {
   const [prefs, setPrefs] = useState(null)
   const [dataMsg, setDataMsg] = useState(null) // { text, tone: 'success'|'error'|'muted' }
@@ -2230,6 +2284,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
         <Stepper label='Luteal phase length' value={prefs.lutealLength} def={14} min={9} max={18} field='lutealLength' />
         <div style={{ color: colors.text.muted, fontSize: 12 }}>These help predictions before you have logged many cycles. Once you have history, PearPetal learns your real numbers.</div>
       </CollapsibleCard>
+      <AppLockCard />
       <CollapsibleCard title='Your periods' icon={Drop} open={openSection.periods} onToggle={() => toggleSection('periods')}>
         <div style={{ color: colors.text.muted, fontSize: 12 }}>Every period you have logged. These anchor your cycle, so a wrong date changes what PearPetal predicts - correct or remove one here.</div>
         <PeriodHistory onChanged={() => { loadPrefs(); onSaved && onSaved() }} />

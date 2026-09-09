@@ -57,15 +57,8 @@ pending) are all fixed. What is left is confirmed with tests that were run.
 
 ## Feature gaps from the same review
 
-Logged for ranking, not started. The feature set is already rich; these are what a
+The app lock is built (PR pending). The rest are logged for ranking, not started. The feature set is already rich; these are what a
 walk through the code and the method table showed to be missing.
-
-- **No lock on the app.** No PIN, no Face ID, nothing biometric anywhere in
-  `src/`, `app/` or `app.json`. Anyone holding the unlocked phone opens straight
-  into her cycle. For a menstrual tracker sold on privacy this is the most
-  conspicuous omission, and the competitors all have it. Needs a decision on what
-  it actually protects: the app on open, or also the partner view, and what
-  happens to notifications on the lock screen (discreet mode already exists).
 
 - **No cycle history or statistics.** No list of past cycles, no average length,
   no symptom or mood patterns over time. The data is all stored and `period:getAll`
@@ -76,6 +69,16 @@ walk through the code and the method table showed to be missing.
 - **No way to erase everything.** A privacy-first app with no in-app delete-all.
   Uninstalling does it, but nothing says so and there is no control. Cheap to add
   and it matches the promise the onboarding makes.
+
+## Owed on the app lock
+
+- **Arm it with a real finger and confirm it actually locks.** Everything up to the
+  arming is verified on the TCL by hand: the card renders, the prompt appears with
+  the "Use PIN" fallback offered, and CANCELLING correctly refuses to arm and says
+  why. What no script can do is present a fingerprint, so the armed behaviour is
+  unproven: that the cover goes up after a minute in the background, that a short
+  trip to a share sheet does NOT re-prompt, and that the app switcher shows the
+  cover rather than the cycle. Ten seconds by hand on the TCL or the Pixel.
 
 ## Verification still owed
 

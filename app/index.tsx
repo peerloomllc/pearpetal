@@ -8,7 +8,7 @@
 // the wire proposal and TODO).
 
 import { useEffect, useRef, useState } from 'react'
-import { View, Text, Platform, Share, StatusBar, BackHandler, AppState, Appearance, NativeModules } from 'react-native'
+import { View, Text, Pressable, Platform, Share, StatusBar, BackHandler, AppState, Appearance, NativeModules } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Worklet } from 'react-native-bare-kit'
@@ -17,6 +17,7 @@ import { Asset } from 'expo-asset'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as Linking from 'expo-linking'
 import * as Haptics from 'expo-haptics'
+import * as LocalAuthentication from 'expo-local-authentication'
 import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
 import * as Notifications from 'expo-notifications'
@@ -303,6 +304,47 @@ const { WebViewRecovery } = NativeModules
 const WEBVIEW_RECOVERY_MIN_BG_MS = 20_000
 let _backgroundedAt = 0
 
+// --- app lock ---------------------------------------------------------------
+// Opt-in, off by default, and it lives HERE rather than in the WebView UI: the
+// shell owns the first frame, so the cycle can be covered before it has ever been
+// drawn, and the same cover hides the app-switcher snapshot on the way out.
+//
+// Device authentication (Face ID / fingerprint, falling back to the phone's own
+// passcode), so there is no secret of ours to store and no way for PearPetal to
+// lock somebody out of their own health data. Its limit is worth being honest
+// about: whoever knows the phone's passcode still gets in.
+const LOCK_KEY = 'pearpetal:appLock'
+// Popping out to a share sheet, the camera or the document picker must not
+// re-prompt. Closing the app and coming back later must.
+const LOCK_GRACE_MS = 60_000
+
+// Can this phone actually authenticate right now? Enrolment can disappear after
+// the lock was turned on (a passcode removed, a face forgotten), and a lock that
+// cannot be opened is data loss, so every path that would hold someone out checks
+// this first and lets them through instead.
+async function canAuthenticate (): Promise<boolean> {
+  try {
+    const level = await LocalAuthentication.getEnrolledLevelAsync()
+    return level !== LocalAuthentication.SecurityLevel.NONE
+  } catch { return false }
+}
+
+// Returns the RESULT, not a boolean. A refusal has a reason - cancelled, no
+// hardware, locked out after too many tries - and the person tapping the toggle
+// is owed it. Swallowing it into `false` is what made the toggle look broken.
+async function promptUnlock (): Promise<{ ok: boolean, why: string }> {
+  try {
+    const r: any = await LocalAuthentication.authenticateAsync({
+      promptMessage: 'Unlock PearPetal',
+      cancelLabel: 'Cancel',
+      // false = the phone's passcode is offered when a face or finger fails,
+      // which is what keeps this from ever being a permanent lockout.
+      disableDeviceFallback: false,
+    })
+    return { ok: !!r?.success, why: String(r?.error || r?.warning || '') }
+  } catch (e: any) { return { ok: false, why: String(e?.message || e || 'unknown') } }
+}
+
 // How long the shell will wait for the engine before it gives up and shows the
 // failure page. Generous: a cold start on an old phone with a large store is
 // slow, and a false alarm here is worse than a few extra seconds of splash. What
@@ -340,12 +382,39 @@ function BootSplash ({ theme }: { theme: string }) {
   )
 }
 
+// What covers the app while it is locked. Deliberately says nothing about the
+// person's cycle: it is also what the app-switcher screenshots.
+function LockCover ({ theme, onUnlock, busy }: { theme: string, onUnlock: () => void, busy: boolean }) {
+  const fg = theme === 'light' ? '#5c4650' : '#f6eef0'
+  const muted = theme === 'light' ? '#8a7480' : '#c6b8bd'
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: bgFor(theme), alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+      <Text style={{ color: fg, fontSize: 24, fontWeight: '600', letterSpacing: 0.3 }}>PearPetal</Text>
+      <Text style={{ color: muted, fontSize: 14, marginTop: 10, textAlign: 'center' }}>Locked</Text>
+      <Pressable
+        onPress={onUnlock}
+        disabled={busy}
+        style={{ marginTop: 28, paddingVertical: 12, paddingHorizontal: 28, borderRadius: 14, backgroundColor: '#f2789f', opacity: busy ? 0.6 : 1 }}
+      >
+        <Text style={{ color: '#2a1119', fontSize: 15, fontWeight: '600' }}>{busy ? 'Unlocking…' : 'Unlock'}</Text>
+      </Pressable>
+    </View>
+  )
+}
+
 export default function Shell () {
   const webViewRef = useRef<any>(null)
   const [html, setHtml] = useState<string | null>(null)
   // Bumping this remounts the WebView, which is the only way to recover an
   // inline-html source. See onContentProcessDidTerminate below.
   const [webViewGen, setWebViewGen] = useState(0)
+  // App lock. `lockOn` is the preference, `locked` is whether the cover is up.
+  // Both start unknown/false so an app with the lock off is never delayed by it.
+  const [lockOn, setLockOn] = useState(false)
+  const [locked, setLocked] = useState(false)
+  const [unlocking, setUnlocking] = useState(false)
+  const lockOnRef = useRef(false)
+  const leftAt = useRef(0)
   const [shellTheme, setShellTheme] = useState('dark') // pre-paint bg; the WebView corrects it via shell:theme
   const webViewLoaded = useRef(false)
   const pendingDeeplink = useRef<string | null>(null)
@@ -353,6 +422,42 @@ export default function Shell () {
   const insets = useSafeAreaInsets()
 
   useEffect(() => { _webViewRef = webViewRef })
+
+  // Read the lock preference first thing. If it is on, the cover goes up before
+  // the WebView has drawn a single frame, and the prompt follows.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const on = (await AsyncStorage.getItem(LOCK_KEY).catch(() => null)) === '1'
+      if (cancelled || !on) return
+      // Enrolment can have gone away since it was switched on. A lock nobody can
+      // open is data loss, so turn it off rather than hold the person out.
+      if (!(await canAuthenticate())) {
+        await AsyncStorage.setItem(LOCK_KEY, '0').catch(() => {})
+        return
+      }
+      if (cancelled) return
+      setLockOn(true); lockOnRef.current = true; setLocked(true)
+      const r = await promptUnlock()
+      if (!cancelled && r.ok) setLocked(false)
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  const tryUnlock = async () => {
+    if (unlocking) return
+    setUnlocking(true)
+    try {
+      // Same safety valve: if the phone can no longer authenticate at all, let
+      // them in and switch the lock off rather than strand them.
+      if (!(await canAuthenticate())) {
+        await AsyncStorage.setItem(LOCK_KEY, '0').catch(() => {})
+        setLockOn(false); lockOnRef.current = false; setLocked(false)
+        return
+      }
+      if ((await promptUnlock()).ok) setLocked(false)
+    } finally { setUnlocking(false) }
+  }
 
   const injectInsets = () => {
     webViewRef.current?.injectJavaScript(
@@ -427,6 +532,23 @@ export default function Shell () {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') syncNotifications({ request: false }).catch(() => {})
+      // App lock, both platforms. The cover goes up the INSTANT the app stops
+      // being frontmost, not on the way back, because the screenshot the OS takes
+      // for the app switcher is taken right about here - waiting would put the
+      // cycle in the switcher for anyone thumbing through it.
+      if (lockOnRef.current) {
+        if (s === 'background' || s === 'inactive') {
+          if (leftAt.current === 0) leftAt.current = Date.now()
+          setLocked(true)
+        } else if (s === 'active') {
+          const awayMs = leftAt.current ? Date.now() - leftAt.current : 0
+          leftAt.current = 0
+          // Under the grace period this was a share sheet or a photo picker, not
+          // the person putting the phone down. Drop the cover without a prompt.
+          if (awayMs < LOCK_GRACE_MS) setLocked(false)
+          else tryUnlock()
+        }
+      }
       if (Platform.OS !== 'android') return
       if (s === 'background' || s === 'inactive') {
         // 'inactive' can precede 'background', so keep the FIRST timestamp.
@@ -612,6 +734,30 @@ export default function Shell () {
           await syncNotifications({ request: false })
           return reply(id, { ok: true })
         }
+        case 'shell:lock:get': {
+          // `available` says whether this phone can authenticate at all, so the
+          // Settings toggle can explain itself instead of just failing.
+          return reply(id, { enabled: lockOnRef.current, available: await canAuthenticate() })
+        }
+        case 'shell:lock:set': {
+          const want = args?.enabled === true
+          if (want) {
+            if (!(await canAuthenticate())) {
+              return reply(id, { enabled: false, available: false, reason: 'no-auth' })
+            }
+            // Prove they can get back in BEFORE the lock is armed. Switching on a
+            // lock that will not open is the one failure this must never allow.
+            const r = await promptUnlock()
+            if (!r.ok) {
+              return reply(id, { enabled: lockOnRef.current, available: true, reason: 'refused', why: r.why })
+            }
+          }
+          await AsyncStorage.setItem(LOCK_KEY, want ? '1' : '0').catch(() => {})
+          lockOnRef.current = want
+          setLockOn(want)
+          if (!want) { setLocked(false); leftAt.current = 0 }
+          return reply(id, { enabled: want, available: true })
+        }
         case 'shell:theme': {
           // The WebView reports its resolved theme; follow it live (status bar +
           // container bg) and persist so the next cold start paints correctly.
@@ -640,9 +786,14 @@ export default function Shell () {
     }
   }
 
-  if (!html) return <BootSplash theme={shellTheme} />
+  if (!html) return (
+    <View style={{ flex: 1 }}>
+      <BootSplash theme={shellTheme} />
+      {locked && <LockCover theme={shellTheme} onUnlock={tryUnlock} busy={unlocking} />}
+    </View>
+  )
   return (
-    <>
+    <View style={{ flex: 1 }}>
       <StatusBar barStyle={shellTheme === 'light' ? 'dark-content' : 'light-content'} translucent backgroundColor='transparent' />
       <WebView
         key={webViewGen}
@@ -692,6 +843,10 @@ export default function Shell () {
         mediaCapturePermissionGrantType='grant'
         onPermissionRequest={(ev: any) => { try { ev?.grant?.(ev.resources) } catch {} }}
       />
-    </>
+      {/* Last in the tree, so it is on top of the WebView. The WebView stays
+          mounted underneath: unmounting it would reboot the whole UI on every
+          unlock and lose whatever screen the person was on. */}
+      {locked && <LockCover theme={shellTheme} onUnlock={tryUnlock} busy={unlocking} />}
+    </View>
   )
 }
