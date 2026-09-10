@@ -70,8 +70,14 @@ function rowApplyDecision (key, incoming, existing) {
   if (key.startsWith('device:') && key.slice('device:'.length) !== incoming.pubkey) return 'reject'
 
   if (existing) {
-    // No resurrection: once a key is a tombstone, reject every later write.
-    if (existing.deleted === true) return 'reject'
+    // A tombstone is just another value, so plain LWW decides what happens next:
+    // a LATER non-deleted write un-deletes the row. That is what the wire
+    // protocol says (proposals/2026-07-06-wire-protocol.md section 5: "a newer
+    // non-deleted updatedAt un-deletes, matching the substrate rule"), and the
+    // blanket reject that used to sit here did the opposite - once a day was
+    // deleted, that DATE could never be logged again on any device, with
+    // day:set returning ok while the write was silently dropped. An OLD delete
+    // still loses on its own, because its updatedAt is older.
     if (typeof existing.updatedAt === 'number') {
       if (incoming.updatedAt < existing.updatedAt) return 'reject'
       // Deterministic tie-break on equal timestamps: higher signature wins, so
@@ -114,6 +120,9 @@ function rowSharedDecision (key, incoming, existing, ownerPubkey) {
   }
 
   if (existing) {
+    // Kept here, unlike the private base above: nothing ever writes a tombstone
+    // to a shared base (ending a share sets `revoked`, deliberately a different
+    // field), so this only ever fires on a row that should not exist at all.
     if (existing.deleted === true) return 'reject'
     if (typeof existing.updatedAt === 'number') {
       if (incoming.updatedAt < existing.updatedAt) return 'reject'
@@ -125,7 +134,8 @@ function rowSharedDecision (key, incoming, existing, ownerPubkey) {
 
 // engine applyOps: one op at a time, in linearized order. Routes by key
 // namespace (private vs shared). A delete is a put of a { deleted: true }
-// tombstone (kept in the view so no-resurrection holds), so only 'put' ops exist.
+// tombstone (kept in the view, so a later edit can be compared against it), so
+// only 'put' ops exist.
 async function applyPetalOp (op, ctx) {
   const { view } = ctx
   if (!op || op.type !== 'put' || typeof op.key !== 'string') return

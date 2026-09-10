@@ -58,10 +58,16 @@ test('equal updatedAt breaks ties deterministically by signature', () => {
   assert.equal(rowApplyDecision(dayKey('20260706'), lo, hi), 'reject')
 })
 
-test('no resurrection: a tombstone rejects all later writes', () => {
-  const tombstone = dayRow({ deleted: true, updatedAt: 1000 })
-  const laterEdit = dayRow({ updatedAt: 5000 })
-  assert.equal(rowApplyDecision(dayKey('20260706'), laterEdit, tombstone), 'reject')
+// A deleted day is not deleted forever: logging that date again brings it back,
+// which is what the wire protocol specifies. The old rule rejected every write
+// after a tombstone, so a removed day left a date that could never be used again.
+test('a tombstone is LWW like any other value: a later write un-deletes, an older one does not', () => {
+  const tombstone = dayRow({ deleted: true, updatedAt: 5000 })
+  assert.equal(rowApplyDecision(dayKey('20260706'), dayRow({ updatedAt: 9000 }), tombstone), 'accept')
+  assert.equal(rowApplyDecision(dayKey('20260706'), dayRow({ updatedAt: 1000 }), tombstone), 'reject')
+  // and a delete that arrives late still loses to a newer edit
+  const live = dayRow({ updatedAt: 9000 })
+  assert.equal(rowApplyDecision(dayKey('20260706'), dayRow({ deleted: true, updatedAt: 1000 }), live), 'reject')
 })
 
 test('rejects keys outside the device:/day:/period: namespaces', () => {

@@ -189,6 +189,28 @@ test('period:log preserves a day that already has a chosen flow', async () => {
   await engine.close()
 })
 
+// The day sheet's "Remove this day" leans on both halves of this: the row leaves
+// day:getAll and day:get, and a day with nothing on it has no row to delete, which
+// is why the button only appears once something is logged.
+test('day:delete removes the day from the log, and an unlogged day has nothing to delete', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const date = addDays(todayIso(), -3)
+  await call('day:set', { date, flow: 'light', symptoms: ['cramps'], notes: 'sore' })
+  assert.equal((await call('day:get', { date })).flow, 'light')
+
+  await call('day:delete', { date })
+  assert.equal(await call('day:get', { date }), null)
+  assert.equal((await call('day:getAll', {})).find(d => d.date === date), undefined)
+
+  await assert.rejects(() => call('day:delete', { date: addDays(todayIso(), -9) }), /day not found/)
+  // and it can be logged again afterwards - the tombstone is not a permanent block
+  await call('day:set', { date, flow: 'heavy' })
+  assert.equal((await call('day:get', { date })).flow, 'heavy')
+  await engine.close()
+})
+
 test('notifications: defaults are opt-out (disabled) with categories on', async () => {
   const { engine, call } = driver()
   await call('init', {})
