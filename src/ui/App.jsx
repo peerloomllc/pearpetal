@@ -690,12 +690,17 @@ function SetupWizard ({ onDone }) {
 const SCOPE_OPTS = [
   { key: 'phase', label: 'Phase only', desc: 'Current phase + next period date' },
   { key: 'fertility', label: 'Fertility', desc: 'Adds the fertile window + ovulation estimate' },
-  { key: 'full', label: 'Full', desc: 'Adds a redacted day summary (coarse symptoms, never notes)' },
+  { key: 'full', label: 'Full', desc: 'Adds a day summary (coarse symptoms; your written notes only if you switch them on)' },
 ]
 const PHASE_LABEL = { menstrual: 'Menstrual', follicular: 'Follicular', fertile: 'Fertile', luteal: 'Luteal' }
 
 function Sharing ({ onClose, onOpenPartner }) {
   const [scope, setScope] = useState('phase')
+  // The notes switch is a SECOND consent under Full, off by default and reset
+  // whenever the scope changes, so it can never be carried over unnoticed from a
+  // Full share the person then narrowed.
+  const [withNotes, setWithNotes] = useState(false)
+  const [notesFor, setNotesFor] = useState(null) // the existing share being switched ON
   const [shares, setShares] = useState([])
   const [partners, setPartners] = useState([])
   const [err, setErr] = useState('')
@@ -714,12 +719,16 @@ function Sharing ({ onClose, onOpenPartner }) {
   useEffect(() => { const t = setInterval(() => load(), 3000); return () => clearInterval(t) }, [load])
   const create = async () => {
     setErr('')
-    try { await call('share:create', { scope }); haptic('success'); load() } catch (e) { setErr(e.message) }
+    try { await call('share:create', { scope, notes: scope === 'full' && withNotes }); haptic('success'); setWithNotes(false); load() } catch (e) { setErr(e.message) }
   }
   const revoke = async (groupId) => {
     if (busyRevoke) return // guard against a double-fire revoking an already-gone share
     setBusyRevoke(groupId)
     try { await call('share:revoke', { groupId }); haptic('warn'); await load() } catch (e) { setErr(e.message) } finally { setBusyRevoke(null) }
+  }
+  const setNotes = async (groupId, on) => {
+    setErr('')
+    try { await call('share:setNotes', { groupId, notes: on }); haptic(on ? 'success' : 'warn'); setNotesFor(null); await load() } catch (e) { setErr(e.message) }
   }
   const remove = async (groupId) => {
     if (busyRevoke) return
@@ -738,7 +747,7 @@ function Sharing ({ onClose, onOpenPartner }) {
         <div style={{ fontSize: 15, fontWeight: 500, textAlign: 'center' }}>Share with a partner</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
           {SCOPE_OPTS.map((o) => (
-            <button key={o.key} onClick={() => setScope(o.key)} style={{
+            <button key={o.key} onClick={() => { setScope(o.key); setWithNotes(false) }} style={{
               textAlign: 'left', borderRadius: radius.lg, padding: spacing.md, border: `1px solid ${scope === o.key ? colors.primary : colors.border}`,
               background: scope === o.key ? 'rgba(232,133,155,0.08)' : 'transparent',
             }}>
@@ -747,8 +756,21 @@ function Sharing ({ onClose, onOpenPartner }) {
             </button>
           ))}
         </div>
+        {scope === 'full' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ color: colors.text.primary, fontSize: 14 }}>Also share the notes you write on a day</div>
+              <div style={{ color: colors.text.muted, fontSize: 12, marginTop: 2, lineHeight: 1.45 }}>
+                {withNotes
+                  ? 'The notes on your last three weeks of days go too, and any you write later. Once a note has reached them it is on their phone, so switching this off stops new ones rather than taking back old ones.'
+                  : 'Off. Your notes stay on your own devices.'}
+              </div>
+            </div>
+            <Toggle on={withNotes} label='Share my written notes' onClick={() => { haptic('light'); setWithNotes((v) => !v) }} />
+          </div>
+        )}
         <Btn onClick={create}>Create a share link</Btn>
-        <div style={{ color: colors.text.muted, fontSize: 12 }}>Anyone with the link can view what you choose to share, so send it only to people you trust. They can view but never edit, and cannot re-share access to anyone else. Your full log and notes never leave your devices. Revoking stops future updates, but cannot unsend what was already received.</div>
+        <div style={{ color: colors.text.muted, fontSize: 12 }}>Anyone with the link can view what you choose to share, so send it only to people you trust. They can view but never edit, and cannot re-share access to anyone else. Your full log stays on your devices, and your written notes with it unless you switch them on above. Revoking stops future updates, but cannot unsend what was already received.</div>
       </div>
 
       {activeShares.length > 0 && (
@@ -780,10 +802,37 @@ function Sharing ({ onClose, onOpenPartner }) {
                     <IconBtn label='Revoke share' onClick={() => revoke(s.groupId)} disabled={busyRevoke === s.groupId} color={colors.error}><Trash size={18} /></IconBtn>
                   </div>
                 </div>
+                {/* Only Full carries notes, and only this share's own switch says
+                    so - one person's share is never changed by another's. */}
+                {s.scope === 'full' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.sm }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ color: colors.text.primary, fontSize: 13 }}>Your written notes</div>
+                      <div style={{ color: colors.text.muted, fontSize: 12, marginTop: 2 }}>{s.notes ? 'They can read the notes you write on a day' : 'Kept to your own devices'}</div>
+                    </div>
+                    <Toggle on={!!s.notes} label='Share my written notes with this person'
+                      onClick={() => { haptic('light'); if (s.notes) setNotes(s.groupId, false); else setNotesFor(s) }} />
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
+      )}
+
+      {notesFor && (
+        <BottomSheet onClose={() => setNotesFor(null)}>
+          {(close) => (
+            <>
+              <div style={{ fontSize: 16, fontWeight: 600, textAlign: 'center' }}>Share your notes with them?</div>
+              <div style={{ color: colors.text.secondary, fontSize: 13, textAlign: 'center', lineHeight: 1.5 }}>
+                The notes on your last three weeks of days will be sent, along with any you write from now on. Once a note has reached their phone it is theirs, so switching this off later stops new notes rather than taking back the ones they have.
+              </div>
+              <Btn onClick={async () => { await setNotes(notesFor.groupId, true); close() }}>Share my notes</Btn>
+              <Btn kind='ghost' onClick={close}>Keep them private</Btn>
+            </>
+          )}
+        </BottomSheet>
       )}
 
       {endedShares.length > 0 && (
@@ -932,6 +981,31 @@ function JoinPartnerSheet ({ onClose, onJoined }) {
   )
 }
 
+// One shared day on the partner's screen. The written note only exists here when
+// the owner switched notes on for THIS share, so its absence is not something to
+// explain away - most shares will never have one.
+function PartnerDayRow ({ row }) {
+  const [open, setOpen] = useState(false)
+  const note = typeof row.note === 'string' ? row.note : ''
+  return (
+    <div style={{ ...card, padding: spacing.md, display: 'flex', flexDirection: 'column', gap: note ? spacing.sm : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+        <span style={{ width: 12, height: 12, borderRadius: radius.full, background: row.flow ? colors.flow.medium : colors.track, flexShrink: 0 }} />
+        <span style={{ color: colors.text.primary, fontWeight: 500, width: 104 }}>{row.date === todayIso() ? 'Today' : fmtDate(row.date)}</span>
+        <span style={{ color: colors.text.secondary, fontSize: 13, flex: 1 }}>{(row.symptomTags || []).join(' · ') || '-'}</span>
+      </div>
+      {note && (
+        // Their own words, so it is set apart from the tags rather than joined to
+        // them. Long notes are clamped and open on a tap - a 2000-character note
+        // would otherwise be the whole screen.
+        <div onClick={() => setOpen((v) => !v)} style={{ borderLeft: `2px solid ${colors.primary}`, paddingLeft: spacing.md, marginLeft: 4, color: colors.text.secondary, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: 'pointer', ...(open ? {} : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }) }}>
+          {note}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PartnerView ({ groupId, onClose, onLeft }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
@@ -1045,15 +1119,11 @@ function PartnerView ({ groupId, onClose, onLeft }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
               <div style={{ fontSize: 13, color: colors.text.muted, marginLeft: spacing.xs }}>Recent days</div>
               {data.summary.map((s) => (
-                <div key={s.date} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                  <span style={{ width: 12, height: 12, borderRadius: radius.full, background: s.flow ? colors.flow.medium : colors.track, flexShrink: 0 }} />
-                  <span style={{ color: colors.text.primary, fontWeight: 500, width: 104 }}>{s.date === todayIso() ? 'Today' : fmtDate(s.date)}</span>
-                  <span style={{ color: colors.text.secondary, fontSize: 13, flex: 1 }}>{(s.symptomTags || []).join(' · ') || '-'}</span>
-                </div>
+                <PartnerDayRow key={s.date} row={s} />
               ))}
             </div>
           )}
-          <div style={{ color: colors.text.muted, fontSize: 12, textAlign: 'center' }}>They chose to share {data.scope || 'this'}. You cannot see their full log.</div>
+          <div style={{ color: colors.text.muted, fontSize: 12, textAlign: 'center' }}>They chose to share {data.scope || 'this'}{data.notes ? ', including the notes they write' : ''}. You cannot see their full log.</div>
           {!data.revoked && <Btn kind='ghost' onClick={leave} style={{ color: colors.error }}>Stop viewing</Btn>}
         </div>
       )}
@@ -1112,6 +1182,10 @@ function DayEditorSheet ({ date, setDate, onSaved, onClose, onEditPeriod }) {
   const [notes, setNotes] = useState('')
   const [saved, setSaved] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
+  // Whether ANY live share is currently set to carry notes. The placeholder in
+  // the notes box is a promise about where this text goes, so it has to be read
+  // from the shares rather than assumed.
+  const [notesShared, setNotesShared] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [delErr, setDelErr] = useState('')
 
@@ -1121,6 +1195,11 @@ function DayEditorSheet ({ date, setDate, onSaved, onClose, onEditPeriod }) {
     setNotes(r?.notes || '')
   }, [date])
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    let dead = false
+    call('share:list').then((rows) => { if (!dead) setNotesShared((rows || []).some((r) => !r.revoked && r.notes)) }).catch(() => {})
+    return () => { dead = true }
+  }, [])
   // Live-refresh the open day when another of your devices edits it. Reload flow +
   // symptoms always, but only adopt the remote note when the notes field is not
   // focused, so a sync never yanks text you are mid-typing (it saves on blur, LWW).
@@ -1189,8 +1268,13 @@ function DayEditorSheet ({ date, setDate, onSaved, onClose, onEditPeriod }) {
               </div>
               <div>
                 <div style={{ fontSize: 13, color: colors.text.muted, marginBottom: spacing.sm }}>Notes</div>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={saveNotes} rows={2} placeholder='Private to your devices'
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={saveNotes} rows={2} placeholder={notesShared ? 'Shared with your partner' : 'Private to your devices'}
                   style={{ width: '100%', background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: spacing.md, resize: 'none' }} />
+                {notesShared && (
+                  <div style={{ color: colors.text.muted, fontSize: 12, marginTop: spacing.xs, lineHeight: 1.45 }}>
+                    A partner you share with can read what you write here. Turn it off under Sharing.
+                  </div>
+                )}
               </div>
               {/* Logging flow starts a period implicitly, so this is the correction
                   path (wrong dates, a period you never logged). Hands off to the

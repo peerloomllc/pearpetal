@@ -32,6 +32,17 @@ itself is additive and small; the tier is for the promise being changed, not the
   the first method that edits a live share's consent. It rewrites `share:meta`, updates
   the membership record, and calls `refreshShares`.
 
+- **`summary:{yyyymmdd}.blank`**, added during implementation rather than planned.
+  Removing a day left its summary row on the partner's base for good, because the
+  projection only ever wrote the days that still existed. Found on hardware: a day
+  deleted on the owner's phone was still on the viewer's screen a minute later,
+  note and all, which makes "remove this day" a promise the app was not keeping
+  once notes can ride along. A blanked row is written instead of a tombstone,
+  because the shared apply rule refuses later writes to a tombstoned key and that
+  date can be logged again tomorrow. `partner:view` filters blank rows out; an
+  older partner build shows the day with nothing on it, which is still better than
+  showing what was removed.
+
 ### What is NOT added
 
 - No fourth scope, and no change to `phase` or `fertility`, which stay exactly as they are.

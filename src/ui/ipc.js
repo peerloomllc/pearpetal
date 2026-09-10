@@ -192,13 +192,22 @@ const mockMethods = {
     if (data.prefs) mock.prefs = { ...(mock.prefs || {}), ...data.prefs }
     return { ok: true, days: dc, periods: pc }
   },
-  'share:create': async ({ scope }) => {
+  'share:create': async ({ scope, notes }) => {
     if (!['phase', 'fertility', 'full'].includes(scope)) throw new Error('bad scope')
+    if (notes && scope !== 'full') throw new Error('notes can only be shared on a full share')
     const groupId = rid(); const inviteKey = 'mock-share-' + scope + '-' + rid(8)
-    mock.shares.set(groupId, { groupId, scope, inviteKey, createdAt: Date.now() })
-    return { groupId, inviteKey, scope }
+    mock.shares.set(groupId, { groupId, scope, notes: !!notes, inviteKey, createdAt: Date.now() })
+    return { groupId, inviteKey, scope, notes: !!notes }
   },
-  'share:list': async () => [...mock.shares.values()].map((s) => ({ ...s, joiners: s.joiners || [], revoked: !!s.revoked, revokedAt: s.revokedAt || null })).sort((a, b) => a.createdAt - b.createdAt),
+  'share:setNotes': async ({ groupId, notes }) => {
+    const s = mock.shares.get(groupId)
+    if (!s) throw new Error('share not found')
+    if (s.revoked) throw new Error('this share has ended')
+    if (s.scope !== 'full') throw new Error('notes can only be shared on a full share')
+    s.notes = !!notes
+    return { groupId, notes: s.notes }
+  },
+  'share:list': async () => [...mock.shares.values()].map((s) => ({ ...s, notes: !!s.notes, joiners: s.joiners || [], revoked: !!s.revoked, revokedAt: s.revokedAt || null })).sort((a, b) => a.createdAt - b.createdAt),
   'member:publish': async () => ({ published: 0 }),
   // Soft-close: flag revoked (keep the row) so the "Sharing ended" UI renders.
   'share:revoke': async ({ groupId }) => { const s = mock.shares.get(groupId); if (s) { s.revoked = true; s.revokedAt = Date.now() } return { ok: true, revoked: true } },
