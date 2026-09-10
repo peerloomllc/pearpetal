@@ -27,3 +27,7 @@ zapstore.yaml
 *.aab
 *.apk.sha256
 *.aab.sha256
+
+# Local-only docs (per CLAUDE.md)
+TODO.md
+DONE.md
