@@ -100,13 +100,12 @@ build calls it.
 
 ## Open questions
 
-1. **Does turning the switch ON send the notes already in the window?** A `full` share
-   projects the last 21 days (`SUMMARY_WINDOW_DAYS`), and `refreshShares` rewrites that
-   whole window, so the plain implementation sends up to three weeks of past notes the
-   moment the switch goes on. The alternative is to send notes only for days edited after
-   the switch, which is more surprising to explain and leaves the screen half full.
-   Recommend the plain one, with the confirmation saying "the notes on your last three
-   weeks of days will be sent".
+1. **ANSWERED 2026-09-10 (Tim): turning the switch ON sends the notes already in the
+   window.** A `full` share projects the last 21 days (`SUMMARY_WINDOW_DAYS`) and
+   `refreshShares` rewrites that whole window, so the notes fill in beside days the
+   partner can already see. The confirmation must say so before it happens, in days
+   rather than in a variable name: "the notes on your last three weeks of days will be
+   sent".
 2. **Does the partner's screen show the whole note, or a first line?** Notes run to 2000
    characters and the partner's day rows are single lines today. Recommend a first line in
    the row that opens to the whole note, which needs a small screen the partner side does
