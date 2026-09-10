@@ -114,6 +114,77 @@ async function pairOwnerAndViewer (t) {
   return { O, V, groupId, viewerDir, mkSwarm, setUpdated: (fn) => { updated = fn } }
 }
 
+// The written note is a SECOND consent on top of the full scope: full alone sends
+// the redacted day summary and never the note. See
+// proposals/2026-09-10-notes-on-a-full-share.md.
+test('a note reaches a full-share partner only while the notes switch is on', async (t) => {
+  const { O, V, groupId } = await pairOwnerAndViewer(t)
+  const day = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10)
+  await O.call('day:set', { date: day, flow: 'light', symptoms: ['cramps'], notes: 'rough one, told work' })
+
+  // Full scope, switch off (the default): the day is there, the note is not.
+  await waitFor('the viewer sees the day', async () => {
+    const v = await V.call('partner:view', { groupId })
+    return (v.summary || []).some((r) => r.date === day)
+  })
+  const off = await V.call('partner:view', { groupId })
+  assert.equal(off.scope, 'full')
+  assert.equal(off.notes, false, 'the viewer is told notes are not being shared')
+  assert.equal((off.summary.find((r) => r.date === day) || {}).note, undefined, 'no note on a full share by itself')
+
+  // Switch ON. The window is re-projected, so a day written BEFORE the switch
+  // carries its note - that is the answered open question in the proposal.
+  await O.call('share:setNotes', { groupId, notes: true })
+  await waitFor('the note lands', async () => {
+    const v = await V.call('partner:view', { groupId })
+    return (v.summary.find((r) => r.date === day) || {}).note === 'rough one, told work'
+  })
+  assert.equal((await V.call('partner:view', { groupId })).notes, true)
+
+  // Switch OFF. The same window is rewritten without the note, so a viewer who
+  // syncs after the change no longer has it.
+  await O.call('share:setNotes', { groupId, notes: false })
+  await waitFor('the note goes', async () => {
+    const v = await V.call('partner:view', { groupId })
+    return (v.summary.find((r) => r.date === day) || {}).note === undefined
+  })
+  const back = await V.call('partner:view', { groupId })
+  assert.equal(back.notes, false)
+  assert.ok(back.summary.find((r) => r.date === day), 'the day itself is still shared')
+  assert.deepEqual((back.summary.find((r) => r.date === day) || {}).symptomTags, ['cramps'], 'and so are its tags')
+})
+
+// Removing a day has to remove it from the person you share with too. Nothing did
+// that before: the projection only ever wrote the days that still existed, so a
+// deleted day's summary row stayed on the shared base for good - and with notes
+// able to ride on that row, "remove this day" was leaving the note on their phone.
+test('a day the owner removes leaves the partner screen too', async (t) => {
+  const { O, V, groupId } = await pairOwnerAndViewer(t)
+  const day = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10)
+  await O.call('share:setNotes', { groupId, notes: true })
+  await O.call('day:set', { date: day, flow: 'medium', symptoms: ['cramps'], notes: 'said too much' })
+  await waitFor('the note lands', async () => {
+    const v = await V.call('partner:view', { groupId })
+    return (v.summary.find((r) => r.date === day) || {}).note === 'said too much'
+  })
+
+  await O.call('day:delete', { date: day })
+  await waitFor('the day goes', async () => {
+    const v = await V.call('partner:view', { groupId })
+    return !v.summary.find((r) => r.date === day)
+  })
+
+  // And it can come back: the row is blanked, not tombstoned, so the same date
+  // logged again reaches them like any other day.
+  await O.call('day:set', { date: day, flow: 'light' })
+  await waitFor('the day comes back', async () => {
+    const v = await V.call('partner:view', { groupId })
+    const r = v.summary.find((x) => x.date === day)
+    return !!r && r.flow === true
+  })
+  assert.equal((await V.call('partner:view', { groupId })).summary.find((r) => r.date === day).note, undefined, 'and it comes back without the note that was removed')
+})
+
 test('the partner screen does not write to the shared base while it sits there', async (t) => {
   const { V, groupId, setUpdated } = await pairOwnerAndViewer(t)
 

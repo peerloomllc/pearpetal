@@ -32,6 +32,17 @@ itself is additive and small; the tier is for the promise being changed, not the
   the first method that edits a live share's consent. It rewrites `share:meta`, updates
   the membership record, and calls `refreshShares`.
 
+- **`summary:{yyyymmdd}.blank`**, added during implementation rather than planned.
+  Removing a day left its summary row on the partner's base for good, because the
+  projection only ever wrote the days that still existed. Found on hardware: a day
+  deleted on the owner's phone was still on the viewer's screen a minute later,
+  note and all, which makes "remove this day" a promise the app was not keeping
+  once notes can ride along. A blanked row is written instead of a tombstone,
+  because the shared apply rule refuses later writes to a tombstoned key and that
+  date can be logged again tomorrow. `partner:view` filters blank rows out; an
+  older partner build shows the day with nothing on it, which is still better than
+  showing what was removed.
+
 ### What is NOT added
 
 - No fourth scope, and no change to `phase` or `fertility`, which stay exactly as they are.
@@ -100,13 +111,12 @@ build calls it.
 
 ## Open questions
 
-1. **Does turning the switch ON send the notes already in the window?** A `full` share
-   projects the last 21 days (`SUMMARY_WINDOW_DAYS`), and `refreshShares` rewrites that
-   whole window, so the plain implementation sends up to three weeks of past notes the
-   moment the switch goes on. The alternative is to send notes only for days edited after
-   the switch, which is more surprising to explain and leaves the screen half full.
-   Recommend the plain one, with the confirmation saying "the notes on your last three
-   weeks of days will be sent".
+1. **ANSWERED 2026-09-10 (Tim): turning the switch ON sends the notes already in the
+   window.** A `full` share projects the last 21 days (`SUMMARY_WINDOW_DAYS`) and
+   `refreshShares` rewrites that whole window, so the notes fill in beside days the
+   partner can already see. The confirmation must say so before it happens, in days
+   rather than in a variable name: "the notes on your last three weeks of days will be
+   sent".
 2. **Does the partner's screen show the whole note, or a first line?** Notes run to 2000
    characters and the partner's day rows are single lines today. Recommend a first line in
    the row that opens to the whole note, which needs a small screen the partner side does

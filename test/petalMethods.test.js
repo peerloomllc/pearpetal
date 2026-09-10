@@ -367,6 +367,34 @@ test('share:revoke soft-closes: meta tombstoned, base kept, no more projection; 
   await engine.close()
 })
 
+// The notes switch belongs to the full scope alone. A narrower share that recorded
+// notes:true would claim a consent its projection never acts on, and the record and
+// the wire must not disagree about what was consented to.
+test('the notes switch is refused on anything but a full share, at create and after', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+
+  await assert.rejects(() => call('share:create', { scope: 'phase', notes: true }), /full share/)
+  await assert.rejects(() => call('share:create', { scope: 'fertility', notes: true }), /full share/)
+
+  const fertility = await call('share:create', { scope: 'fertility' })
+  await assert.rejects(() => call('share:setNotes', { groupId: fertility.groupId, notes: true }), /full share/)
+  await assert.rejects(() => call('share:setNotes', { groupId: 'nope', notes: true }), /share not found/)
+
+  // Full: off by default, on when asked for, and share:list reports it either way.
+  const full = await call('share:create', { scope: 'full' })
+  assert.equal(full.notes, false, 'off unless asked for')
+  assert.equal((await call('share:list', {})).find((x) => x.groupId === full.groupId).notes, false)
+  await call('share:setNotes', { groupId: full.groupId, notes: true })
+  assert.equal((await call('share:list', {})).find((x) => x.groupId === full.groupId).notes, true)
+
+  // A share that has ended does not quietly start sending notes again.
+  await call('share:revoke', { groupId: full.groupId })
+  await assert.rejects(() => call('share:setNotes', { groupId: full.groupId, notes: true }), /has ended/)
+  await engine.close()
+})
+
 test('share:revoke is idempotent: revoking an already-gone share is ok, not an error', async () => {
   const { engine, call } = driver()
   await call('init', {})

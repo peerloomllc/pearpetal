@@ -562,11 +562,14 @@ function profileMetaFields (prof) {
 // base. Owner-only is enforced by the apply rule (petalWire rowSharedDecision),
 // so the added identity fields inherit that gate. createdAt is preserved across
 // updates so the row keeps its original timestamp.
-async function writeShareMeta (ctx, groupId, scope, prof) {
+async function writeShareMeta (ctx, groupId, scope, prof, notes) {
   let existing = null
   try { existing = await readRow(viewFor(ctx, groupId), 'share:meta') } catch {}
   await putRow(ctx, groupId, 'share:meta', {
     ownerPubkey: pubkeyHex(ctx), scope,
+    // Only written when ON. Absent reads as off, which is what an app built
+    // before this change writes and what every existing share already has.
+    ...(notes ? { notes: true } : {}),
     createdAt: existing?.createdAt || Date.now(),
     ...profileMetaFields(prof),
   })
@@ -581,7 +584,7 @@ async function refreshShareMeta (ctx) {
     if (m.revoked) continue
     const base = ctx.bases.get(m.groupId)
     if (!base || !base.writable) continue
-    try { await writeShareMeta(ctx, m.groupId, m.scope || 'phase', prof) } catch {}
+    try { await writeShareMeta(ctx, m.groupId, m.scope || 'phase', prof, !!m.notes) } catch {}
   }
 }
 
@@ -654,8 +657,11 @@ async function computeProjection (ctx) {
 // what is written (and therefore what the partner can ever replicate):
 //   phase     -> phase:current + predict:current (nextPeriodStart only)
 //   fertility -> + fertile window / ovulation estimate
-//   full      -> + redacted per-day summary (whitelisted symptom tags, no notes)
-async function writeProjection (ctx, groupId, scope, proj, dayRows) {
+//   full      -> + redacted per-day summary (whitelisted symptom tags)
+// The day's written NOTE rides on that summary row, and only when this share's
+// own `notes` switch is on - a separate consent from the scope, off by default.
+// See proposals/2026-09-10-notes-on-a-full-share.md.
+async function writeProjection (ctx, groupId, scope, proj, dayRows, shareNotes) {
   await putRow(ctx, groupId, phaseKey(), { phase: proj.phase, dayOfCycle: proj.dayOfCycle })
   if (proj.known) {
     const predict = { nextPeriodStart: proj.nextPeriodStart }
@@ -664,12 +670,47 @@ async function writeProjection (ctx, groupId, scope, proj, dayRows) {
   }
   if (scope === 'full') {
     const cutoff = addDays(todayIso(), -SUMMARY_WINDOW_DAYS)
+    const live = new Set()
     for (const d of dayRows) {
       if (diffDays(cutoff, d.date) < 0) continue // older than the window
+      live.add(d.date)
       const tags = Array.isArray(d.symptoms) ? d.symptoms.filter((s) => SUMMARY_TAGS.has(s)) : []
-      await putRow(ctx, groupId, summaryKey(d.date.replace(/-/g, '')), { date: d.date, flow: !!d.flow, symptomTags: tags })
+      const row = { date: d.date, flow: !!d.flow, symptomTags: tags }
+      // Switched off, the field is simply never written. Switching a share OFF
+      // rewrites this whole window, so the rows a partner syncs after that carry
+      // no note - forward-only, exactly like revocation.
+      if (shareNotes && typeof d.notes === 'string' && d.notes) row.note = d.notes.slice(0, 2000)
+      await putRow(ctx, groupId, summaryKey(d.date.replace(/-/g, '')), row)
+    }
+    // A day the owner DELETED must leave the partner's screen too. Nothing used
+    // to take it off: this loop only ever wrote the days that still existed, so
+    // the old summary row stayed on the shared base for good - and once notes can
+    // ride on it, "remove this day" was leaving the note on someone else's phone.
+    // Blanked rather than tombstoned, because the apply rule refuses later writes
+    // to a tombstoned shared key and that date can be logged again tomorrow.
+    // `blank` is filtered out by partner:view; an older partner build shows the
+    // day with nothing on it, which is still better than showing what was removed.
+    for (const stale of await staleSummaryDates(ctx, groupId, live, cutoff)) {
+      await putRow(ctx, groupId, summaryKey(stale.replace(/-/g, '')), { date: stale, blank: true })
     }
   }
+}
+
+// Dates that have a summary row on this shared base but no longer have a live day
+// row (deleted, or its whole content cleared away), and are still inside the
+// window. Rows already blank are skipped, so a person who logs rarely does not
+// re-append the same blanks on every save.
+async function staleSummaryDates (ctx, groupId, live, cutoff) {
+  const out = []
+  try {
+    for await (const { value } of viewFor(ctx, groupId).view.createReadStream(SUMMARY_RANGE)) {
+      const d = value && value.date
+      if (!d || value.blank) continue
+      if (diffDays(cutoff, d) < 0) continue
+      if (!live.has(d)) out.push(d)
+    }
+  } catch {}
+  return out
 }
 
 // Recompute the projection and push it to every shared-out base. Best-effort and
@@ -683,7 +724,7 @@ async function refreshShares (ctx) {
   for (const m of shares) {
     const base = ctx.bases.get(m.groupId)
     if (!base || !base.writable) continue
-    try { await writeProjection(ctx, m.groupId, m.scope || 'phase', projData.proj, projData.dayRows) } catch {}
+    try { await writeProjection(ctx, m.groupId, m.scope || 'phase', projData.proj, projData.dayRows, !!m.notes) } catch {}
   }
 }
 
@@ -1415,19 +1456,47 @@ const methods = {
   // Create a new shared base for a partner at a chosen consent scope, seed it
   // with share:meta + the current projection, and return the share invite. The
   // invite grants ONLY this shared base - never the private base or its key.
-  'share:create': async ({ scope }, ctx) => {
+  'share:create': async ({ scope, notes }, ctx) => {
     if (!SCOPES.has(scope)) throw new Error('scope must be phase, fertility, or full')
+    // The notes switch is a Full-scope thing only. Silently accepting it on a
+    // narrower scope would leave the record claiming a consent the projection
+    // never acts on, which is the kind of disagreement this app cannot afford.
+    if (notes && scope !== 'full') throw new Error('notes can only be shared on a full share')
     if (!(await privHas(ctx))) throw new Error('start tracking on this device first')
     const r = await ctx.createGroup({ name: 'PearPetal share' })
     const rec = (await ctx.localDb.get('groups:joined:' + r.groupId))?.value || {}
-    await ctx.localDb.put('groups:joined:' + r.groupId, { ...rec, kind: 'shared-out', scope })
+    await ctx.localDb.put('groups:joined:' + r.groupId, { ...rec, kind: 'shared-out', scope, notes: !!notes })
     // Claim ownership of the shared base (owner-write-only enforcement keys off
     // this) + project the owner's identity (name/avatar) so the partner sees a
     // name, not "A partner".
-    await writeShareMeta(ctx, r.groupId, scope, await getProfile(ctx))
+    await writeShareMeta(ctx, r.groupId, scope, await getProfile(ctx), !!notes)
     const { proj, dayRows } = await computeProjection(ctx)
-    await writeProjection(ctx, r.groupId, scope, proj, dayRows)
-    return { groupId: r.groupId, inviteKey: r.inviteKey, scope }
+    await writeProjection(ctx, r.groupId, scope, proj, dayRows, !!notes)
+    return { groupId: r.groupId, inviteKey: r.inviteKey, scope, notes: !!notes }
+  },
+
+  // Turn the written notes on or off for ONE share that already exists. The only
+  // method that edits a live share's consent (scope itself is still fixed at
+  // creation), so it is deliberately narrow: one share, one boolean, owner only.
+  //
+  // Turning it ON re-projects the whole window, so the notes on the last
+  // SUMMARY_WINDOW_DAYS days go with it - the days the partner can already see
+  // fill in rather than starting blank. The UI says that before it happens.
+  // Turning it OFF rewrites the same window without the note field, so a partner
+  // who syncs after the change no longer has them; one who never syncs again
+  // keeps what their device already replicated. Forward-only, like revocation.
+  'share:setNotes': async ({ groupId, notes }, ctx) => {
+    const m = (await membershipsByKind(ctx, 'shared-out')).find((x) => x.groupId === groupId)
+    if (!m) throw new Error('share not found')
+    if (m.revoked) throw new Error('this share has ended')
+    if ((m.scope || 'phase') !== 'full') throw new Error('notes can only be shared on a full share')
+    const on = !!notes
+    const rec = (await ctx.localDb.get('groups:joined:' + groupId))?.value || {}
+    await ctx.localDb.put('groups:joined:' + groupId, { ...rec, notes: on })
+    await writeShareMeta(ctx, groupId, m.scope, await getProfile(ctx), on)
+    const { proj, dayRows } = await computeProjection(ctx)
+    await writeProjection(ctx, groupId, m.scope, proj, dayRows, on)
+    return { groupId, notes: on }
   },
 
   'share:list': async (_args, ctx) => {
@@ -1449,7 +1518,7 @@ const methods = {
           }
         } catch {}
       }
-      out.push({ groupId: m.groupId, scope: m.scope || 'phase', inviteKey: reencodeInvite(m), createdAt: m.joinedAt || 0, joiners, revoked: !!m.revoked, revokedAt: m.revokedAt || null })
+      out.push({ groupId: m.groupId, scope: m.scope || 'phase', notes: !!m.notes, inviteKey: reencodeInvite(m), createdAt: m.joinedAt || 0, joiners, revoked: !!m.revoked, revokedAt: m.revokedAt || null })
     }
     out.sort((a, b) => a.createdAt - b.createdAt)
     return out
@@ -1570,14 +1639,14 @@ const methods = {
     const phase = (await base.view.get(phaseKey()))?.value || null
     const predict = (await base.view.get(predictKey()))?.value || null
     const summary = []
-    for await (const { value } of base.view.createReadStream(SUMMARY_RANGE)) if (value) summary.push(value)
+    for await (const { value } of base.view.createReadStream(SUMMARY_RANGE)) if (value && !value.blank) summary.push(value)
     summary.sort((a, b) => String(b.date).localeCompare(String(a.date)))
     // Non-blocking: never gate the name/phase on the avatar blob fetch (it can
     // take seconds to replicate). Returns the cached avatar or null + kicks off a
     // background fetch; ownerHasAvatar tells the UI to keep polling until it lands.
     const ownerAvatar = resolveAvatarCached(ctx, meta)
     const ownerHasAvatar = !!(meta?.avatarBlob || meta?.avatar)
-    return { scope: meta?.scope || null, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar, ownerHasAvatar, phase, predict, summary, revoked: !!meta?.revoked, revokedAt: meta?.revokedAt || null }
+    return { scope: meta?.scope || null, notes: !!meta?.notes, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar, ownerHasAvatar, phase, predict, summary, revoked: !!meta?.revoked, revokedAt: meta?.revokedAt || null }
   },
 
   // Rebuild a shared cycle whose base will not open. Nothing of the person's own
