@@ -1036,9 +1036,9 @@ function PartnerView ({ groupId, onClose, onLeft }) {
           </div>
           {predict && (
             <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-              {predict.nextPeriodStart && <Row label='Next period' value={predict.nextPeriodStart} />}
-              {predict.fertileStart && <Row label='Fertile window' value={`${predict.fertileStart} - ${predict.fertileEnd}`} />}
-              {predict.ovulationEst && <Row label='Ovulation (est.)' value={predict.ovulationEst} />}
+              {predict.nextPeriodStart && <Row label='Next period' value={fmtDate(predict.nextPeriodStart)} />}
+              {predict.fertileStart && <Row label='Fertile window' value={`${fmtDate(predict.fertileStart)} - ${fmtDate(predict.fertileEnd)}`} />}
+              {predict.ovulationEst && <Row label='Ovulation (est.)' value={fmtDate(predict.ovulationEst)} />}
             </div>
           )}
           {data.scope === 'full' && (data.summary || []).length > 0 && (
@@ -1047,7 +1047,7 @@ function PartnerView ({ groupId, onClose, onLeft }) {
               {data.summary.map((s) => (
                 <div key={s.date} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.md }}>
                   <span style={{ width: 12, height: 12, borderRadius: radius.full, background: s.flow ? colors.flow.medium : colors.track, flexShrink: 0 }} />
-                  <span style={{ color: colors.text.primary, fontWeight: 500, width: 104 }}>{s.date}</span>
+                  <span style={{ color: colors.text.primary, fontWeight: 500, width: 104 }}>{s.date === todayIso() ? 'Today' : fmtDate(s.date)}</span>
                   <span style={{ color: colors.text.secondary, fontSize: 13, flex: 1 }}>{(s.symptomTags || []).join(' · ') || '-'}</span>
                 </div>
               ))}
@@ -1111,6 +1111,9 @@ function DayEditorSheet ({ date, setDate, onSaved, onClose, onEditPeriod }) {
   const [row, setRow] = useState(null)
   const [notes, setNotes] = useState('')
   const [saved, setSaved] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const [delErr, setDelErr] = useState('')
 
   const load = useCallback(async () => {
     const r = await call('day:get', { date }).catch(() => null)
@@ -1141,6 +1144,20 @@ function DayEditorSheet ({ date, setDate, onSaved, onClose, onEditPeriod }) {
   }
   const saveNotes = async () => { await call('day:set', { date, notes }); flash() }
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1200); onSaved && onSaved() }
+  // Switching days inside the sheet must not leave a confirm armed for the day
+  // you just left, which would remove the wrong one.
+  useEffect(() => { setConfirmDel(false); setDelErr('') }, [date])
+  // Blanking every field leaves the row behind saying nothing, so this is the
+  // only way to take a day back out of the log. It tombstones the row rather
+  // than clearing fields, so a linked device removes it too.
+  const anythingLogged = !!(row && (row.flow || (row.symptoms || []).length || (row.mood || []).length || row.notes || typeof row.bbt === 'number'))
+  const removeDay = async (close) => {
+    setRemoving(true); setDelErr('')
+    try {
+      await call('day:delete', { date })
+      haptic('success'); onSaved && onSaved(); close()
+    } catch (e) { setDelErr(e.message || 'Could not remove it.') } finally { setRemoving(false) }
+  }
 
   return (
     <BottomSheet onClose={onClose}>
@@ -1181,6 +1198,22 @@ function DayEditorSheet ({ date, setDate, onSaved, onClose, onEditPeriod }) {
               {onEditPeriod && (
                 <button onClick={() => { haptic('light'); onEditPeriod(); close() }} style={{ alignSelf: 'center', background: 'none', border: 'none', color: colors.primary, fontSize: 13, padding: spacing.xs, cursor: 'pointer' }}>Set period dates ›</button>
               )}
+              {/* Confirmed in place rather than in a second sheet: the period
+                  hand-off above closes this one first because stacked sheets
+                  misbehave, and a confirm has to keep the day it belongs to on
+                  screen. */}
+              {anythingLogged && (confirmDel ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+                  <div style={{ color: colors.text.secondary, fontSize: 13, textAlign: 'center', lineHeight: 1.5 }}>
+                    {date === todayIso() ? 'Remove everything logged today?' : `Remove everything logged on ${fmtDate(date)}?`} The flow, symptoms and notes on this day go. A period you logged stays in Your periods.
+                  </div>
+                  <Btn onClick={() => removeDay(close)} disabled={removing} style={{ background: colors.error, opacity: removing ? 0.6 : 1 }}>{removing ? 'Removing…' : 'Remove'}</Btn>
+                  <Btn kind='ghost' onClick={() => setConfirmDel(false)}>Keep it</Btn>
+                </div>
+              ) : (
+                <button onClick={() => { haptic('light'); setDelErr(''); setConfirmDel(true) }} style={{ alignSelf: 'center', background: 'none', border: 'none', color: colors.error, fontSize: 13, padding: spacing.xs, cursor: 'pointer' }}>Remove this day</button>
+              ))}
+              {delErr && <div style={{ color: colors.warn, fontSize: 13, textAlign: 'center' }}>{delErr}</div>}
             </>
           )}
         </>
@@ -1197,7 +1230,7 @@ function RecentDays ({ days, onPick }) {
       {days.map((d) => (
         <button key={d.date} onClick={() => onPick(d.date)} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.md, textAlign: 'left' }}>
           <span style={{ width: 12, height: 12, borderRadius: radius.full, background: d.flow ? flowColor(d.flow) : colors.track, flexShrink: 0 }} />
-          <span style={{ color: colors.text.primary, fontWeight: 500, width: 104 }}>{d.date}</span>
+          <span style={{ color: colors.text.primary, fontWeight: 500, width: 104 }}>{d.date === todayIso() ? 'Today' : fmtDate(d.date)}</span>
           <span style={{ color: colors.text.secondary, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {[d.flow, ...(d.symptoms || [])].filter(Boolean).join(' · ') || '-'}
           </span>

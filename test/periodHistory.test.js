@@ -151,6 +151,25 @@ test('moving a period to its right date leaves only one of it', async (t) => {
   assert.ok(!tail || tail.flow == null, 'the old span no longer bleeds past the corrected one')
 })
 
+// The delete leaves a tombstone on period:{start}, and until 2026-09-10 the apply
+// rule rejected every later write to a tombstoned key. So removing a period and
+// then adding the same start back dropped the span row silently: the period came
+// back only because its bleeding days were re-stamped, listed as worked out from
+// the log rather than as the one just entered.
+test('a period removed by mistake can be added back on the same date', async (t) => {
+  const A = driver()
+  t.after(async () => { try { await A.engine.close() } catch {} cleanup() })
+  await seed(A.call)
+  await A.call('period:delete', { start: GOOD_B })
+  assert.equal((await A.call('period:getAll', {})).find((p) => p.start === GOOD_B), undefined)
+
+  await A.call('period:log', { start: GOOD_B, end: '2026-06-02', today: '2026-07-01' })
+  const back = (await A.call('period:getAll', {})).find((p) => p.start === GOOD_B)
+  assert.ok(back, 'the period is listed again')
+  assert.equal(back.end, '2026-06-02', 'with the end that was entered')
+  assert.equal(back.inferred, false, 'as an entered period, not one worked out from the days')
+})
+
 test('deleting a period that is not there says so rather than pretending', async (t) => {
   const A = driver()
   t.after(async () => { try { await A.engine.close() } catch {} cleanup() })

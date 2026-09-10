@@ -2,6 +2,45 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-09-10 - A deleted day or period is not deleted forever: the apply rule now matches the spec
+Tier: T2 (a wire apply rule, but a correction to the written protocol rather than a change
+to it, so no new proposal - `proposals/2026-07-06-wire-protocol.md` section 5 already
+states the rule this implements).
+Context: found while wiring "Remove this day" onto `day:delete`, which had a method and no
+UI. `rowApplyDecision` in `src/petalWire.js` carried a blanket "once a key is a tombstone,
+reject every later write". The protocol says the opposite in the same breath as introducing
+the tombstone: "`deleted: true` is a soft-delete tombstone, no resurrection (a newer
+non-deleted `updatedAt` un-deletes, matching the substrate rule)". The implementation kept
+the headline and dropped the parenthetical.
+What that cost, measured on a real engine rather than reasoned about:
+- A deleted DAY made its date unusable for good. `day:set` returns `{ ok: true }`, the row
+  is signed and appended, the apply rule drops it, and `day:get` still answers null. The
+  UI has no way to know it failed. Shipping a delete button on top of that would have
+  turned one mistaken tap into a permanent hole in the log.
+- A deleted PERIOD was already reachable from the shipped UI (PR #131, in 1.0.6). Removing
+  a period and adding the same start back silently dropped the span row. The period
+  reappeared only because `period:log` re-stamps bleeding across the days, so it came back
+  labelled "From the days you logged", with the end date inferred rather than the one just
+  entered.
+Choice: delete the blanket reject on the PRIVATE base and let the existing last-writer-wins
+comparison decide, which is what every other value already gets. A newer non-deleted write
+un-deletes; a delete that arrives late still loses to a newer edit; an older write after a
+delete is still rejected. The device-link mirror reuses the same function, so both sync
+paths converge identically.
+The guard STAYS on the shared base (`rowSharedDecision`). Nothing ever writes a tombstone
+there - ending a share sets `revoked`, deliberately a different field, precisely to avoid
+this guard (see 2026-07-09) - so there it only ever fires on a row that should not exist.
+Compatibility: a device still on 1.0.6 keeps rejecting the un-delete, so an owner with two
+phones on different versions would see the day on the new one and not on the old one until
+both update. Both converge again after that, since the decision is a pure function of the
+rows. Judged acceptable: the private base is one person's own devices, and the alternative
+is leaving dates that can never be used again.
+Verified: `npm run verify` green, 245 tests (3 new). The wire test now asserts un-delete,
+older-loses and late-delete-loses; `petalMethods` covers deleting a day then logging it
+again; `periodHistory` covers removing a period and adding it back on the same date. All
+three were run against the OLD rule first and all three failed on it, so they are testing
+the change rather than agreeing with it.
+
 ## 2026-09-09 - The partner-viewer blank screen: our write loop, not a P2P limit
 Tier: T2. Root cause for the live bug tracked in TODO.md since 2026-08-20, and the reason
 PR #123's six defences did not stop it.
