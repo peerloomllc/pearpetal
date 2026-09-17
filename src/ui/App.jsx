@@ -49,19 +49,10 @@ const LIGHTNING_WALLETS = [
 // Shared height for every option box in the donation sheet (primary buttons,
 // copy fields, wallet rows) so the stack reads as one uniform column.
 const DONATE_OPTION_MIN_H = 56
-// The About "Support development" section is BACK ON iOS as of 2026-08-21. It was
-// hidden for the 1.0.4 resubmission after Apple cited Guideline 3.1.1 (donations
-// outside in-app purchase) on build 13, which was the right call to get 1.0.4
-// through. It is a passive, collapsed section a person has to go looking for, not
-// a prompt, and that shape is what ships in the rest of the suite.
-//
-// What is still off on iOS is the two-week NUDGE, the modal that surfaces itself
-// uninvited. That is the surface a reviewer reads as soliciting, and it is not
-// worth another rejection cycle over. See the donation-nudge effect in App().
-//
-// The shell injects `window.__pearPlatform` into the page before the bundle runs
-// (app/index.tsx).
-const IS_IOS = typeof window !== 'undefined' && window.__pearPlatform === 'ios'
+// Every donation surface is on for iOS again as of 2026-09-17: the About
+// "Support development" section since 2026-08-21, and the two-week nudge after
+// Apple approved 1.0.5 and 1.0.6 with the About section showing. Both were
+// hidden for the 1.0.4 resubmission after Apple cited Guideline 3.1.1 on build 13.
 const openUrl = (url) => { try { const p = call('shell:openUrl', { url }); if (p && p.catch) p.catch(() => {}) } catch {} }
 
 const pad2 = (n) => String(n).padStart(2, '0')
@@ -3274,13 +3265,9 @@ export default function App () {
 
   // Two-week donation nudge: once the owner is set up, check the device-local due
   // flag once and show the modal a single time ever (mark shown as soon as it
-  // surfaces). Never crosses the wire. STILL off on iOS, now on its own merits
-  // rather than because the About section was missing: this one shows itself
-  // uninvited, which is the shape a reviewer reads as soliciting under Guideline
-  // 3.1.1. The About section it points at is back (see IS_IOS), so an iOS user who
-  // wants to give can still find it.
+  // surfaces). Never crosses the wire.
   useEffect(() => {
-    if (mode !== 'owner' || IS_IOS) return undefined
+    if (mode !== 'owner') return undefined
     let done = false
     call('donation:status', {}).then((s) => {
       if (!done && s?.due) { setDonateReminder(true); call('donation:dismiss', {}).catch(() => {}) }
