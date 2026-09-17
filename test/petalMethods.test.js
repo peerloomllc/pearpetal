@@ -395,6 +395,39 @@ test('the notes switch is refused on anything but a full share, at create and af
   await engine.close()
 })
 
+// The owner's mark on a day must match what a partner can actually read: a note,
+// inside the window, while a live Full share has notes on. Nothing otherwise.
+test('share:notedDates lists only the days a partner can read notes on', async () => {
+  const { engine, call } = driver()
+  await call('init', {})
+  await call('cycle:create', {})
+  const today = todayIso()
+  const old = addDays(today, -30)
+  await call('day:set', { date: today, notes: 'in the window' })
+  await call('day:set', { date: addDays(today, -1), symptoms: ['cramps'] }) // no note
+  await call('day:set', { date: old, notes: 'too old to send' })
+
+  assert.deepEqual((await call('share:notedDates', {})).dates, [], 'no share, no mark')
+  const full = await call('share:create', { scope: 'full' })
+  const off = await call('share:notedDates', {})
+  assert.equal(off.notesOn, false)
+  assert.deepEqual(off.dates, [], 'a full share with notes off sends none')
+  assert.equal(off.windowStart, addDays(today, -21))
+
+  await call('share:setNotes', { groupId: full.groupId, notes: true })
+  const on = await call('share:notedDates', {})
+  assert.equal(on.notesOn, true)
+  assert.deepEqual(on.dates, [today], 'only the noted day inside the window')
+
+  await call('share:setNotes', { groupId: full.groupId, notes: false })
+  assert.deepEqual((await call('share:notedDates', {})).dates, [], 'switching off clears the mark')
+
+  await call('share:setNotes', { groupId: full.groupId, notes: true })
+  await call('share:revoke', { groupId: full.groupId })
+  assert.deepEqual((await call('share:notedDates', {})).dates, [], 'an ended share marks nothing')
+  await engine.close()
+})
+
 test('share:revoke is idempotent: revoking an already-gone share is ok, not an error', async () => {
   const { engine, call } = driver()
   await call('init', {})

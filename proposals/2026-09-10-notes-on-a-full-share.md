@@ -117,10 +117,16 @@ build calls it.
    partner can already see. The confirmation must say so before it happens, in days
    rather than in a variable name: "the notes on your last three weeks of days will be
    sent".
-2. **Does the partner's screen show the whole note, or a first line?** Notes run to 2000
+2. **ANSWERED 2026-09-17 (Tim): keep what shipped.** Three lines, and a tap opens the
+   whole note. The original question follows.
+   **Does the partner's screen show the whole note, or a first line?** Notes run to 2000
    characters and the partner's day rows are single lines today. Recommend a first line in
    the row that opens to the whole note, which needs a small screen the partner side does
    not have yet.
-3. **Does the owner get any sign of which days a partner can read notes on?** A marker on
+3. **ANSWERED 2026-09-17 (Tim): yes.** An eye mark beside the date on the day bar and in
+   Recent days, from `share:notedDates`. The day editor's warning now also checks the
+   date, so a day outside the window no longer says it is shared. The original question
+   follows.
+   **Does the owner get any sign of which days a partner can read notes on?** A marker on
    the day itself would be honest, and it is the sort of thing that is easy to leave out
    and hard to add later.

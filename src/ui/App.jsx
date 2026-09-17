@@ -10,7 +10,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh, Target, Bell, Palette, Drop, Lock } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh, Target, Bell, Palette, Drop, Lock, Eye } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -1156,14 +1156,20 @@ function daySummaryText (row) {
   if (row?.notes) bits.push('note')
   return bits.join(' · ')
 }
-function DaySummaryBar ({ date, row, onOpen }) {
+// Marks a day whose note a partner can read (share:notedDates). Next to the date
+// rather than the note, since the lists show no note text.
+function NoteSharedMark () {
+  return <Eye size={14} color={colors.primary} weight='bold' aria-label='Your partner can read this note' style={{ flexShrink: 0 }} />
+}
+
+function DaySummaryBar ({ date, row, noteShared, onOpen }) {
   const summary = daySummaryText(row)
   const isToday = date === todayIso()
   return (
     <button onClick={() => { haptic('light'); onOpen() }} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.md, textAlign: 'left', width: '100%', cursor: 'pointer' }}>
       <span style={{ width: 12, height: 12, borderRadius: radius.full, background: row?.flow ? flowColor(row.flow) : colors.track, flexShrink: 0 }} />
       <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
-        <span style={{ color: colors.text.primary, fontWeight: 500 }}>{isToday ? 'Today' : fmtDate(date)}</span>
+        <span style={{ color: colors.text.primary, fontWeight: 500, display: 'flex', alignItems: 'center', gap: spacing.xs }}>{isToday ? 'Today' : fmtDate(date)}{noteShared && <NoteSharedMark />}</span>
         <span style={{ color: summary ? colors.text.secondary : colors.text.muted, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {summary || 'Nothing logged'}
         </span>
@@ -1182,10 +1188,12 @@ function DayEditorSheet ({ date, setDate, onSaved, onClose, onEditPeriod }) {
   const [notes, setNotes] = useState('')
   const [saved, setSaved] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
-  // Whether ANY live share is currently set to carry notes. The placeholder in
-  // the notes box is a promise about where this text goes, so it has to be read
-  // from the shares rather than assumed.
-  const [notesShared, setNotesShared] = useState(false)
+  // Whether a partner can read THIS day's note: one is already on a live share, or
+  // notes are on and the day is inside the window, so a note typed now would be
+  // sent. The placeholder in the notes box is a promise about where this text
+  // goes, so it has to be read from the shares rather than assumed.
+  const [notedInfo, setNotedInfo] = useState(null)
+  const notesShared = !!notedInfo && (notedInfo.dates.includes(date) || (notedInfo.notesOn && date >= notedInfo.windowStart))
   const [removing, setRemoving] = useState(false)
   const [delErr, setDelErr] = useState('')
 
@@ -1197,9 +1205,9 @@ function DayEditorSheet ({ date, setDate, onSaved, onClose, onEditPeriod }) {
   useEffect(() => { load() }, [load])
   useEffect(() => {
     let dead = false
-    call('share:list').then((rows) => { if (!dead) setNotesShared((rows || []).some((r) => !r.revoked && r.notes)) }).catch(() => {})
+    call('share:notedDates').then((r) => { if (!dead && r) setNotedInfo(r) }).catch(() => {})
     return () => { dead = true }
-  }, [])
+  }, [date, saved])
   // Live-refresh the open day when another of your devices edits it. Reload flow +
   // symptoms always, but only adopt the remote note when the notes field is not
   // focused, so a sync never yanks text you are mid-typing (it saves on blur, LWW).
@@ -1307,14 +1315,14 @@ function DayEditorSheet ({ date, setDate, onSaved, onClose, onEditPeriod }) {
 }
 
 // --- recent days ------------------------------------------------------------
-function RecentDays ({ days, onPick }) {
+function RecentDays ({ days, notedDates, onPick }) {
   if (!days.length) return <div style={{ color: colors.text.muted, textAlign: 'center', padding: spacing.lg }}>No entries yet. Log your first day above.</div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
       {days.map((d) => (
         <button key={d.date} onClick={() => onPick(d.date)} style={{ ...card, padding: spacing.md, display: 'flex', alignItems: 'center', gap: spacing.md, textAlign: 'left' }}>
           <span style={{ width: 12, height: 12, borderRadius: radius.full, background: d.flow ? flowColor(d.flow) : colors.track, flexShrink: 0 }} />
-          <span style={{ color: colors.text.primary, fontWeight: 500, width: 104 }}>{d.date === todayIso() ? 'Today' : fmtDate(d.date)}</span>
+          <span style={{ color: colors.text.primary, fontWeight: 500, width: 104, display: 'flex', alignItems: 'center', gap: spacing.xs }}>{d.date === todayIso() ? 'Today' : fmtDate(d.date)}{notedDates?.has(d.date) && <NoteSharedMark />}</span>
           <span style={{ color: colors.text.secondary, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {[d.flow, ...(d.symptoms || [])].filter(Boolean).join(' · ') || '-'}
           </span>
@@ -3138,6 +3146,7 @@ export default function App () {
   const [partnerGroup, setPartnerGroup] = useState(null)
   const [date, setDate] = useState(todayIso())
   const [days, setDays] = useState([])
+  const [notedDates, setNotedDates] = useState(() => new Set())
   const [pred, setPred] = useState(null)
   const [flower, setFlower] = useState('rose')
   const [notice, setNotice] = useState('')
@@ -3202,8 +3211,8 @@ export default function App () {
   const daysByIso = useMemo(() => Object.fromEntries(days.map((d) => [d.date, d])), [days])
 
   const refresh = useCallback(async () => {
-    const [d, pr, p, h] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null), call('prefs:get').catch(() => null), call('cycle:history').catch(() => null)])
-    setDays(d); setPred(pr); setHistory(h)
+    const [d, pr, p, h, n] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null), call('prefs:get').catch(() => null), call('cycle:history').catch(() => null), call('share:notedDates').catch(() => null)])
+    setDays(d); setPred(pr); setHistory(h); setNotedDates(new Set(n?.dates || []))
     if (p && p.flower) setFlower(p.flower) // keep the dial's flower in sync when prefs change (incl. synced from another device)
   }, [])
 
@@ -3242,6 +3251,14 @@ export default function App () {
 
   useEffect(() => { boot() }, [boot])
   useEffect(() => on('group:updated', () => { if (mode === 'owner') refresh() }), [mode, refresh])
+  // The notes switch lives on the Share tab, and flipping it does not always fire
+  // group:updated here, so re-read the marks on the way back to the cycle.
+  useEffect(() => {
+    if (mode !== 'owner' || screen !== 'main') return undefined
+    let dead = false
+    call('share:notedDates').then((n) => { if (!dead) setNotedDates(new Set(n?.dates || [])) }).catch(() => {})
+    return () => { dead = true }
+  }, [mode, screen])
 
   // Screenshot mode: once booted into owner, open the screen/sheet this scene
   // wants (see screenshot-fixtures.js) so each capture lands on the right frame.
@@ -3333,10 +3350,10 @@ export default function App () {
           </div>
         </>
       )}
-      <DaySummaryBar date={date} row={daysByIso[date]} onOpen={() => setDaySheet(true)} />
+      <DaySummaryBar date={date} row={daysByIso[date]} noteShared={notedDates.has(date)} onOpen={() => setDaySheet(true)} />
       {((!pred?.pregnancy?.active && cycleView === 'calendar') || !days.length) ? null : (
         <CollapsibleCard title={`Recent days (${days.length})`} open={recentsOpen} onToggle={() => setRecentsOpen((o) => !o)}>
-          <RecentDays days={days} onPick={setDate} />
+          <RecentDays days={days} notedDates={notedDates} onPick={setDate} />
         </CollapsibleCard>
       )}
     </div>

@@ -207,6 +207,13 @@ const mockMethods = {
     s.notes = !!notes
     return { groupId, notes: s.notes }
   },
+  'share:notedDates': async () => {
+    const d = new Date(); d.setDate(d.getDate() - 21)
+    const windowStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const notesOn = [...mock.shares.values()].some((s) => !s.revoked && s.scope === 'full' && s.notes)
+    const dates = notesOn ? [...mock.days.values()].filter((x) => !x.deleted && x.notes && x.date >= windowStart).map((x) => x.date).sort() : []
+    return { notesOn, windowStart, dates }
+  },
   'share:list': async () => [...mock.shares.values()].map((s) => ({ ...s, notes: !!s.notes, joiners: s.joiners || [], revoked: !!s.revoked, revokedAt: s.revokedAt || null })).sort((a, b) => a.createdAt - b.createdAt),
   'member:publish': async () => ({ published: 0 }),
   // Soft-close: flag revoked (keep the row) so the "Sharing ended" UI renders.
