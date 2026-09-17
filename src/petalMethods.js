@@ -1499,6 +1499,36 @@ const methods = {
     return { groupId, notes: on }
   },
 
+  // Which days' notes a partner can read, so the owner's own screens can mark
+  // them. Owner-only and device-local: nothing here is written anywhere.
+  //
+  // Two sources, unioned. The days writeProjection will send (a note, inside the
+  // window, while any live share has notes on), read from the private log so the
+  // mark does not lag the projection. And any note already sitting on a live
+  // shared base, which covers a day that has since aged out of the window: the
+  // row was never rewritten, so the partner still has it.
+  //
+  // `windowStart` lets the day editor say whether a note typed now would be sent.
+  'share:notedDates': async (_args, ctx) => {
+    const live = (await membershipsByKind(ctx, 'shared-out')).filter((m) => !m.revoked && (m.scope || 'phase') === 'full')
+    const windowStart = addDays(todayIso(), -SUMMARY_WINDOW_DAYS)
+    const notesOn = live.some((m) => m.notes)
+    const dates = new Set()
+    if (notesOn) {
+      for (const d of (await privRows(ctx, DAY_RANGE))) {
+        if (d && !d.deleted && typeof d.notes === 'string' && d.notes && diffDays(windowStart, d.date) >= 0) dates.add(d.date)
+      }
+    }
+    for (const m of live) {
+      try {
+        for await (const { value } of viewFor(ctx, m.groupId).view.createReadStream(SUMMARY_RANGE)) {
+          if (value && !value.blank && value.note && value.date) dates.add(value.date)
+        }
+      } catch {}
+    }
+    return { notesOn, windowStart, dates: [...dates].sort() }
+  },
+
   'share:list': async (_args, ctx) => {
     const self = pubkeyHex(ctx)
     const out = []
