@@ -83,6 +83,7 @@
     },
     "plugins": [
       "./plugins/with-ios-no-associated-domains",
+      "./plugins/with-ios-pod-deployment-target",
       [
         "expo-router"
       ],
