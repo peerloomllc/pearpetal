@@ -84,6 +84,7 @@
     "plugins": [
       "./plugins/with-ios-no-associated-domains",
       "./plugins/with-ios-pod-deployment-target",
+      "./plugins/with-ios-scene-lifecycle",
       [
         "expo-router"
       ],
