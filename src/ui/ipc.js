@@ -134,6 +134,8 @@ const mockMethods = {
   'device:setLabel': async ({ label }) => { if (!label || !label.trim()) throw new Error('label required'); mock.deviceLabel = label.trim().slice(0, 64); ensureSelfDevice(); return { label: mock.deviceLabel } },
   'device:publish': async () => ({ published: true }),
   'device:getAll': async () => [...mock.devices.values()],
+  'privateLog:status': async () => ({ state: 'encrypted' }),
+  'privateLog:deleteOldCopy': async () => ({ deleted: true }),
   'day:set': async ({ date, flow, symptoms, mood, notes, bbt }) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) throw new Error('date must be YYYY-MM-DD')
     const cur = mock.days.get(date) || { date, createdBy: MOCK_SELF }

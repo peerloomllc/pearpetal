@@ -2,6 +2,21 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-10-12 - The private log is block-encrypted again
+Tier: T3
+Context: DECISIONS 2026-07-06 item 6 promised block encryption on both bases. The
+2026-07-12 move onto device-link put the private log in a personal base built with no
+encryptionKey and found under its raw key, from v1.0.1 on.
+Choice: proposals/2026-10-12-encrypt-private-log.md (approved). New personal bases are
+encrypted and linking hands the key over; existing users move onto an encrypted base
+once all their linked phones are updated (device-link #17, #18). The old unencrypted
+copy stays until the user deletes it from Settings, per phone (Tim).
+Alternatives: a key derived from the recovery phrase (a removed phone keeps the
+phrase); switching the existing base in place (Autobase cannot).
+Consequences: a phone too old to open an encrypted base cannot link to an updated one
+and is told to update. Seeding the private log is still ruled out by 2026-07-06 until
+that decision is revisited.
+
 ## 2026-09-10 - A deleted day or period is not deleted forever: the apply rule now matches the spec
 Tier: T2 (a wire apply rule, but a correction to the written protocol rather than a change
 to it, so no new proposal - `proposals/2026-07-06-wire-protocol.md` section 5 already

@@ -103,6 +103,21 @@ function makeMirror (localDb) {
   }
 }
 
+// Every personal-base record this device holds, as device-link record ops.
+async function listRecords (localDb) {
+  const out = []
+  for (const type of ['day', 'period']) {
+    for await (const { key, value } of localDb.createReadStream({ gt: type + ':', lt: type + ':~' })) {
+      if (value) out.push({ type, key, value })
+    }
+  }
+  const profile = (await localDb.get('profile').catch(() => null))?.value
+  if (profile) out.push({ type: 'identityProfile', key: 'identityProfile', value: profile })
+  const prefs = (await localDb.get('prefs').catch(() => null))?.value
+  if (prefs) out.push({ type: 'ownerPrefs', key: 'ownerPrefs', value: prefs })
+  return out
+}
+
 // Lazily construct + start one device-link engine for this worklet, sharing the
 // group engine's runtime. Cached, so repeated calls (once per method dispatch)
 // return the same instance. The caller gates on DEVICE_LINK_ENABLED; this
@@ -118,6 +133,10 @@ function getDeviceLink (ctx) {
       keystore: makeKeystore(ctx.localDb),
       records: makeRecords(),
       mirror: makeMirror(ctx.localDb),
+      // What a move onto an encrypted personal base copies across
+      // (proposals/2026-10-12-encrypt-private-log.md): the same rows the mirror
+      // keeps, read back from localDb.
+      listRecords: () => listRecords(ctx.localDb),
       channel: PAIR_CHANNEL,
       platform: '',
       onEvent: (event, data) => {
@@ -143,6 +162,7 @@ module.exports = {
   makeKeystore,
   makeRecords,
   makeMirror,
+  listRecords,
   getDeviceLink,
   _resetForTest,
   _setDeviceLinkEnabledForTest,

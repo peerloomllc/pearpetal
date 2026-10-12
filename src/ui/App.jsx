@@ -2127,6 +2127,41 @@ function RecoveryPhraseCard () {
   )
 }
 
+// After the private log has moved onto an encrypted copy
+// (proposals/2026-10-12-encrypt-private-log.md), the old unencrypted copy stays on
+// this phone until the person deletes it. Shown only then. Each phone asks for its
+// own copy.
+function OldCopyNotice () {
+  const [st, setSt] = useState(null)
+  const [hidden, setHidden] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(async () => { setSt(await call('privateLog:status').catch(() => null)) }, [])
+  useSynced(load)
+  if (hidden || !st || st.state !== 'moved' || !st.legacyPresent) return null
+  const remove = async () => {
+    setBusy(true)
+    try { const r = await call('privateLog:deleteOldCopy'); haptic(r && r.deleted ? 'success' : 'light') } catch {}
+    setBusy(false)
+    load()
+  }
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+      <div style={{ color: colors.text.primary, fontWeight: 600 }}>Your log is now encrypted</div>
+      <div style={{ fontSize: 13, color: colors.text.secondary }}>
+        {st.canDeleteLegacy
+          ? 'An older, unencrypted copy is still on this phone. Delete it?'
+          : 'An older, unencrypted copy is still on this phone. It can be deleted once your other linked phones have updated and moved over too.'}
+      </div>
+      {st.canDeleteLegacy && (
+        <div style={{ display: 'flex', gap: spacing.sm }}>
+          <Btn onClick={remove} disabled={busy} style={{ flex: 1 }}>Delete</Btn>
+          <Btn kind='ghost' onClick={() => setHidden(true)} style={{ flex: 1 }}>Not now</Btn>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Linked devices, as a collapsible settings card (consistent with the other
 // settings sections; keeps the Settings tab active, unlike a separate screen).
 // Shows the roster (rename your own device - it self-attests + syncs), plus the
@@ -2648,6 +2683,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
       <ConnectionCard />
 
       <SectionLabel>Your data</SectionLabel>
+      {dlEnabled && <OldCopyNotice />}
       {dlEnabled && <DevicesCard />}
       {dlEnabled && <RecoveryPhraseCard />}
       <CollapsibleCard title='Backup & restore' icon={Database} open={openSection.data} onToggle={() => toggleSection('data')}>
