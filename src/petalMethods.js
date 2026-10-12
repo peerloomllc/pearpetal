@@ -753,8 +753,12 @@ const methods = {
   'cycle:status': async (_args, ctx) => {
     const partners = (await membershipsByKind(ctx, 'shared-in')).length
     if (isDeviceLinkEnabled()) {
+      // After a move onto an encrypted base the current one is recorded in
+      // `personalMeta:current`, and deleting the old copy removes the bootstrap
+      // row (proposals/2026-10-12-encrypt-private-log.md). Either means a cycle.
       const boot = (await ctx.localDb.get('personalMeta:bootstrap').catch(() => null))?.value
-      return { hasBase: !!(boot && boot.key), groupId: null, pubkey: pubkeyHex(ctx), partners }
+      const cur = (await ctx.localDb.get('personalMeta:current').catch(() => null))?.value
+      return { hasBase: !!((boot && boot.key) || (cur && cur.key)), groupId: null, pubkey: pubkeyHex(ctx), partners }
     }
     const m = await privateMembership(ctx)
     return { hasBase: !!m, groupId: m?.groupId ?? null, pubkey: pubkeyHex(ctx), partners }
