@@ -1,6 +1,8 @@
 # Encrypt the private cycle log
 
-**Status**: Draft 2026-10-12. Awaiting Tim's approval.
+**Status**: Approved by Tim 2026-10-12. Open questions decided the same day: the old
+copy stays until the user confirms deleting it (question 1), and PearList keeps
+device-link off until this ships (question 2).
 
 **Goal**: Give device-link's personal base, which holds PearPetal's private cycle log,
 the block encryption DECISIONS 2026-07-06 promised, and move every existing user's
@@ -85,7 +87,10 @@ pattern is PearOffice's `moves.js` and PearPetal's own `migrateIfNeeded`
   old roster and appends `addWriter`. It resends until admitted, as PearOffice's
   `followDevice` does.
 - **The old base.** Frozen: after `personalMove`, updated devices stop writing to it and
-  stop joining its topic. It stays on disk for one release, for rollback, then is deleted.
+  stop joining its topic. It stays on disk until the user deletes it. Once the move is
+  done, Settings shows "Your log is now encrypted. Delete the old unencrypted copy from
+  this phone?" with Delete and Not now. Each phone asks for its own copy. Until then it
+  stays readable to anyone with its key, and it is the copy an older version opens.
   `personalMeta:bootstrap` keeps pointing at it; the new base goes in
   `personalMeta:bootstrap2` so an older app version never opens the encrypted base
   without its key.
@@ -124,13 +129,13 @@ pattern is PearOffice's `moves.js` and PearPetal's own `migrateIfNeeded`
 ## Rollback
 
 - Before the move ships to users: revert device-link and the app.
-- After: the old base is still on disk for one release, so an older version still opens
-  the pre-move log. Data written after the move would only be in the encrypted base. A
+- After: the old base stays on disk until the user deletes it, so an older version still
+  opens the pre-move log. Data written after the move would only be in the encrypted base. A
   fix-forward release is the expected path.
 
-## Open questions
+## Decided
 
-1. Delete the old unencrypted base after one release, or keep it until the user confirms?
-   Recommendation: one release, then delete. It holds the readable copy this fixes.
-2. PearList turns device-link on later. Should it wait for this to ship so it never has an
-   unencrypted personal base? Recommendation: yes.
+1. The old unencrypted base is deleted only when the user confirms, per phone (Tim,
+   2026-10-12).
+2. PearList keeps device-link off until this ships, so it never has an unencrypted
+   personal base (Tim, 2026-10-12).
