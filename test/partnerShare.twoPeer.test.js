@@ -274,3 +274,34 @@ test('reading a partner cycle does not wait on their phone being around', async 
   const list = await V.call('partner:list', {})
   assert.equal(list[0].available, true)
 })
+
+// Reported 2026-10-12: his screen sat days behind hers, because the owner only
+// re-sent when her log changed. The first open of a new day now re-sends, and the
+// partner screen says whether it is connected and when the owner last wrote.
+test('the partner screen reports the connection, and a new day re-sends', async (t) => {
+  const { O, V, groupId } = await pairOwnerAndViewer(t)
+
+  // The first open with no day recorded (as on an upgrade) re-sends once; let it.
+  await O.call('cycle:prediction')
+  await new Promise((r) => setTimeout(r, 1500))
+  const first = await V.call('partner:view', { groupId })
+  assert.equal(first.connected, true)
+  assert.ok(first.asOf > 0, 'asOf carries when the owner wrote the phase')
+
+  // Same day: opening the app again sends nothing.
+  await O.call('cycle:prediction')
+  await new Promise((r) => setTimeout(r, 1500))
+  assert.equal((await V.call('partner:view', { groupId })).asOf, first.asOf)
+
+  // Pretend she last sent yesterday: the next open re-sends.
+  await O.engine.localDb.put('shares:projectedDay', '2000-01-01')
+  await new Promise((r) => setTimeout(r, 20))
+  await O.call('cycle:prediction')
+  await waitFor('the re-sent phase reaches the viewer', async () => (await V.call('partner:view', { groupId })).asOf > first.asOf)
+
+  // Both connection actions run against a live swarm without breaking it.
+  assert.deepEqual(await V.call('sync:now'), { ok: true })
+  assert.deepEqual(await V.call('sync:now', { rebuild: true }), { ok: true })
+  assert.deepEqual(await V.call('app:foreground', { bgMs: 60000, platform: 'ios' }), { bounced: true })
+  await waitFor('the viewer reconnects after the rebuild', async () => (await V.call('partner:view', { groupId })).connected)
+})

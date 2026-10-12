@@ -23,6 +23,7 @@ const { TONES: NOTE_TONES, DEFAULT_TONE: DEFAULT_NOTE_TONE } = require('./petalN
 const { isDeviceLinkEnabled } = require('./deviceLink')
 const ps = require('./privateStore')
 const relay = require('./relay')
+const { freshPartnerPhase } = require('./partnerFresh')
 
 // Consent scopes (see DECISIONS.md 2026-07-06). Each governs which projection
 // fields the OWNER writes to a shared base; the partner structurally never
@@ -719,6 +720,7 @@ async function refreshShares (ctx) {
   // Revoked shares are frozen at their last-synced projection - never push more.
   const shares = (await membershipsByKind(ctx, 'shared-out')).filter((m) => !m.revoked)
   if (!shares.length) return
+  try { await ctx.localDb.put(SHARES_DAY_KEY, todayIso()) } catch {}
   let projData
   try { projData = await computeProjection(ctx) } catch { return }
   for (const m of shares) {
@@ -726,6 +728,78 @@ async function refreshShares (ctx) {
     if (!base || !base.writable) continue
     try { await writeProjection(ctx, m.groupId, m.scope || 'phase', projData.proj, projData.dayRows, !!m.notes) } catch {}
   }
+}
+
+// The day the projection was last written, device-local. The projection's day
+// count and phase are computed for the day they are written, and nothing used to
+// rewrite them until the owner next changed her log, so a partner sat days
+// behind her (reported 2026-10-12). Re-sending once per day on open fixes the
+// phase name too, which the partner cannot work out on a phase-only share.
+const SHARES_DAY_KEY = 'shares:projectedDay'
+
+let _dayRefresh = null
+function refreshSharesIfNewDay (ctx) {
+  // Opening the app fires several loads at once; one re-send is enough.
+  if (!_dayRefresh) _dayRefresh = dayRefresh(ctx).finally(() => { _dayRefresh = null })
+  return _dayRefresh
+}
+async function dayRefresh (ctx) {
+  let last = null
+  try { last = (await ctx.localDb.get(SHARES_DAY_KEY))?.value || null } catch {}
+  if (last === todayIso()) return false
+  if (!(await privHas(ctx))) return false
+  await refreshShares(ctx)
+  return true
+}
+
+// Whether any remote peer is replicating this base right now. A partner joins
+// client-only, so for a shared-in base the only peer it can have is the owner,
+// and for a shared-out base the only peers are partners.
+function baseHasPeer (base) {
+  if (!base) return false
+  const cores = []
+  const add = (c) => { if (c && typeof c.peers !== 'undefined') cores.push(c) }
+  add(base.local)
+  try { for (const w of base.activeWriters) if (w) add(w.core) } catch {}
+  try { add(base.system && base.system.core) } catch {}
+  try { add(base.view && base.view.core) } catch {}
+  for (const c of cores) {
+    try { if (c.peers && c.peers.length > 0) return true } catch {}
+  }
+  return false
+}
+
+// A foreground after this long away rebuilds every connection instead of
+// trusting them. Same threshold and reasoning as PearCal (src/lib/swarmBounce.js):
+// iOS freezes the process, the NAT mappings behind each holepunched path expire,
+// and the sockets stay "open" while carrying nothing until their keep-alive
+// gives up minutes later. Short trips (share sheet, control centre) keep theirs.
+const SWARM_BOUNCE_MIN_BG_MS = 20000
+
+async function bounceSwarm (swarm) {
+  if (!swarm || typeof swarm.suspend !== 'function') return false
+  try {
+    await swarm.suspend()
+    await swarm.resume()
+    return true
+  } catch {
+    // Never leave the swarm parked: a suspend that lands and a resume that throws
+    // would keep every share offline until the app restarts.
+    try { if (swarm.suspended) await swarm.resume() } catch {}
+    return false
+  }
+}
+
+// Look the topics up again right now. A partner joins client-only, so it only
+// finds the owner by looking, and Hyperswarm otherwise looks again only every
+// ~10 minutes - opening the partner screen first meant a long wait.
+function lookupNow (swarm) {
+  if (!swarm || typeof swarm.topics !== 'function') return 0
+  let n = 0
+  for (const d of swarm.topics()) {
+    try { d.refresh().catch(() => {}); n++ } catch {}
+  }
+  return n
 }
 
 const methods = {
@@ -764,6 +838,7 @@ const methods = {
   // from the private log, never written to any base. Returns { known:false }
   // when there is not enough history yet (the UI shows a "computing" hint).
   'cycle:prediction': async (_args, ctx) => {
+    refreshSharesIfNewDay(ctx).catch(() => {}) // the first open of a day re-sends to partners
     const prefs = await getPrefs(ctx)
     const goal = prefs.goal || 'track'
     const pregnancy = pregnancyProjection(prefs, todayIso())
@@ -1561,23 +1636,7 @@ const methods = {
   // by the share-QR sheet to auto-dismiss on connection. A shared-out base only ever
   // has PARTNERS as peers (own devices live on the private base), so any peer = a
   // partner connected.
-  'share:connected': async ({ groupId }, ctx) => {
-    const base = ctx.bases.get(groupId)
-    if (!base) return { connected: false }
-    // Check every core this base replicates so we catch a peer at the earliest
-    // moment (a joining partner pulls the system/oplog core before the writer
-    // core). A shared-out base only ever has partners as peers.
-    const cores = []
-    const add = (c) => { if (c && typeof c.peers !== 'undefined') cores.push(c) }
-    add(base.local)
-    try { for (const w of base.activeWriters) if (w) add(w.core) } catch {}
-    try { add(base.system && base.system.core) } catch {}
-    try { add(base.view && base.view.core) } catch {}
-    for (const c of cores) {
-      try { if (c.peers && c.peers.length > 0) return { connected: true } } catch {}
-    }
-    return { connected: false }
-  },
+  'share:connected': async ({ groupId }, ctx) => ({ connected: baseHasPeer(ctx.bases.get(groupId)) }),
 
   // Revoke a share (SOFT-CLOSE): write the "sharing ended" tombstone into the
   // owner-signed share:meta and flag the membership revoked so we stop projecting
@@ -1666,8 +1725,11 @@ const methods = {
     }
     await updateOrCarryOn(base)
     const meta = (await base.view.get('share:meta'))?.value || null
-    const phase = (await base.view.get(phaseKey()))?.value || null
-    const predict = (await base.view.get(predictKey()))?.value || null
+    const stored = (await base.view.get(phaseKey()))?.value || null
+    const storedPredict = (await base.view.get(predictKey()))?.value || null
+    // Bring the owner's day count up to today (see src/partnerFresh.js). A revoked
+    // share is shown frozen as it was, so it is left alone.
+    const { phase, predict } = meta?.revoked ? { phase: stored, predict: storedPredict } : freshPartnerPhase(stored, storedPredict, todayIso())
     const summary = []
     for await (const { value } of base.view.createReadStream(SUMMARY_RANGE)) if (value && !value.blank) summary.push(value)
     summary.sort((a, b) => String(b.date).localeCompare(String(a.date)))
@@ -1676,7 +1738,34 @@ const methods = {
     // background fetch; ownerHasAvatar tells the UI to keep polling until it lands.
     const ownerAvatar = resolveAvatarCached(ctx, meta)
     const ownerHasAvatar = !!(meta?.avatarBlob || meta?.avatar)
-    return { scope: meta?.scope || null, notes: !!meta?.notes, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar, ownerHasAvatar, phase, predict, summary, revoked: !!meta?.revoked, revokedAt: meta?.revokedAt || null }
+    return { scope: meta?.scope || null, notes: !!meta?.notes, ownerPubkey: meta?.ownerPubkey || null, ownerName: meta?.displayName || null, ownerAvatar, ownerHasAvatar, phase, predict, summary, revoked: !!meta?.revoked, revokedAt: meta?.revokedAt || null, asOf: stored?.updatedAt || null, connected: baseHasPeer(base) }
+  },
+
+  // --- connections -----------------------------------------------------------
+
+  // The shell calls this on every return to the foreground. After a long enough
+  // trip away, rebuild the connections (see SWARM_BOUNCE_MIN_BG_MS); after a short
+  // one, just look again. Either way, re-send to partners if the day changed.
+  'app:foreground': async ({ bgMs = 0, platform = null } = {}, ctx) => {
+    const swarm = ctx.swarm
+    const away = Number(bgMs) || 0
+    let bounced = false
+    // Android does not freeze the worklet the way iOS does, so its connections
+    // usually survive; rebuild there only once they are visibly all gone.
+    const conns = swarm?.connections?.size ?? 0
+    if (away >= SWARM_BOUNCE_MIN_BG_MS && !(platform === 'android' && conns > 0)) bounced = await bounceSwarm(swarm)
+    else lookupNow(swarm)
+    refreshSharesIfNewDay(ctx).catch(() => {})
+    return { bounced }
+  },
+
+  // "Check for updates" on the partner screen, and its quiet retry while nothing
+  // is connected. `rebuild` tears the connections down and dials again (the
+  // button); without it this only looks the topics up again (the retry).
+  'sync:now': async ({ rebuild = false } = {}, ctx) => {
+    if (rebuild) await bounceSwarm(ctx.swarm)
+    else lookupNow(ctx.swarm)
+    return { ok: true }
   },
 
   // Rebuild a shared cycle whose base will not open. Nothing of the person's own
