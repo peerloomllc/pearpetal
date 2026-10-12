@@ -21,6 +21,12 @@ It uses the same three-layer architecture as the rest of the suite:
 built on the shared `@peerloom/core` package (identity, records/signing, pairing,
 sync) rather than copy-forked.
 
+`.npmrc` sets `install-links=true`, so `npm install` copies `../peerloom-core`
+and `../peerloom-device-link` into `node_modules` instead of linking them. The bundles then carry one copy of each
+library. With the link, core's own `node_modules` put a second set into them
+(an older hypercore and a second copy of each native addon). After changing either,
+run `npm install` here to pick it up.
+
 ## Status
 
 Slices 1-3 built (2026-07-06) on `@peerloom/core`. Backend: `src/petalWire.js`
