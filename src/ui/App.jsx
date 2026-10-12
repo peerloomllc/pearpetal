@@ -1021,13 +1021,15 @@ function PartnerView ({ groupId, onClose, onLeft }) {
   // the owner by looking (it does not announce itself), and left alone that
   // happens about every ten minutes, so opening this screen first meant a long
   // wait. Look every 30s and re-read every 5s so "Connected" shows up promptly.
+  // While connected, still re-read every 10s: nothing else fires when their phone
+  // goes away, so "Connected" stayed up after they closed the app.
   const live = !data?.revoked // also while the first copy is still on its way
   const connected = !!data?.connected
   useEffect(() => {
-    if (!live || connected) return undefined
-    const look = setInterval(() => { call('sync:now').catch(() => {}) }, 30000)
-    const read = setInterval(load, 5000)
-    return () => { clearInterval(look); clearInterval(read) }
+    if (!live) return undefined
+    const read = setInterval(load, connected ? 10000 : 5000)
+    const look = connected ? null : setInterval(() => { call('sync:now').catch(() => {}) }, 30000)
+    return () => { clearInterval(read); if (look) clearInterval(look) }
   }, [groupId, live, connected])
   // "Check for updates": rebuild the connections, then show the result.
   const [checking, setChecking] = useState(false)
