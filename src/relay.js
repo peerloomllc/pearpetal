@@ -135,7 +135,33 @@ function createRelaySwarm ({ keyPair, localDb }) {
   })
 }
 
+// Seeder dials (src/seeders.js) are raw DHT connects, not swarm connections, so
+// they do not get the swarm's relayThrough. Wrap the DHT so a seeder connect also
+// tries direct first and, once a punch to that seeder has failed, goes through
+// the relay, within the same privacy toggle. A seeder on a home server is often
+// reachable from a phone on the same network only through the relay.
+const PUNCH_FAILED = new Set(['HOLEPUNCH_ABORTED', 'HOLEPUNCH_DOUBLE_RANDOMIZED_NATS', 'REMOTE_NOT_HOLEPUNCHABLE'])
+function relayingDht (dht) {
+  const b4a = require('b4a')
+  const failed = new Set()
+  function connect (remotePublicKey, opts = {}) {
+    const key = b4a.toString(remotePublicKey, 'hex')
+    const relayThrough = decideRelay({ force: failed.has(key), randomized: !!dht.randomized, useRelay: useRelayCached() === true, relayKey: RELAY_PUBLIC_KEY })
+    const socket = dht.connect(remotePublicKey, relayThrough ? { ...opts, relayThrough } : opts)
+    socket.on('error', (err) => { if (err && PUNCH_FAILED.has(err.code)) failed.add(key) })
+    return socket
+  }
+  return new Proxy(dht, {
+    get (target, prop) {
+      if (prop === 'connect') return connect
+      const v = Reflect.get(target, prop, target)
+      return typeof v === 'function' ? v.bind(target) : v
+    }
+  })
+}
+
 module.exports = {
+  relayingDht,
   RELAY_PUBLIC_KEY,
   RELAY_PUBLIC_KEY_Z,
   NETWORK_KEY,

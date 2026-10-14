@@ -57,3 +57,12 @@ if (typeof BareKit !== 'undefined') {
 } else {
   engine.start()
 }
+
+// Opt-in seeder (src/seeders.js, proposals/2026-10-14-opt-in-seeder.md). Started
+// once the engine has its swarm, which arrives with `init`. It stays idle until the
+// owner pairs a seeder or a partner share lists one.
+const seedingTimer = setInterval(() => {
+  if (!engine.swarm || !engine.localDb) return
+  clearInterval(seedingTimer)
+  try { require('./seeders').getSeeding(engine).start() } catch {}
+}, 1000)
