@@ -1,6 +1,6 @@
 # Opt-in PeerLoom Seeder for PearPetal
 
-**Status**: Draft, for Tim's decision. Nothing built.
+**Status**: Open questions decided by Tim 2026-10-14 (below). Approved when this is merged. Nothing built.
 
 **Goal**: Let a PearPetal user back their cycle log and their partner shares up to a
 PeerLoom Seeder they choose, off by default, so their devices and their partner stay
@@ -90,13 +90,14 @@ Turn the section off in the UI (one flag). Devices stop registering with seeders
 after its 7-day wait once devices send drops, or by forgetting the device on the
 seeder's dashboard.
 
-## Open questions
+## Decided 2026-10-14
 
-1. Reverse DECISIONS 2026-07-06 at all? The "no server" promise is part of how
-   PearPetal is described (README, store text). An opt-in seeder the user runs keeps
-   "no server of ours", but not "no server".
-2. Partner shares on the seeder: allowed, or private log only?
-3. Should the app warn harder, or refuse, when the seeder is not on the same network
-   (likely someone else's box)? The app cannot know who runs a seeder.
-4. Store text and privacy page: both say data never leaves the user's devices. They
-   would need an "unless you add a seeder" line.
+1. Reverse DECISIONS 2026-07-06: yes, opt-in only. Off by default; the user picks their
+   own seeder. PearPetal keeps "no server of ours".
+2. Partner shares: yes, chosen per share by the owner.
+3. Warning: one plain warning at pairing, saying what the seeder's owner can see. No
+   network guessing.
+4. Store text and privacy page: add an "unless you add a seeder" line when this ships.
+
+When this ships, add a DECISIONS entry that supersedes item "No cloud/seeder ever" of
+2026-07-06.
