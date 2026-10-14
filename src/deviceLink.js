@@ -125,6 +125,11 @@ async function listRecords (localDb) {
 let _dlPromise = null
 function getDeviceLink (ctx) {
   if (_dlPromise) return _dlPromise
+  // Before init there is no store or swarm. Say so without caching anything: a
+  // cached failure used to answer every later private read with the same error
+  // for the life of the worklet (seen 2026-10-13, an app:foreground that reached
+  // the worklet ahead of init on an iPhone cold start left the cycle screen empty).
+  if (!ctx || !ctx.store || !ctx.swarm || !ctx.localDb) return Promise.reject(new Error('the engine is still starting'))
   _dlPromise = (async () => {
     const dl = createDeviceLink({
       store: ctx.store,
@@ -148,9 +153,14 @@ function getDeviceLink (ctx) {
         } catch {}
       },
     })
+    const trace = require('./trace')
+    trace.mark('dl:start begin')
     await dl.start()
+    trace.mark('dl:start end', { enabled: !!dl.isEnabled, encrypted: !!dl.isEncrypted })
     return dl
   })()
+  // Never keep a failed start: the next call tries again.
+  _dlPromise.catch((e) => { _dlPromise = null; try { require('./trace').mark('dl:start failed', { err: e && e.message }) } catch {} })
   return _dlPromise
 }
 

@@ -48,4 +48,12 @@ const engine = createGroupEngine({
   retentionKeepRecent: 512,
 })
 
-engine.start()
+// Tee the IPC through src/trace.js so a stuck request shows up in a file we can
+// pull off an iPhone. Only on a phone: tests and node drive the engine directly.
+if (typeof BareKit !== 'undefined') {
+  const trace = require('./trace')
+  BareKit.IPC.on('data', (chunk) => { try { trace.onIn(chunk) } catch {} })
+  engine.start({ read: BareKit.IPC, write: (buf) => { try { trace.onOut(buf) } catch {} return BareKit.IPC.write(buf) } })
+} else {
+  engine.start()
+}

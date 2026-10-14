@@ -744,6 +744,7 @@ function refreshSharesIfNewDay (ctx) {
   return _dayRefresh
 }
 async function dayRefresh (ctx) {
+  if (!ctx || !ctx.store) return false // before init: nothing to send yet
   let last = null
   try { last = (await ctx.localDb.get(SHARES_DAY_KEY))?.value || null } catch {}
   if (last === todayIso()) return false
@@ -1765,6 +1766,10 @@ const methods = {
   // trip away, rebuild the connections (see SWARM_BOUNCE_MIN_BG_MS); after a short
   // one, just look again. Either way, re-send to partners if the day changed.
   'app:foreground': async ({ bgMs = 0, platform = null } = {}, ctx) => {
+    // iOS reports the app active at launch, often before init has run. There is
+    // nothing to reconnect yet, and touching the private log here broke it for
+    // the whole session (see getDeviceLink in src/deviceLink.js).
+    if (!ctx.store) return { bounced: false, early: true }
     const swarm = ctx.swarm
     const away = Number(bgMs) || 0
     let bounced = false
