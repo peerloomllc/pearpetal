@@ -62,6 +62,10 @@ const bgFor = (t: string) => SHELL_BG[t] || SHELL_BG.dark
 let _worklet: any = null
 let _workletStarted = false
 let _initError: string | null = null
+// Set once init has answered without error. iOS reports the app active at launch,
+// before init, and the foreground work sent then reached a worklet with no store:
+// notifications:get failed, and app:foreground broke the private log until PR #156.
+let _initDone = false
 let _webViewRef: { current: any } | null = null
 const _pending = new Map<number, (msg: any) => void>()
 let _nextId = 1
@@ -222,6 +226,7 @@ async function startWorklet (): Promise<string | null> {
   } catch {} // already exists is the normal case
   await excludeFromBackup(`${dataDir}/${APP_STORE_DIR}`)
   const initRes = await callRaw('init', { dataDir })
+  _initDone = !initRes?.error
   // DIAGNOSTIC (iOS engine-init bug 2026-07-07): callRaw never rejects, so an init
   // failure is otherwise swallowed. Persist it so it can be pulled off-device.
   if (initRes?.error) {
@@ -248,6 +253,7 @@ async function restartWorklet (): Promise<string | null> {
   _worklet = null
   _workletStarted = false
   _initError = null
+  _initDone = false
   // Nothing in flight can be answered by a worklet that no longer exists.
   _pending.clear()
   return startWorklet()
@@ -549,7 +555,8 @@ export default function Shell () {
   // scheduled reminders track the latest projection (never prompts).
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') syncNotifications({ request: false }).catch(() => {})
+      // Before init the boot path does this itself, once init has answered.
+      if (s === 'active' && _initDone) syncNotifications({ request: false }).catch(() => {})
       // Reconnect to partners and devices. iOS freezes the worklet in the
       // background, so after a real trip away the connections are dead even though
       // the swarm still counts them; the worklet decides whether to rebuild or just
@@ -559,7 +566,7 @@ export default function Shell () {
       } else if (s === 'active') {
         const bgMs = _awayAt ? Date.now() - _awayAt : 0
         _awayAt = 0
-        callRaw('app:foreground', { bgMs, platform: Platform.OS }).catch(() => {})
+        if (_initDone) callRaw('app:foreground', { bgMs, platform: Platform.OS }).catch(() => {})
       }
       // App lock, both platforms. The cover goes up the INSTANT the app stops
       // being frontmost, not on the way back, because the screenshot the OS takes
