@@ -30,7 +30,7 @@ Your cycle blooms on a living petal dial: a flower that furls and opens as you m
 
 KEY FEATURES
 
-- Private by design: your full cycle log lives only on your own devices, never on a server
+- Private by design: your full cycle log lives only on your own devices, never on a server, unless you choose to add a seeder you run or trust. A seeder keeps your devices in sync when they are not online together, holds only an encrypted copy and cannot read it. It is off unless you turn it on
 - The petal dial: a signature flower that tracks your phase across the cycle, plus a month calendar view
 - On-device predictions: next period, fertile window, and ovulation are computed on your phone from your own history - never sent anywhere
 - Log what matters: period start and flow, symptoms, mood, notes, and basal body temperature (BBT)
@@ -96,6 +96,8 @@ PearPetal collects and shares NO data. In the Play Console Data safety section:
 - **Is all user data encrypted in transit?** Yes (peer-to-peer sync is end-to-end encrypted).
 - **Do you provide a way for users to request data deletion?** Data lives only on the
   device; uninstalling removes it. There is no server-side data to delete.
+- **The optional seeder** does not change these answers. It is off by default, the user picks a
+  seeder they run or trust, and it holds only encrypted data. Nothing reaches us.
 
 Note: PearPetal does NOT use Health Connect or any Google health API, so no Health
 apps declaration/permissions review is required on that basis. Confirm current Play
