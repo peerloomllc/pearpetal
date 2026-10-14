@@ -319,6 +319,8 @@ const INVITE_RE = /^(pear:\/\/pearpetal\/(link|join)|https:\/\/peerloomllc\.com\
 const { WebViewRecovery } = NativeModules
 const WEBVIEW_RECOVERY_MIN_BG_MS = 20_000
 let _backgroundedAt = 0
+// When the app last left the screen, for every platform (app:foreground).
+let _awayAt = 0
 
 // --- app lock ---------------------------------------------------------------
 // Opt-in, off by default, and it lives HERE rather than in the WebView UI: the
@@ -548,6 +550,17 @@ export default function Shell () {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') syncNotifications({ request: false }).catch(() => {})
+      // Reconnect to partners and devices. iOS freezes the worklet in the
+      // background, so after a real trip away the connections are dead even though
+      // the swarm still counts them; the worklet decides whether to rebuild or just
+      // look again (app:foreground in src/petalMethods.js).
+      if (s === 'background' || s === 'inactive') {
+        if (_awayAt === 0) _awayAt = Date.now()
+      } else if (s === 'active') {
+        const bgMs = _awayAt ? Date.now() - _awayAt : 0
+        _awayAt = 0
+        callRaw('app:foreground', { bgMs, platform: Platform.OS }).catch(() => {})
+      }
       // App lock, both platforms. The cover goes up the INSTANT the app stops
       // being frontmost, not on the way back, because the screenshot the OS takes
       // for the app switcher is taken right about here - waiting would put the

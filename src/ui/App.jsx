@@ -1017,6 +1017,28 @@ function PartnerView ({ groupId, onClose, onLeft }) {
   // lands, then stop and rely on the live group:updated subscription above. Keep
   // polling a bit longer if an avatar is announced but its blob has not replicated
   // yet (partner:view is non-blocking on the avatar), so the photo pops in.
+  // While nothing is connected, keep looking for their phone. A partner only finds
+  // the owner by looking (it does not announce itself), and left alone that
+  // happens about every ten minutes, so opening this screen first meant a long
+  // wait. Look every 30s and re-read every 5s so "Connected" shows up promptly.
+  // While connected, still re-read every 10s: nothing else fires when their phone
+  // goes away, so "Connected" stayed up after they closed the app.
+  const live = !data?.revoked // also while the first copy is still on its way
+  const connected = !!data?.connected
+  useEffect(() => {
+    if (!live) return undefined
+    const read = setInterval(load, connected ? 10000 : 5000)
+    const look = connected ? null : setInterval(() => { call('sync:now').catch(() => {}) }, 30000)
+    return () => { clearInterval(read); if (look) clearInterval(look) }
+  }, [groupId, live, connected])
+  // "Check for updates": rebuild the connections, then show the result.
+  const [checking, setChecking] = useState(false)
+  const checkNow = async () => {
+    setChecking(true)
+    try { await call('sync:now', { rebuild: true }) } catch {}
+    // Give the lookup and the first replication a moment before re-reading.
+    setTimeout(async () => { await load(); setChecking(false) }, 8000)
+  }
   const pendingAvatar = !!(data?.ownerHasAvatar && !data?.ownerAvatar)
   // Once the share is revoked, no more updates are coming - stop polling.
   const synced = !!data?.revoked || (!!(data && (data.ownerPubkey || data.phase || data.predict)) && !pendingAvatar)
@@ -1099,6 +1121,17 @@ function PartnerView ({ groupId, onClose, onLeft }) {
             <div style={{ fontSize: 24, fontWeight: 600, color: colors.primary }}>{phase ? (PHASE_LABEL[phase.phase] || phase.phase) : 'Not shared yet'}</div>
             {phase?.dayOfCycle != null && <div style={{ color: colors.text.secondary, fontSize: 14 }}>Day {phase.dayOfCycle} of cycle</div>}
           </div>
+          {!data.revoked && (
+            <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+                <span style={{ width: 8, height: 8, borderRadius: 4, flexShrink: 0, background: connected ? colors.success : colors.text.muted }} />
+                <span style={{ fontSize: 14, fontWeight: 600 }}>{connected ? 'Connected' : checking ? `Looking for ${data.ownerName || 'their'}${data.ownerName ? "'s" : ''} phone…` : 'Not connected right now'}</span>
+              </div>
+              {data.asOf && <div style={{ color: colors.text.secondary, fontSize: 13 }}>Last update from {data.ownerName ? `${data.ownerName}'s` : 'their'} phone: {updatedAgo(data.asOf)}</div>}
+              {!connected && <div style={{ color: colors.text.muted, fontSize: 12, lineHeight: 1.45 }}>Updates arrive while both apps are open at the same time. The day count above moves on by itself.</div>}
+              {!connected && <Btn kind='ghost' onClick={checkNow} disabled={checking}>{checking ? 'Checking…' : 'Check for updates'}</Btn>}
+            </div>
+          )}
           {predict && (
             <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
               {predict.nextPeriodStart && <Row label='Next period' value={fmtDate(predict.nextPeriodStart)} />}
@@ -1359,6 +1392,17 @@ const TOGGLE_INSET = 62
 // --- cycle summary (owner's own prediction) ---------------------------------
 const PHASE_COLOR = { menstrual: '#c8384f', follicular: '#c9a0d8', fertile: '#e8859b', luteal: '#8f8288' }
 function fmtDate (iso) { try { return new Date(iso + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }) } catch { return iso } }
+// When a partner's phone last wrote what this screen shows, in words.
+function updatedAgo (ms) {
+  if (!ms) return ''
+  const mins = Math.max(0, Math.round((Date.now() - ms) / 60000))
+  if (mins < 2) return 'just now'
+  if (mins < 60) return `${mins} minutes ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  const days = Math.round(hours / 24)
+  return `${days} day${days === 1 ? '' : 's'} ago`
+}
 function sharedOn (ms) { try { return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) } catch { return '' } }
 
 // Pregnancy (gestational) hero: replaces the cycle summary when the goal is
