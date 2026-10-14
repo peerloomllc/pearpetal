@@ -20,7 +20,7 @@ const { notificationEvents } = require('./notifications')
 const { planImport } = require('./healthImport')
 const { parseHealthFile } = require('./healthFiles')
 const { TONES: NOTE_TONES, DEFAULT_TONE: DEFAULT_NOTE_TONE } = require('./petalNotes')
-const { isDeviceLinkEnabled } = require('./deviceLink')
+const { isDeviceLinkEnabled, getDeviceLink } = require('./deviceLink')
 const ps = require('./privateStore')
 const relay = require('./relay')
 const { freshPartnerPhase } = require('./partnerFresh')
@@ -827,8 +827,12 @@ const methods = {
   'cycle:status': async (_args, ctx) => {
     const partners = (await membershipsByKind(ctx, 'shared-in')).length
     if (isDeviceLinkEnabled()) {
+      // After a move onto an encrypted base the current one is recorded in
+      // `personalMeta:current`, and deleting the old copy removes the bootstrap
+      // row (proposals/2026-10-12-encrypt-private-log.md). Either means a cycle.
       const boot = (await ctx.localDb.get('personalMeta:bootstrap').catch(() => null))?.value
-      return { hasBase: !!(boot && boot.key), groupId: null, pubkey: pubkeyHex(ctx), partners }
+      const cur = (await ctx.localDb.get('personalMeta:current').catch(() => null))?.value
+      return { hasBase: !!((boot && boot.key) || (cur && cur.key)), groupId: null, pubkey: pubkeyHex(ctx), partners }
     }
     const m = await privateMembership(ctx)
     return { hasBase: !!m, groupId: m?.groupId ?? null, pubkey: pubkeyHex(ctx), partners }
@@ -1137,6 +1141,20 @@ const methods = {
     if (typeof pubkey !== 'string' || !pubkey) throw new Error('pubkey required')
     await ps.removeDevice(ctx, pubkey)
     return { ok: true }
+  },
+
+  // Moving the private log onto an encrypted base
+  // (proposals/2026-10-12-encrypt-private-log.md). The move itself runs on its
+  // own once every linked phone is updated; these are for Settings.
+  'privateLog:status': async (_args, ctx) => {
+    if (!isDeviceLinkEnabled() || !(await ps.exists(ctx))) return { state: 'none' }
+    const dl = await getDeviceLink(ctx)
+    return dl.moveStatus()
+  },
+  'privateLog:deleteOldCopy': async (_args, ctx) => {
+    if (!isDeviceLinkEnabled()) throw new Error('nothing to delete')
+    const dl = await getDeviceLink(ctx)
+    return dl.deleteLegacyCopy()
   },
 
   // The device-link recovery phrase (SLIP-48 mnemonic), for the "save your

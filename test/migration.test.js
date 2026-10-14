@@ -120,3 +120,21 @@ test('fresh device-link install marks migration done with no legacy base', async
   assert.equal(marker.from, null)
   await d.engine.close()
 })
+
+// Found on the TCL 2026-10-12: after the move to an encrypted base and deleting the
+// old copy, the bootstrap row is gone and only personalMeta:current names the base.
+// cycle:status read only the bootstrap row, so the app showed first-run setup.
+test('cycle:status sees a base recorded only in personalMeta:current', async () => {
+  const dir = tmpDir()
+  _setDeviceLinkEnabledForTest(true); _resetForTest(); petalMethods._resetMigrationForTest()
+  const d = driver(dir)
+  await d.call('init', {})
+  await d.call('cycle:create', {})
+  const db = d.engine.localDb
+  const boot = (await db.get('personalMeta:bootstrap')).value
+  await db.put('personalMeta:current', { key: boot.key, encryptionKey: boot.encryptionKey, ns: 'personal-enc:1', legacyDeleted: true })
+  await db.del('personalMeta:bootstrap')
+  assert.equal((await d.call('cycle:status', {})).hasBase, true)
+  _resetForTest()
+  await d.engine.close()
+})

@@ -15,7 +15,7 @@ const os = require('node:os')
 const path = require('node:path')
 const Corestore = require('corestore')
 const Hyperbee = require('hyperbee')
-const { makeKeystore, makeMirror, getDeviceLink, isDeviceLinkEnabled, _resetForTest } = require('../src/deviceLink')
+const { makeKeystore, makeMirror, listRecords, getDeviceLink, isDeviceLinkEnabled, _resetForTest } = require('../src/deviceLink')
 
 const _tmpDirs = []
 function tmpStore () {
@@ -94,4 +94,31 @@ test('getDeviceLink is a cached singleton for the worklet', async () => {
   await (await a).stop()
   await ctx.store.close()
   _resetForTest()
+})
+
+// proposals/2026-10-12-encrypt-private-log.md: what a move onto an encrypted
+// personal base copies across is exactly what the mirror keeps.
+test('listRecords returns every mirrored row as a device-link record', async () => {
+  const ctx = await mkCtx()
+  await ctx.localDb.put('day:20261001', { flow: 'light' })
+  await ctx.localDb.put('period:20261001', { start: '20261001' })
+  await ctx.localDb.put('profile', { name: 'Ada', updatedAt: 1 })
+  await ctx.localDb.put('prefs', { cycleLength: 28, updatedAt: 1 })
+  await ctx.localDb.put('unrelated', { x: 1 })
+  const recs = await listRecords(ctx.localDb)
+  const byKey = Object.fromEntries(recs.map((r) => [r.key, r.type]))
+  assert.deepEqual(byKey, { 'day:20261001': 'day', 'period:20261001': 'period', identityProfile: 'identityProfile', ownerPrefs: 'ownerPrefs' })
+  await ctx.store.close()
+})
+
+test('a new personal base is encrypted and reports nothing to move', async () => {
+  _resetForTest()
+  const ctx = await mkCtx()
+  const dl = await getDeviceLink(ctx)
+  await dl.enable()
+  assert.equal(dl.isEncrypted, true, 'founded with a key')
+  assert.equal((await dl.moveStatus()).state, 'encrypted')
+  await dl.stop()
+  _resetForTest()
+  await ctx.store.close()
 })
