@@ -2,6 +2,29 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-10-14 - An opt-in PeerLoom Seeder, superseding "No cloud/seeder ever"
+Tier: T3
+Context: DECISIONS 2026-07-06 rejected any seeder ("No cloud/seeder ever") to keep the
+no-server promise. The private log was unencrypted from v1.0.1 until 2026-10-12, which
+ruled one out anyway. With both bases encrypted, a blind seeder can hold the log without
+reading it, and sync no longer needs two of the person's phones (or owner and partner)
+online at once.
+Choice: proposals/2026-10-14-opt-in-seeder.md (approved, Tim's answers recorded there).
+Off by default; the user pairs a PeerLoom Seeder they choose after one plain warning
+about what its owner can see (when the log grows, device addresses). No app label is
+sent. The private log backs up to the seeders listed in a `seeders` field on the
+ownerPrefs record, which syncs across the owner's own devices; a partner share backs
+up only when the owner turns it on for that share, through a `seeders` field on
+share:meta. Both are extra fields on rows older versions already accept, so no view
+differs. Core's createSeeding gained `extraBases` for device-link's personal base
+(peerloom-core #24). Stop using asks for drops with the 7-day wait.
+Alternatives: a field on device-link's own device row (needs a device-link change and
+gains nothing, since every own device uses the same list); a new row kind (an older
+version's apply drops unknown kinds, so views would differ); a PearPetal-run seeder
+(rejected: keeps "no server of ours").
+Consequences: the store text and privacy page need an "unless you add a seeder" line
+before this ships. A seeder's owner learns when the log grows; the warning says so.
+
 ## 2026-10-12 - The private log is block-encrypted again
 Tier: T3
 Context: DECISIONS 2026-07-06 item 6 promised block encryption on both bases. The

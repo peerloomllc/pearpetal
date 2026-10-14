@@ -10,7 +10,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh, Target, Bell, Palette, Drop, Lock, Eye } from '@phosphor-icons/react'
+import { Flower, ShareNetwork, Gear, Info, CaretRight, CaretLeft, Camera, CalendarBlank, QrCode, Copy, Trash, Check, Pill, Database, Heart, CurrencyBtc, Code, EnvelopeSimple, Lightning, CheckCircle, ArrowSquareOut, Key, Devices as DevicesIcon, PencilSimple, WifiHigh, Target, Bell, Palette, Drop, Lock, Eye, HardDrives } from '@phosphor-icons/react'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { call, on, haptic } from './ipc.js'
@@ -2023,6 +2023,142 @@ function ConnectionCard () {
   )
 }
 
+// The opt-in seeder (proposals/2026-10-14-opt-in-seeder.md). Collapsed and unused
+// until the person opens it and pairs one. Same section and modals as the other
+// PeerLoom apps; one plain warning before pairing about what the seeder's owner
+// can see.
+const SEEDER_WARNING = 'A seeder can never read your cycle log or what you share. Whoever runs it can see when your log grows, which shows roughly when you log, and the internet addresses of your devices when they connect. Pair only with a seeder you run or trust.'
+
+// A centred modal: a question with two buttons, a spinner while something runs,
+// or a result with one button. Portaled to <body> so a card's overflow cannot clip it.
+function SeederModal ({ title, text, busy = false, confirmLabel, danger = false, onConfirm, onClose, closeLabel = 'Cancel' }) {
+  return createPortal(
+    <div data-testid='seeder-modal' style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: spacing.lg }}>
+      <div style={{ ...card, maxWidth: 400, width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        {busy && <span style={{ width: 28, height: 28, margin: '0 auto', borderRadius: '50%', border: `3px solid ${colors.border}`, borderTopColor: colors.primary, animation: 'pearpetal-spin 0.8s linear infinite' }} />}
+        <div style={{ color: colors.text.primary, fontSize: 17, fontWeight: 500 }}>{title}</div>
+        {text && <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.45 }}>{text}</div>}
+        {!busy && (onConfirm || onClose) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, marginTop: spacing.sm }}>
+            {onConfirm && <Btn onClick={onConfirm} style={danger ? { background: colors.error, color: '#fff' } : undefined}>{confirmLabel}</Btn>}
+            {onClose && <Btn kind='ghost' onClick={onClose}>{closeLabel}</Btn>}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function SeederCard () {
+  const [open, setOpen] = useState(false)
+  const [list, setList] = useState([])
+  const [shares, setShares] = useState([])
+  const [modal, setModal] = useState(null)
+  const [msg, setMsg] = useState(null)
+  const [pasting, setPasting] = useState(false)
+  const [link, setLink] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [pending, setPending] = useState({}) // groupId -> the switch's new state
+  const load = useCallback(async () => {
+    try { setList(await call('seeder:list')) } catch {}
+    try { setShares(((await call('share:list')) || []).filter((sh) => !sh.revoked)) } catch {}
+  }, [])
+  useEffect(() => { if (open) load() }, [open, load])
+  useEffect(() => on('group:updated', () => { if (open) load() }), [open, load])
+
+  const close = () => setModal(null)
+  const pair = async (text) => {
+    const clean = String(text || '').trim().replace(/^[a-z]+:/i, (m) => m.toLowerCase())
+    if (!clean) return
+    setMsg(null)
+    setModal({ busy: true, title: 'Pairing...', text: 'This can take up to a minute.' })
+    try {
+      await call('seeder:pair', { link: clean })
+      setLink(''); setPasting(false); close()
+      setMsg('Paired. Your cycle log is backing up to it.')
+      haptic('success')
+    } catch (e) {
+      const m = String(e?.message ?? e)
+      const t = /pairing link|not a .*link|invalid/i.test(m)
+        ? 'That is not a seeder pairing code.'
+        : /timed out|did not answer/i.test(m)
+          ? 'Could not reach the seeder. Check that its dashboard still shows the code, then try again.'
+          : m
+      setModal({ title: 'Could not pair', text: t, onClose: close, closeLabel: 'OK' })
+    }
+    load()
+  }
+  // The one warning, before any pairing.
+  const warnThen = (go) => setModal({ title: 'Before you pair', text: SEEDER_WARNING, confirmLabel: 'Pair', onConfirm: () => { close(); go() }, onClose: close })
+  const stop = (seederKey) => setModal({
+    title: 'Stop using this seeder?',
+    text: 'Your devices and shares stop backing up to it, and it is asked to delete what it holds in 7 days.',
+    confirmLabel: 'Stop using', danger: true, onClose: close,
+    onConfirm: async () => {
+      setModal({ busy: true, title: 'Stopping...' })
+      try { await call('seeder:stop', { seederKey }); close(); setMsg('Stopped using this seeder.') } catch (e) { setModal({ title: 'Could not stop', text: String(e?.message ?? e), onClose: close, closeLabel: 'OK' }) }
+      load()
+    },
+  })
+  const setShare = async (groupId, on) => {
+    setPending((p) => ({ ...p, [groupId]: on }))
+    try { await call('seeder:share:set', { groupId, on }) } catch (e) { setMsg(String(e?.message ?? e)) }
+    await load()
+    setPending((p) => { const { [groupId]: _, ...rest } = p; return rest })
+  }
+  const shareName = (sh) => (sh.joiners && sh.joiners[0] && sh.joiners[0].name) || 'A partner'
+  const linkBtn = { background: 'none', border: 'none', padding: 0, color: colors.primary, fontSize: 13, cursor: 'pointer' }
+
+  return (
+    <CollapsibleCard title='Seeder' icon={HardDrives} open={open} onToggle={() => setOpen((o) => !o)}>
+      <div style={{ color: colors.text.muted, fontSize: 12 }}>A seeder is an always-on computer that keeps your cycle log in sync while your phones sleep. It stores it scrambled and cannot read it. Off until you pair one.</div>
+      <Btn onClick={() => warnThen(() => setScanning(true))}>Scan seeder QR</Btn>
+      {pasting && (
+        <div style={{ display: 'flex', gap: spacing.sm }}>
+          <input value={link} onChange={(e) => setLink(e.target.value)} placeholder='Paste the seeder link' aria-label='Seeder pairing link' autoCapitalize='none' autoCorrect='off' spellCheck={false}
+            style={{ flex: 1, minWidth: 0, background: colors.surface.input, color: colors.text.primary, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: '8px 10px', fontSize: 14 }} />
+          <Btn kind='ghost' disabled={!link.trim()} onClick={() => warnThen(() => pair(link))} style={{ padding: '8px 14px' }}>Pair</Btn>
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: spacing.sm }}>
+        <button onClick={() => setPasting((v) => !v)} style={linkBtn}>{pasting ? 'Cancel' : 'Paste a link instead'}</button>
+        <button onClick={() => openUrl('https://peerloomllc.com/seeder')} style={{ ...linkBtn, display: 'flex', alignItems: 'center', gap: 4 }}>Get PeerLoom Seeder <ArrowSquareOut size={13} /></button>
+      </div>
+      {msg && <div style={{ color: colors.text.muted, fontSize: 12 }}>{msg}</div>}
+      {list.map((sd) => (
+        <div key={sd.seederKey} style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: colors.text.secondary, fontSize: 13, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sd.seederKey.slice(0, 16)}...</div>
+            <div style={{ color: colors.text.muted, fontSize: 12 }}>{sd.paired ? 'Backs up your cycle log' : 'Added on another of your devices'}</div>
+          </div>
+          <button onClick={() => stop(sd.seederKey)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: radius.md, cursor: 'pointer', border: `1px solid ${colors.error}`, background: 'transparent', color: colors.error }}>Stop using</button>
+        </div>
+      ))}
+      {list.length > 0 && shares.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.md }}>
+          <div style={{ color: colors.text.secondary, fontSize: 13 }}>Partner shares</div>
+          <div style={{ color: colors.text.muted, fontSize: 12 }}>Keeps a partner's view current while your phone sleeps. Off unless you turn it on.</div>
+          {shares.map((sh) => {
+            const p = pending[sh.groupId]
+            return (
+              <div key={sh.groupId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, opacity: p !== undefined ? 0.6 : 1 }}>
+                <span style={{ color: colors.text.secondary, fontSize: 14 }}>{shareName(sh)}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+                  {p !== undefined && <span style={{ color: colors.text.muted, fontSize: 12 }}>{p ? 'Adding...' : 'Removing...'}</span>}
+                  <Toggle on={p !== undefined ? p : !!sh.seeder} label={'Seeder for ' + shareName(sh)} onClick={() => { if (p === undefined) setShare(sh.groupId, !sh.seeder) }} />
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <ScannerView open={scanning} onClose={() => setScanning(false)} onDecode={(txt) => { setScanning(false); pair(txt) }} />
+      {modal && <SeederModal {...modal} />}
+    </CollapsibleCard>
+  )
+}
+
 // A row of the details panel: a plain-language label and a number.
 function StatRow ({ label, value, hint }) {
   return (
@@ -2725,6 +2861,7 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
       <SectionLabel>Alerts & connection</SectionLabel>
       <NotificationsCard />
       <ConnectionCard />
+      <SeederCard />
 
       <SectionLabel>Your data</SectionLabel>
       {dlEnabled && <OldCopyNotice />}

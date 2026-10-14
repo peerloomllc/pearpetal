@@ -123,6 +123,7 @@ async function listRecords (localDb) {
 // return the same instance. The caller gates on DEVICE_LINK_ENABLED; this
 // factory itself is flag-agnostic so tests can drive it directly.
 let _dlPromise = null
+let _dl = null // the started instance, for callers that must not start it
 function getDeviceLink (ctx) {
   if (_dlPromise) return _dlPromise
   // Before init there is no store or swarm. Say so without caching anything: a
@@ -157,6 +158,7 @@ function getDeviceLink (ctx) {
     trace.mark('dl:start begin')
     await dl.start()
     trace.mark('dl:start end', { enabled: !!dl.isEnabled, encrypted: !!dl.isEncrypted })
+    _dl = dl
     return dl
   })()
   // Never keep a failed start: the next call tries again.
@@ -165,7 +167,11 @@ function getDeviceLink (ctx) {
 }
 
 // Drop the cached instance (tests model a fresh worklet).
-function _resetForTest () { _dlPromise = null }
+function _resetForTest () { _dlPromise = null; _dl = null }
+
+// The device-link instance if it has started, else null. Never starts it
+// (src/seeders.js reads the personal base from here on its own timer).
+function currentDeviceLink () { return _dl }
 
 module.exports = {
   isDeviceLinkEnabled,
@@ -174,6 +180,7 @@ module.exports = {
   makeMirror,
   listRecords,
   getDeviceLink,
+  currentDeviceLink,
   _resetForTest,
   _setDeviceLinkEnabledForTest,
 }

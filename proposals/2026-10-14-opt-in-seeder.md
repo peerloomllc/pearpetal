@@ -99,5 +99,10 @@ seeder's dashboard.
    network guessing.
 4. Store text and privacy page: add an "unless you add a seeder" line when this ships.
 
+Built 2026-10-14 with one change to scope item 3: the private log's seeder list is a
+`seeders` field on the ownerPrefs record (synced across own devices, kept by older
+versions' prefs code as it is) instead of a field on a device row. Device rows live in
+device-link, and every own device uses the same list anyway. See DECISIONS 2026-10-14.
+
 When this ships, add a DECISIONS entry that supersedes item "No cloud/seeder ever" of
 2026-07-06.

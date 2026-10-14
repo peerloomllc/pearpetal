@@ -24,6 +24,7 @@ const { isDeviceLinkEnabled, getDeviceLink } = require('./deviceLink')
 const ps = require('./privateStore')
 const relay = require('./relay')
 const { freshPartnerPhase } = require('./partnerFresh')
+const seeders = require('./seeders')
 
 // Consent scopes (see DECISIONS.md 2026-07-06). Each governs which projection
 // fields the OWNER writes to a shared base; the partner structurally never
@@ -566,15 +567,69 @@ function profileMetaFields (prof) {
 async function writeShareMeta (ctx, groupId, scope, prof, notes) {
   let existing = null
   try { existing = await readRow(viewFor(ctx, groupId), 'share:meta') } catch {}
+  const seederKeys = await shareSeederKeys(ctx, groupId)
   await putRow(ctx, groupId, 'share:meta', {
     ownerPubkey: pubkeyHex(ctx), scope,
     // Only written when ON. Absent reads as off, which is what an app built
     // before this change writes and what every existing share already has.
     ...(notes ? { notes: true } : {}),
+    // The seeders this share backs up to (proposals/2026-10-14-opt-in-seeder.md),
+    // only when the owner turned the seeder on for it. Same rule as notes: absent
+    // is off, and an older app keeps the field as it is and ignores it.
+    ...(seederKeys.length ? { seeders: seederKeys } : {}),
     createdAt: existing?.createdAt || Date.now(),
     ...profileMetaFields(prof),
   })
 }
+// --- opt-in seeder (proposals/2026-10-14-opt-in-seeder.md, src/seeders.js) ---
+
+// The seeder keys a share lists in share:meta: the owner's seeders, when the
+// owner turned the seeder on for this share. Device-local choice, kept on the
+// membership record (`seeder: true`).
+async function shareSeederKeys (ctx, groupId) {
+  const rec = (await ctx.localDb.get('groups:joined:' + groupId).catch(() => null))?.value
+  if (!rec || !rec.seeder) return []
+  return seeders.ownSeeders(ctx.localDb)
+}
+
+// Replace the owner's seeder list (ownerPrefs.seeders) and sync it to the owner's
+// own devices like any other setting.
+async function setOwnSeeders (ctx, keys) {
+  const cur = await getPrefs(ctx)
+  const next = { ...cur, seeders: seeders.cleanKeys(keys), updatedAt: Date.now() }
+  if (!next.seeders.length) delete next.seeders
+  await ctx.localDb.put('prefs', next)
+  if (isDeviceLinkEnabled()) await ps.putPrefs(ctx, next).catch(() => {})
+}
+
+// Rewrite share:meta on every live share that has the seeder on, so a change to
+// the owner's seeder list reaches those partners.
+async function refreshSeederShares (ctx) {
+  const prof = await getProfile(ctx)
+  for (const m of await membershipsByKind(ctx, 'shared-out')) {
+    if (m.revoked || !m.seeder) continue
+    const base = ctx.bases.get(m.groupId)
+    if (!base || !base.writable) continue
+    try { await writeShareMeta(ctx, m.groupId, m.scope || 'phase', prof, !!m.notes) } catch {}
+  }
+}
+
+// The personal base's bootstrap key (hex), when device-link has one open.
+async function personalBootstrap (ctx) {
+  if (!isDeviceLinkEnabled()) return null
+  try {
+    const dl = await getDeviceLink(ctx)
+    return dl.personalBase && dl.personalBase.key ? b4a.toString(dl.personalBase.key, 'hex') : null
+  } catch { return null }
+}
+
+// Ask every seeder this device is paired with to drop one base after its 7-day
+// wait. In the background: core's asker sends them one at a time.
+async function dropEverywhere (ctx, bootstrap) {
+  const s = seeders.getSeeding(ctx.engine)
+  for (const p of await s.paired()) s.drop(p.seederKey, bootstrap).catch(() => {})
+}
+
 // Re-project the current profile into every shared-out base's share:meta so
 // existing partners get an updated name/avatar. Only writable bases (the owner
 // is the writer) are touched. Revoked shares are SKIPPED - rewriting their
@@ -921,6 +976,73 @@ const methods = {
     // change applies to the very next connect with no reconnect or restart.
     relay.setUseRelay(next.useRelay)
     return getNetworkPrefs(ctx)
+  },
+
+  // --- opt-in seeder (proposals/2026-10-14-opt-in-seeder.md) ---------------
+  // The seeders this device is paired with plus any the owner's other devices
+  // added (ownerPrefs.seeders). `inUse`: the private log backs up to it.
+  'seeder:list': async (_args, ctx) => {
+    const s = seeders.getSeeding(ctx.engine)
+    const paired = new Map((await s.paired()).map((p) => [p.seederKey, p]))
+    const own = await seeders.ownSeeders(ctx.localDb)
+    const keys = [...new Set([...paired.keys(), ...own])]
+    return keys.map((k) => ({ seederKey: k, paired: paired.has(k), pairedAt: paired.get(k)?.pairedAt || null, inUse: own.includes(k) }))
+  },
+
+  // Pair with a seeder from its link (no app label is sent), then back the private
+  // log up to it on all of the owner's devices. Shares that have the seeder on
+  // start using it too.
+  'seeder:pair': async ({ link } = {}, ctx) => {
+    if (typeof link !== 'string' || !link.trim()) throw new Error('Paste the link the seeder shows')
+    const s = seeders.getSeeding(ctx.engine)
+    s.start()
+    const { seederKey } = await s.pair(link.trim())
+    await setOwnSeeders(ctx, [...(await seeders.ownSeeders(ctx.localDb)), seederKey])
+    await refreshSeederShares(ctx)
+    s.sweep().catch(() => {})
+    return { seederKey }
+  },
+
+  // Stop using a seeder: forget the pairing, take it off the owner's list (all
+  // own devices stop backing up to it) and off every share, then ask it to drop
+  // the private log and those shares after its 7-day wait. The drop requests go
+  // in the background, one at a time.
+  'seeder:stop': async ({ seederKey } = {}, ctx) => {
+    if (typeof seederKey !== 'string' || !/^[0-9a-f]{64}$/.test(seederKey)) throw new Error('seederKey required')
+    const s = seeders.getSeeding(ctx.engine)
+    const wasPaired = (await s.paired()).some((p) => p.seederKey === seederKey)
+    const bootstraps = []
+    const personal = await personalBootstrap(ctx)
+    if (personal) bootstraps.push(personal)
+    for (const m of await membershipsByKind(ctx, 'shared-out')) {
+      const base = ctx.bases.get(m.groupId)
+      if (m.seeder && base) bootstraps.push(b4a.toString(base.key, 'hex'))
+    }
+    await setOwnSeeders(ctx, (await seeders.ownSeeders(ctx.localDb)).filter((k) => k !== seederKey))
+    await refreshSeederShares(ctx)
+    if (wasPaired) {
+      for (const bootstrap of bootstraps) s.drop(seederKey, bootstrap).catch(() => {})
+      await s.forget(seederKey)
+    } else {
+      s.sweep().catch(() => {})
+    }
+    return { stopped: true, dropping: wasPaired ? bootstraps.length : 0 }
+  },
+
+  // Turn the seeder on or off for ONE partner share (default off). On lists the
+  // owner's seeders in share:meta so the partner fetches from them; off removes
+  // them and asks the paired seeders to drop the share after the 7-day wait.
+  'seeder:share:set': async ({ groupId, on } = {}, ctx) => {
+    const m = (await membershipsByKind(ctx, 'shared-out')).find((x) => x.groupId === groupId)
+    if (!m) throw new Error('share not found')
+    if (m.revoked) throw new Error('this share has ended')
+    const rec = (await ctx.localDb.get('groups:joined:' + groupId))?.value || {}
+    await ctx.localDb.put('groups:joined:' + groupId, { ...rec, seeder: !!on })
+    await writeShareMeta(ctx, groupId, m.scope || 'phase', await getProfile(ctx), !!m.notes)
+    const base = ctx.bases.get(groupId)
+    if (!on && base) await dropEverywhere(ctx, b4a.toString(base.key, 'hex'))
+    seeders.getSeeding(ctx.engine).sweep().catch(() => {})
+    return { groupId, seeder: !!on }
   },
 
   // How connections are actually being made on this device. Exists mainly so
@@ -1642,7 +1764,7 @@ const methods = {
           }
         } catch {}
       }
-      out.push({ groupId: m.groupId, scope: m.scope || 'phase', notes: !!m.notes, inviteKey: reencodeInvite(m), createdAt: m.joinedAt || 0, joiners, revoked: !!m.revoked, revokedAt: m.revokedAt || null })
+      out.push({ groupId: m.groupId, scope: m.scope || 'phase', notes: !!m.notes, seeder: !!m.seeder, inviteKey: reencodeInvite(m), createdAt: m.joinedAt || 0, joiners, revoked: !!m.revoked, revokedAt: m.revokedAt || null })
     }
     out.sort((a, b) => a.createdAt - b.createdAt)
     return out
@@ -1683,6 +1805,8 @@ const methods = {
   'share:remove': async ({ groupId }, ctx) => {
     const m = (await membershipsByKind(ctx, 'shared-out')).find((x) => x.groupId === groupId)
     if (!m) return { ok: true, already: true }
+    const removed = ctx.bases.get(groupId)
+    if (m.seeder && removed) await dropEverywhere(ctx, b4a.toString(removed.key, 'hex')).catch(() => {})
     await ctx.localDb.del('groups:joined:' + groupId).catch(() => {})
     await ctx.destroyGroup(groupId).catch(() => {})
     return { ok: true }
