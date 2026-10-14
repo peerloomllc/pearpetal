@@ -25,6 +25,7 @@ const ps = require('./privateStore')
 const relay = require('./relay')
 const { freshPartnerPhase } = require('./partnerFresh')
 const seeders = require('./seeders')
+const APP_LABEL = 'PearPetal' // sent at seeder pairing only when the person chooses (seeder:pair)
 
 // Consent scopes (see DECISIONS.md 2026-07-06). Each governs which projection
 // fields the OWNER writes to a shared base; the partner structurally never
@@ -992,11 +993,14 @@ const methods = {
   // Pair with a seeder from its link (no app label is sent), then back the private
   // log up to it on all of the owner's devices. Shares that have the seeder on
   // start using it too.
-  'seeder:pair': async ({ link } = {}, ctx) => {
+  // showName: send the app label so the seeder's dashboard lists the device as
+  // PearPetal with its icon. The person chooses in the pairing warning (on by
+  // default); off sends none ("Other devices").
+  'seeder:pair': async ({ link, showName = false } = {}, ctx) => {
     if (typeof link !== 'string' || !link.trim()) throw new Error('Paste the link the seeder shows')
     const s = seeders.getSeeding(ctx.engine)
     s.start()
-    const { seederKey } = await s.pair(link.trim())
+    const { seederKey } = await s.pair(link.trim(), { app: showName === true ? APP_LABEL : null })
     await setOwnSeeders(ctx, [...(await seeders.ownSeeders(ctx.localDb)), seederKey])
     await refreshSeederShares(ctx)
     s.sweep().catch(() => {})

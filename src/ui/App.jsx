@@ -2036,17 +2036,32 @@ function ConnectionCard () {
 // until the person opens it and pairs one. Same section and modals as the other
 // PeerLoom apps; one plain warning before pairing about what the seeder's owner
 // can see.
+// The pairing warning's switch: whether the seeder's dashboard shows PearPetal's
+// name (and icon). On by default; off sends no app label, so the device is listed
+// under "Other devices". Kept in a ref so the choice reaches pair().
+function ShowNameSwitch ({ valueRef }) {
+  const [on, setOn] = useState(valueRef.current)
+  const flip = () => { valueRef.current = !on; setOn(!on) }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, textAlign: 'left', borderTop: `1px solid ${colors.divider}`, paddingTop: spacing.sm }}>
+      <div style={{ flex: 1, color: colors.text.secondary, fontSize: 13 }}>Show PearPetal's name on the seeder's dashboard. Turn it off if someone else runs the seeder.</div>
+      <Toggle on={on} label="Show PearPetal's name on the seeder" onClick={flip} />
+    </div>
+  )
+}
+
 const SEEDER_WARNING = 'A seeder can never read your cycle log or what you share. Whoever runs it can see when your log grows, which shows roughly when you log, and the internet addresses of your devices when they connect. Pair only with a seeder you run or trust.'
 
 // A centred modal: a question with two buttons, a spinner while something runs,
 // or a result with one button. Portaled to <body> so a card's overflow cannot clip it.
-function SeederModal ({ title, text, busy = false, confirmLabel, danger = false, onConfirm, onClose, closeLabel = 'Cancel' }) {
+function SeederModal ({ title, text, extra = null, busy = false, confirmLabel, danger = false, onConfirm, onClose, closeLabel = 'Cancel' }) {
   return createPortal(
     <div data-testid='seeder-modal' style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: spacing.lg }}>
       <div style={{ ...card, maxWidth: 400, width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
         {busy && <span style={{ width: 28, height: 28, margin: '0 auto', borderRadius: '50%', border: `3px solid ${colors.border}`, borderTopColor: colors.primary, animation: 'pearpetal-spin 0.8s linear infinite' }} />}
         <div style={{ color: colors.text.primary, fontSize: 17, fontWeight: 500 }}>{title}</div>
         {text && <div style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 1.45 }}>{text}</div>}
+        {!busy && extra}
         {!busy && (onConfirm || onClose) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm, marginTop: spacing.sm }}>
             {onConfirm && <Btn onClick={onConfirm} style={danger ? { background: colors.error, color: '#fff' } : undefined}>{confirmLabel}</Btn>}
@@ -2060,6 +2075,7 @@ function SeederModal ({ title, text, busy = false, confirmLabel, danger = false,
 }
 
 function SeederCard () {
+  const showNameRef = useRef(true) // the pairing warning's "show the name" switch
   const [open, setOpen] = useState(false)
   const [list, setList] = useState([])
   const [shares, setShares] = useState([])
@@ -2083,7 +2099,7 @@ function SeederCard () {
     setMsg(null)
     setModal({ busy: true, title: 'Pairing...', text: 'This can take up to a minute.' })
     try {
-      await call('seeder:pair', { link: clean })
+      await call('seeder:pair', { link: clean, showName: showNameRef.current })
       setLink(''); setPasting(false); close()
       setMsg('Paired. Your cycle log is backing up to it.')
       haptic('success')
@@ -2099,7 +2115,10 @@ function SeederCard () {
     load()
   }
   // The one warning, before any pairing.
-  const warnThen = (go) => setModal({ title: 'Before you pair', text: SEEDER_WARNING, confirmLabel: 'Pair', onConfirm: () => { close(); go() }, onClose: close })
+  const warnThen = (go) => {
+    showNameRef.current = true
+    setModal({ title: 'Before you pair', text: SEEDER_WARNING, extra: <ShowNameSwitch valueRef={showNameRef} />, confirmLabel: 'Pair', onConfirm: () => { close(); go() }, onClose: close })
+  }
   const stop = (seederKey) => setModal({
     title: 'Stop using this seeder?',
     text: 'Your devices and shares stop backing up to it, and it is asked to delete what it holds in 7 days.',
