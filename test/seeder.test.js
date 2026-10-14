@@ -135,7 +135,8 @@ test('a partner catches up on a share from the seeder alone', { skip: !haveSeede
   const groupId = (await V.call('partner:list'))[0].groupId
   await waitFor('the viewer sees the phase', async () => !!(await V.call('partner:view', { groupId })).phase)
 
-  // Pairing sends no app label; the share does not use the seeder until asked.
+  // Pairing without showName sends no app label; the share does not use the
+  // seeder until asked.
   const { seederKey } = await O.call('seeder:pair', { link: seeder.openPairing().link })
   assert.equal(seederKey, b4a.toString(seeder.seederKey, 'hex'))
   assert.deepEqual((await seeder.devices()).map((d) => d.app || null), [null], 'no app label at pairing')
@@ -204,7 +205,9 @@ test('the private log registers with the seeder, and Stop using takes it off', {
   await waitFor('the personal base is open', () => !!dl.personalBase)
   const personal = b4a.toString(dl.personalBase.key, 'hex')
 
-  const { seederKey } = await O.call('seeder:pair', { link: seeder.openPairing().link })
+  // With the pairing warning's switch on, the seeder's dashboard shows PearPetal.
+  const { seederKey } = await O.call('seeder:pair', { link: seeder.openPairing().link, showName: true })
+  assert.deepEqual((await seeder.devices()).map((d) => d.app || null), ['PearPetal'], 'app label when chosen')
   await waitFor('the seeder allows the private log', () => seeder.allowedSpaces().includes(personal))
   assert.deepEqual((await O.call('seeder:list')).map((s) => [s.seederKey, s.inUse]), [[seederKey, true]])
   assert.deepEqual((await O.call('prefs:get')).goal, 'track', 'settings still read the same')

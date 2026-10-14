@@ -2,6 +2,19 @@
 
 Append-only, newest on top. Per Constitution §4.
 
+## 2026-10-14 - The seeder may show PearPetal's name, the person's choice
+Tier: T2
+Context: the opt-in seeder (entry below) sent no app label, so the seeder's dashboard
+listed PearPetal under "Other devices". Tim wants PearPetal recognized there, with its
+icon, as the other apps are.
+Choice: a switch in the pairing warning, on by default: "Show PearPetal's name on the
+seeder's dashboard. Turn it off if someone else runs the seeder." On sends the label
+"PearPetal" at pairing (core's `pair(link, { app })`, peerloom-core #26); off sends none.
+Alternatives: always send it (rejected: someone pairing with another person's seeder
+should be able to hide that it is a period tracker); never send it (the old choice).
+Consequences: whoever runs a seeder paired with the switch on can see the data comes
+from PearPetal. The switch is per pairing; to change it, stop using and pair again.
+
 ## 2026-10-14 - An opt-in PeerLoom Seeder, superseding "No cloud/seeder ever"
 Tier: T3
 Context: DECISIONS 2026-07-06 rejected any seeder ("No cloud/seeder ever") to keep the
