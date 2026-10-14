@@ -770,12 +770,7 @@ function Sharing ({ onClose, onOpenPartner }) {
           {activeShares.map((s) => {
             const joiners = s.joiners || []
             const named = joiners.map((j) => j.name).filter(Boolean)
-            // Just the joiner name(s): the section header ("People you share with")
-            // already supplies "shared with", and dropping the prefix stops long
-            // names from being truncated on narrow screens.
-            const title = named.length ? named.join(', ')
-              : joiners.length ? (joiners.length === 1 ? 'Someone joined' : `${joiners.length} people joined`)
-                : 'Not joined yet'
+            const title = shareTitle(s)
             const on = qrFor === s.groupId
             return (
               <div key={s.groupId} style={{ ...card, padding: spacing.md, display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
@@ -1403,6 +1398,20 @@ function updatedAgo (ms) {
   const days = Math.round(hours / 24)
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
+// What a share is called in a list: the joiner name(s), or whether anyone joined.
+// Just the name(s): the section header ("People you share with") already supplies
+// "shared with", and dropping the prefix stops long names from being truncated on
+// narrow screens.
+function shareTitle (s) {
+  const joiners = s.joiners || []
+  const named = joiners.map((j) => j.name).filter(Boolean)
+  return named.length ? named.join(', ')
+    : joiners.length ? (joiners.length === 1 ? 'Someone joined' : `${joiners.length} people joined`)
+      : 'Not joined yet'
+}
+
+function sharedAt (ms) { try { return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) } catch { return '' } }
+
 function sharedOn (ms) { try { return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) } catch { return '' } }
 
 // Pregnancy (gestational) hero: replaces the cycle summary when the goal is
@@ -2107,7 +2116,12 @@ function SeederCard () {
     await load()
     setPending((p) => { const { [groupId]: _, ...rest } = p; return rest })
   }
-  const shareName = (sh) => (sh.joiners && sh.joiners[0] && sh.joiners[0].name) || 'A partner'
+  // Title as on the Share tab, and below it the scope and date, with the time
+  // when two shares would otherwise read the same.
+  const shareLine = (sh) => {
+    const twin = shares.some((o) => o.groupId !== sh.groupId && shareTitle(o) === shareTitle(sh) && sharedOn(o.createdAt) === sharedOn(sh.createdAt))
+    return `${sh.scope || 'phase'} · shared ${sharedOn(sh.createdAt)}${twin ? ', ' + sharedAt(sh.createdAt) : ''}`
+  }
   const linkBtn = { background: 'none', border: 'none', padding: 0, color: colors.primary, fontSize: 13, cursor: 'pointer' }
 
   return (
@@ -2143,10 +2157,13 @@ function SeederCard () {
             const p = pending[sh.groupId]
             return (
               <div key={sh.groupId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, opacity: p !== undefined ? 0.6 : 1 }}>
-                <span style={{ color: colors.text.secondary, fontSize: 14 }}>{shareName(sh)}</span>
+                <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ color: colors.text.secondary, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shareTitle(sh)}</span>
+                  <span style={{ color: colors.text.muted, fontSize: 12, textTransform: 'capitalize' }}>{shareLine(sh)}</span>
+                </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
                   {p !== undefined && <span style={{ color: colors.text.muted, fontSize: 12 }}>{p ? 'Adding...' : 'Removing...'}</span>}
-                  <Toggle on={p !== undefined ? p : !!sh.seeder} label={'Seeder for ' + shareName(sh)} onClick={() => { if (p === undefined) setShare(sh.groupId, !sh.seeder) }} />
+                  <Toggle on={p !== undefined ? p : !!sh.seeder} label={'Seeder for ' + shareTitle(sh)} onClick={() => { if (p === undefined) setShare(sh.groupId, !sh.seeder) }} />
                 </span>
               </div>
             )
@@ -2861,12 +2878,14 @@ function CycleSettings ({ onClose, onSaved, onFlower, scrollTo, onScrolled, them
       <SectionLabel>Alerts & connection</SectionLabel>
       <NotificationsCard />
       <ConnectionCard />
-      <SeederCard />
 
       <SectionLabel>Your data</SectionLabel>
       {dlEnabled && <OldCopyNotice />}
       {dlEnabled && <DevicesCard />}
       {dlEnabled && <RecoveryPhraseCard />}
+      {/* With the data: a seeder holds a copy of the log, so it sits where people
+          look to see what leaves the phone. */}
+      <SeederCard />
       <CollapsibleCard title='Backup & restore' icon={Database} open={openSection.data} onToggle={() => toggleSection('data')}>
         <div style={{ color: colors.text.muted, fontSize: 12 }}>Your phone's own backup (iCloud or Google) does <strong style={{ color: colors.text.secondary, fontWeight: 500 }}>not</strong> include your cycle log. That is deliberate: it keeps your log off servers you do not control. A backup you make here is how you keep a copy, and you choose where it goes.</div>
         <input
