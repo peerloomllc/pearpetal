@@ -3281,11 +3281,25 @@ export default function App () {
 
   const daysByIso = useMemo(() => Object.fromEntries(days.map((d) => [d.date, d])), [days])
 
-  const refresh = useCallback(async () => {
-    const [d, pr, p, h, n] = await Promise.all([call('day:getAll').catch(() => []), call('cycle:prediction').catch(() => null), call('prefs:get').catch(() => null), call('cycle:history').catch(() => null), call('share:notedDates').catch(() => null)])
-    setDays(d); setPred(pr); setHistory(h); setNotedDates(new Set(n?.dates || []))
+  // A failed read keeps what is already on screen and tries again a few seconds
+  // later. Seen once on an iPhone SE right after deleting the old unencrypted copy
+  // (2026-10-13): a cold start showed Today as "Nothing logged" until the app was
+  // reopened, though the log was intact. A failure used to land as an empty list,
+  // and nothing asked again until the next change. See TODO.md.
+  const refresh = useCallback(async (attempt) => {
+    if (!Number.isInteger(attempt)) attempt = 0 // also passed as onSaved, with its own arguments
+    let failed = false
+    const miss = () => { failed = true; return undefined }
+    const [d, pr, p, h, n] = await Promise.all([call('day:getAll').catch(miss), call('cycle:prediction').catch(miss), call('prefs:get').catch(() => null), call('cycle:history').catch(miss), call('share:notedDates').catch(() => null)])
+    if (d !== undefined) setDays(d)
+    if (pr !== undefined) setPred(pr)
+    if (h !== undefined) setHistory(h)
+    setNotedDates(new Set(n?.dates || []))
     if (p && p.flower) setFlower(p.flower) // keep the dial's flower in sync when prefs change (incl. synced from another device)
+    if (failed && attempt < 4) setTimeout(() => refreshRef.current(attempt + 1), 3000)
   }, [])
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
 
   // ONE call, and it decides everything the first paint needs.
   //
