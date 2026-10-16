@@ -4,6 +4,10 @@
 // BareKit IPC; init / group:create / group:join are engine builtins, the
 // cycle:* / device:* / day:* / period:* methods come from petalMethods.
 
+// Fix hypercore's crash after a flush before any core opens
+// (see hypercoreSnapshotPatch.js).
+require('./hypercoreSnapshotPatch').applySnapshotFlushFix(require('hypercore/lib/session-state'))
+
 const { createGroupEngine } = require('@peerloom/core/engine')
 const { applyPetalOp } = require('./petalWire')
 const petalMethods = require('./petalMethods')
