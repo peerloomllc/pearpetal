@@ -36,7 +36,9 @@
         "backgroundColor": "#140f11"
       },
       "permissions": [
-        "CAMERA"
+        "CAMERA",
+        "ACCESS_NETWORK_STATE",
+        "WAKE_LOCK"
       ],
       "intentFilters": [
         {
