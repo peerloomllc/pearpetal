@@ -120,6 +120,7 @@
       "./plugins/with-gradle-jvmargs",
       "./plugins/with-android-webview-recovery",
       "./plugins/with-android-backup-exclusion",
+      "./plugins/with-android-no-firebase",
       "./plugins/with-ios-healthkit",
       [
         "expo-local-authentication",
